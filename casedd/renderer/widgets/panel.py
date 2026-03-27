@@ -102,7 +102,11 @@ class PanelWidget(BaseWidget):
             # Honour explicit override size if the child specifies one
             override = (child_cfg.width if is_row else child_cfg.height) or child_size
             offset = sum(
-                (cfg.children[j].width if is_row else cfg.children[j].height or child_size) + cfg.gap
+                (
+                    (cfg.children[j].width or child_size)
+                    if is_row
+                    else (cfg.children[j].height or child_size)
+                ) + cfg.gap
                 for j in range(i)
             )
             if is_row:

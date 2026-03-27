@@ -39,6 +39,7 @@ class Config:
         templates_dir: Directory containing ``.casedd`` template files.
         assets_dir: Directory containing static assets.
         disk_mount: Filesystem mount point to monitor for disk metrics.
+        viewer_bg: Default browser viewer page background color.
     """
 
     log_level: str = Field(default="INFO")
@@ -54,6 +55,7 @@ class Config:
     templates_dir: Path = Field(default=Path("templates"))
     assets_dir: Path = Field(default=Path("assets"))
     disk_mount: str = Field(default="/")
+    viewer_bg: str = Field(default="#0d0f12")
 
     @field_validator("log_level")
     @classmethod
@@ -137,14 +139,17 @@ def load_config() -> Config:
         log_level=str(_get("CASEDD_LOG_LEVEL", "log_level", "INFO")),
         no_fb=str(_get("CASEDD_NO_FB", "no_fb", "0")) not in {"0", "false", "False", ""},
         fb_device=Path(str(_get("CASEDD_FB_DEVICE", "fb_device", "/dev/fb1"))),
-        ws_port=int(_get("CASEDD_WS_PORT", "ws_port", 8765)),  # type: ignore[arg-type]
-        http_port=int(_get("CASEDD_HTTP_PORT", "http_port", 8080)),  # type: ignore[arg-type]
-        socket_path=Path(str(_get("CASEDD_SOCKET_PATH", "socket_path", "/run/casedd/casedd.sock"))),
+        ws_port=int(str(_get("CASEDD_WS_PORT", "ws_port", 8765))),
+        http_port=int(str(_get("CASEDD_HTTP_PORT", "http_port", 8080))),
+        socket_path=Path(
+            str(_get("CASEDD_SOCKET_PATH", "socket_path", "/run/casedd/casedd.sock"))
+        ),
         template=str(_get("CASEDD_TEMPLATE", "template", "system_stats")),
-        refresh_rate=float(_get("CASEDD_REFRESH_RATE", "refresh_rate", 2.0)),  # type: ignore[arg-type]
-        width=int(_get("CASEDD_WIDTH", "width", 800)),  # type: ignore[arg-type]
-        height=int(_get("CASEDD_HEIGHT", "height", 480)),  # type: ignore[arg-type]
+        refresh_rate=float(str(_get("CASEDD_REFRESH_RATE", "refresh_rate", 2.0))),
+        width=int(str(_get("CASEDD_WIDTH", "width", 800))),
+        height=int(str(_get("CASEDD_HEIGHT", "height", 480))),
         templates_dir=Path(str(_get("CASEDD_TEMPLATES_DIR", "templates_dir", "templates"))),
         assets_dir=Path(str(_get("CASEDD_ASSETS_DIR", "assets_dir", "assets"))),
         disk_mount=str(_get("CASEDD_DISK_MOUNT", "disk_mount", "/")),
+        viewer_bg=str(_get("CASEDD_VIEWER_BG", "viewer_bg", "#0d0f12")),
     )

@@ -78,7 +78,7 @@ class HistogramWidget(BaseWidget):
         # Sample current value
         raw = resolve_value(cfg, data)
         try:
-            value = float(raw) if raw is not None else cfg.min  # type: ignore[arg-type]
+            value = float(raw) if raw is not None else cfg.min
         except (ValueError, TypeError):
             value = cfg.min
         buf.append(max(cfg.min, min(cfg.max, value)))

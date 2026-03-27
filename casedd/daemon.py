@@ -18,6 +18,7 @@ Public API:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from pathlib import Path
 import signal
@@ -90,6 +91,9 @@ class Daemon:
             _BIND_HOST,
             self._cfg.http_port,
             self._cfg.ws_port,
+            self._cfg.refresh_rate,
+            self._cfg.template,
+            self._cfg.viewer_bg,
         )
         unix_ingestion = UnixSocketIngestion(
             Path(self._cfg.socket_path),
@@ -184,9 +188,8 @@ class Daemon:
             _log.warning("Template '%s' not found — skipping frame.", self._cfg.template)
             return None
 
-        data = self._store.snapshot()
         try:
-            return engine.render(template, data)
+            return engine.render(template, self._store)
         except Exception:
             _log.exception("Frame render error — continuing.")
             return None

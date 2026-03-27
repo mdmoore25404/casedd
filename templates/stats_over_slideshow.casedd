@@ -1,16 +1,12 @@
 # stats_over_slideshow.casedd — Stats overlay on a rotating slideshow background
 #
-# The slideshow fills the full canvas.  A nested panel overlays a semi-transparent
-# stats bar along the bottom third of the display.
-#
-# Layout:
-#   +------------------------------------------+
-#   |                                          |
-#   |          (slideshow background)          |
-#   |                                          |
-#   +------+------+------+------+------+-------+
-#   | cpu  | gpu  | ram  | disk | net  | clock |
-#   +------+------+------+------+------+-------+
+# Uses a slideshow as the full-canvas background and a bottom stats panel.
+
+name: stats_over_slideshow
+description: Slideshow background with a bottom row of live stats.
+width: 800
+height: 480
+refresh_rate: 2.0
 
 grid:
   template_areas: |
@@ -33,12 +29,12 @@ widgets:
 
   stats:
     type: panel
-    direction: horizontal
-    background: "rgba(0,0,0,0.72)"
+    direction: row
+    background: "#111111"
     padding: 8
+    gap: 8
     children:
-      cpu:
-        type: gauge
+      - type: gauge
         label: CPU
         source: cpu.percent
         min: 0
@@ -47,15 +43,11 @@ widgets:
         arc_start: 180
         arc_end: 360
         color_stops:
-          - value: 0
-            color: "#22cc44"
-          - value: 70
-            color: "#ffcc00"
-          - value: 90
-            color: "#ff4422"
+          - [0, "#22cc44"]
+          - [70, "#ffcc00"]
+          - [90, "#ff4422"]
 
-      gpu:
-        type: gauge
+      - type: gauge
         label: GPU
         source: nvidia.percent
         min: 0
@@ -64,28 +56,21 @@ widgets:
         arc_start: 180
         arc_end: 360
         color_stops:
-          - value: 0
-            color: "#22aaff"
-          - value: 70
-            color: "#ffcc00"
-          - value: 90
-            color: "#ff4422"
+          - [0, "#22aaff"]
+          - [70, "#ffcc00"]
+          - [90, "#ff4422"]
 
-      ram:
-        type: bar
+      - type: bar
         label: RAM
         source: memory.percent
         min: 0
         max: 100
         unit: "%"
         color_stops:
-          - value: 0
-            color: "#22aaff"
-          - value: 80
-            color: "#ffcc00"
+          - [0, "#22aaff"]
+          - [80, "#ffcc00"]
 
-      disk:
-        type: bar
+      - type: bar
         label: Disk
         source: disk.percent
         min: 0
@@ -93,15 +78,13 @@ widgets:
         unit: "%"
         color: "#aa44ff"
 
-      net:
-        type: sparkline
-        label: "↓ MB/s"
+      - type: sparkline
+        label: "Down MB/s"
         source: net.bytes_recv_rate
         samples: 30
         precision: 1
         color: "#22cc88"
 
-      clock:
-        type: clock
+      - type: clock
         format: "%H:%M"
         color: "#ffffff"

@@ -27,6 +27,7 @@ from casedd.renderer.color import interpolate_color_stops, parse_color
 from casedd.renderer.fonts import get_font
 from casedd.renderer.widgets.base import (
     BaseWidget,
+    content_rect,
     draw_label,
     fill_background,
     resolve_value,
@@ -59,16 +60,17 @@ class BarWidget(BaseWidget):
             _state: Unused for this widget type.
         """
         fill_background(img, rect, cfg.background)
+        inner = content_rect(rect, cfg.padding)
         draw = ImageDraw.Draw(img)
 
         label_h = 0
         if cfg.label:
-            label_h = draw_label(draw, rect, cfg.label, color=(150, 150, 150))
+            label_h = draw_label(draw, inner, cfg.label, color=(150, 150, 150))
 
         # Obtain numeric value; clamp to [min, max]
         raw = resolve_value(cfg, data)
         try:
-            value = float(raw) if raw is not None else cfg.min  # type: ignore[arg-type]
+            value = float(raw) if raw is not None else cfg.min
         except (ValueError, TypeError):
             value = cfg.min
         value = max(cfg.min, min(cfg.max, value))
@@ -81,10 +83,10 @@ class BarWidget(BaseWidget):
 
         # Bar geometry — leave 4px margins on each side
         margin = 4
-        bar_x = rect.x + margin
-        bar_y = rect.y + label_h + margin
-        bar_w = rect.w - margin * 2
-        bar_h = rect.h - label_h - margin * 2
+        bar_x = inner.x + margin
+        bar_y = inner.y + label_h + margin
+        bar_w = inner.w - margin * 2
+        bar_h = inner.h - label_h - margin * 2
 
         # Ensure minimum usable sizes
         bar_w = max(bar_w, 4)

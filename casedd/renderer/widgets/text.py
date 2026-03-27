@@ -17,7 +17,7 @@ Example .casedd config:
 
 from __future__ import annotations
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from casedd.data_store import DataStore
 from casedd.renderer.color import parse_color
@@ -32,7 +32,9 @@ from casedd.template.grid import Rect
 from casedd.template.models import WidgetConfig
 
 
-def _wrap_text(text: str, font: object, max_width: int) -> list[str]:
+def _wrap_text(
+    text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, max_width: int
+) -> list[str]:
     """Wrap a string to fit within ``max_width`` pixels using the given font.
 
     Uses a greedy word-wrapping algorithm. Long words that exceed the width
@@ -53,7 +55,7 @@ def _wrap_text(text: str, font: object, max_width: int) -> list[str]:
 
     for word in words:
         candidate = f"{current} {word}".strip() if current else word
-        bbox = font.getbbox(candidate)  # type: ignore[union-attr]
+        bbox = font.getbbox(candidate)
         if bbox[2] - bbox[0] <= max_width:
             current = candidate
         else:

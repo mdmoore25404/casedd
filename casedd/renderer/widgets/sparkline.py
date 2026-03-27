@@ -25,6 +25,7 @@ from casedd.renderer.color import parse_color
 from casedd.renderer.fonts import get_font
 from casedd.renderer.widgets.base import (
     BaseWidget,
+    content_rect,
     draw_label,
     fill_background,
     resolve_value,
@@ -56,11 +57,12 @@ class SparklineWidget(BaseWidget):
             state: Mutable state dict — stores sample buffer and auto-max.
         """
         fill_background(img, rect, cfg.background)
+        inner = content_rect(rect, cfg.padding)
         draw = ImageDraw.Draw(img)
 
         label_h = 0
         if cfg.label:
-            label_h = draw_label(draw, rect, cfg.label, color=(150, 150, 150))
+            label_h = draw_label(draw, inner, cfg.label, color=(150, 150, 150))
 
         buf_key = "buf"
         if buf_key not in state:
@@ -69,7 +71,7 @@ class SparklineWidget(BaseWidget):
 
         raw = resolve_value(cfg, data)
         try:
-            value = float(raw) if raw is not None else 0.0  # type: ignore[arg-type]
+            value = float(raw) if raw is not None else 0.0
         except (ValueError, TypeError):
             value = 0.0
         buf.append(max(0.0, value))
@@ -77,10 +79,10 @@ class SparklineWidget(BaseWidget):
         if len(buf) < 2:
             return
 
-        area_x = rect.x + 2
-        area_y = rect.y + label_h + 2
-        area_w = rect.w - 4
-        area_h = rect.h - label_h - 4
+        area_x = inner.x + 2
+        area_y = inner.y + label_h + 2
+        area_w = inner.w - 4
+        area_h = inner.h - label_h - 4
 
         # Dynamic max: use the configured max, or auto-scale to buf peak
         data_max = cfg.max if cfg.max > cfg.min else max(*buf, 0.001)

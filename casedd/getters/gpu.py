@@ -78,8 +78,8 @@ class GpuGetter(BaseGetter):
             Dict of store updates, or empty dict on parse error.
         """
         try:
-            result = subprocess.run(  # noqa: S603,S607 — fixed command, no user input; nvidia-smi is a well-known path
-                ["nvidia-smi", f"--query-gpu={_QUERY}", "--format=csv,noheader,nounits"],
+            result = subprocess.run(  # noqa: S603 — fixed arg list, no user input
+                ["nvidia-smi", f"--query-gpu={_QUERY}", "--format=csv,noheader,nounits"],  # noqa: S607 — well-known system path
                 capture_output=True,
                 text=True,
                 timeout=5,

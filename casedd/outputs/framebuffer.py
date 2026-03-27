@@ -155,7 +155,7 @@ class FramebufferOutput:
         Returns:
             Raw bytes suitable for writing to a 16-bpp framebuffer.
         """
-        pixels = img.getdata()
+        pixels: list[tuple[int, int, int]] = list(img.getdata())
         buf = bytearray(len(pixels) * 2)
         offset = 0
         for r, g, b in pixels:
@@ -178,7 +178,7 @@ class FramebufferOutput:
         Returns:
             Raw bytes suitable for writing to a 32-bpp framebuffer.
         """
-        pixels = img.getdata()
+        pixels: list[tuple[int, int, int]] = list(img.getdata())
         buf = bytearray(len(pixels) * 4)
         offset = 0
         for r, g, b in pixels:

@@ -32,6 +32,7 @@ from casedd.renderer.color import interpolate_color_stops, parse_color
 from casedd.renderer.fonts import get_font
 from casedd.renderer.widgets.base import (
     BaseWidget,
+    content_rect,
     draw_label,
     fill_background,
     resolve_value,
@@ -69,16 +70,17 @@ class GaugeWidget(BaseWidget):
             _state: Unused for this widget type.
         """
         fill_background(img, rect, cfg.background)
+        inner = content_rect(rect, cfg.padding)
         draw = ImageDraw.Draw(img)
 
         label_h = 0
         if cfg.label:
-            label_h = draw_label(draw, rect, cfg.label, color=(150, 150, 150))
+            label_h = draw_label(draw, inner, cfg.label, color=(150, 150, 150))
 
         # Resolve value
         raw = resolve_value(cfg, data)
         try:
-            value = float(raw) if raw is not None else cfg.min  # type: ignore[arg-type]
+            value = float(raw) if raw is not None else cfg.min
         except (ValueError, TypeError):
             value = cfg.min
         value = max(cfg.min, min(cfg.max, value))
@@ -90,10 +92,10 @@ class GaugeWidget(BaseWidget):
             fill_rgb = parse_color(cfg.color, fallback=(70, 130, 200))
 
         # Calculate gauge bounding circle
-        available_h = rect.h - label_h
-        size = min(rect.w, available_h)
-        cx = rect.x + rect.w // 2
-        cy = rect.y + label_h + available_h // 2
+        available_h = inner.h - label_h
+        size = min(inner.w, available_h)
+        cx = inner.x + inner.w // 2
+        cy = inner.y + label_h + available_h // 2
         radius = max(4, size // 2 - 4)
         arc_w = max(3, int(radius * _ARC_WIDTH_RATIO))
 

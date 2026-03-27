@@ -1,22 +1,15 @@
 # system_stats.casedd — Default system statistics display template
 #
-# Layout: 800×480 display divided into a 4×6 CSS grid.
-#
-#   +------------------+------------------+
-#   |   cpu_gauge      |   gpu_gauge      |
-#   +------------------+------------------+
-#   |   cpu_temp       |   gpu_temp       |
-#   +--------+---------+------------------+
-#   |  ram   |  disk   |   net_recv       |
-#   +--------+---------+------------------+
-#   |  ram_h |  disk_h |   net_send       |
-#   +--------+---------+------------------+
-#   |  clock           |   hostname       |
-#   +------------------+------------------+
-#   |  uptime                             |
-#   +-------------------------------------+
+# Reference template covering gauges, bars, sparklines, value text, and clock.
+
+name: system_stats
+description: Full system statistics grid for 800x480 displays.
+width: 800
+height: 480
+refresh_rate: 2.0
 
 grid:
+  # 2-column dashboard layout
   template_areas: |
     cpu_gauge  gpu_gauge
     cpu_temp   gpu_temp
@@ -34,98 +27,89 @@ widgets:
     type: gauge
     label: CPU
     source: cpu.percent
+    padding: 4
     min: 0
     max: 100
     unit: "%"
     arc_start: 180
     arc_end: 360
     color_stops:
-      - value: 0
-        color: "#22cc44"
-      - value: 70
-        color: "#ffcc00"
-      - value: 90
-        color: "#ff4422"
+      - [0, "#22cc44"]
+      - [70, "#ffcc00"]
+      - [90, "#ff4422"]
 
   gpu_gauge:
     type: gauge
     label: GPU
     source: nvidia.percent
+    padding: 4
     min: 0
     max: 100
     unit: "%"
     arc_start: 180
     arc_end: 360
     color_stops:
-      - value: 0
-        color: "#22aaff"
-      - value: 70
-        color: "#ffcc00"
-      - value: 90
-        color: "#ff4422"
+      - [0, "#22aaff"]
+      - [70, "#ffcc00"]
+      - [90, "#ff4422"]
 
   cpu_temp:
     type: value
     label: CPU Temp
     source: cpu.temperature
-    unit: "°C"
+    padding: [2, 6]
+    unit: "C"
     precision: 1
+    font_size: 52
     color_stops:
-      - value: 0
-        color: "#aaaaaa"
-      - value: 70
-        color: "#ffcc00"
-      - value: 90
-        color: "#ff4422"
+      - [0, "#aaaaaa"]
+      - [70, "#ffcc00"]
+      - [90, "#ff4422"]
 
   gpu_temp:
     type: value
     label: GPU Temp
     source: nvidia.temperature
-    unit: "°C"
+    padding: [2, 6]
+    unit: "C"
     precision: 1
+    font_size: 52
     color_stops:
-      - value: 0
-        color: "#aaaaaa"
-      - value: 70
-        color: "#ffcc00"
-      - value: 85
-        color: "#ff4422"
+      - [0, "#aaaaaa"]
+      - [70, "#ffcc00"]
+      - [85, "#ff4422"]
 
   ram:
     type: bar
     label: RAM
     source: memory.percent
+    padding: [3, 6]
     min: 0
     max: 100
     unit: "%"
     color_stops:
-      - value: 0
-        color: "#22aaff"
-      - value: 75
-        color: "#ffcc00"
-      - value: 90
-        color: "#ff4422"
+      - [0, "#22aaff"]
+      - [75, "#ffcc00"]
+      - [90, "#ff4422"]
 
   disk:
     type: bar
     label: Disk
     source: disk.percent
+    padding: [3, 6]
     min: 0
     max: 100
     unit: "%"
     color_stops:
-      - value: 0
-        color: "#aa44ff"
-      - value: 80
-        color: "#ffcc00"
-      - value: 95
-        color: "#ff4422"
+      - [0, "#aa44ff"]
+      - [80, "#ffcc00"]
+      - [95, "#ff4422"]
 
   net_recv:
     type: sparkline
-    label: "↓ Net Recv"
+    label: "Down Net Recv"
     source: net.bytes_recv_rate
+    padding: [2, 6]
     unit: MB/s
     precision: 2
     samples: 60
@@ -133,8 +117,9 @@ widgets:
 
   net_send:
     type: sparkline
-    label: "↑ Net Send"
+    label: "Up Net Send"
     source: net.bytes_sent_rate
+    padding: [2, 6]
     unit: MB/s
     precision: 2
     samples: 60
@@ -143,16 +128,22 @@ widgets:
   clock:
     type: clock
     format: "%H:%M:%S"
+    padding: [2, 6]
+    font_size: 58
     color: "#ffffff"
 
   hostname:
     type: value
     label: Host
     source: system.hostname
+    padding: [2, 6]
+    font_size: 56
     color: "#aaaaaa"
 
   uptime:
     type: value
     label: Uptime
     source: system.uptime
+    padding: [2, 6]
+    font_size: 42
     color: "#666666"

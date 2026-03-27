@@ -21,12 +21,14 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import io
+import json
 import logging
 import threading
 from typing import Annotated
 
 from fastapi import FastAPI, Response
 from fastapi.responses import HTMLResponse
+from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
 from casedd.data_store import DataStore, StoreValue
@@ -66,38 +68,326 @@ _VIEWER_HTML = """\
   <meta charset="utf-8" />
   <title>CASEDD Live Viewer</title>
   <style>
-    body {{ margin: 0; background: #111; display: flex;
-            justify-content: center; align-items: center; height: 100vh; }}
-    img  {{ max-width: 100%; max-height: 100%; image-rendering: pixelated; }}
-    #status {{ position: fixed; top: 6px; right: 10px;
-               font: 12px monospace; color: #666; }}
+        :root {{
+            --overlay-bg: rgba(9, 11, 14, 0.88);
+            --overlay-border: #2d333b;
+            --overlay-fg: #c8d0d9;
+            --overlay-muted: #8b949e;
+            --overlay-good: #3fb950;
+            --overlay-warn: #d29922;
+            --overlay-bad: #f85149;
+            --btn-bg: #1b222c;
+            --btn-fg: #c8d0d9;
+            --btn-border: #30363d;
+        }}
+        body {{
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: var(--overlay-fg);
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+            transition: background-color 140ms linear;
+        }}
+        #frame {{
+            max-width: 100%;
+            max-height: 100%;
+            image-rendering: pixelated;
+            display: block;
+        }}
+        #status {{
+            position: fixed;
+            top: 10px;
+            right: 12px;
+            border: 1px solid var(--overlay-border);
+            border-radius: 8px;
+            background: var(--overlay-bg);
+            color: var(--overlay-fg);
+            font-size: 12px;
+            line-height: 1.35;
+            backdrop-filter: blur(2px);
+            cursor: pointer;
+            user-select: none;
+            min-width: 132px;
+            box-shadow: 0 8px 28px rgba(0, 0, 0, 0.32);
+        }}
+        #status.compact {{
+            padding: 7px 10px;
+        }}
+        #status.expanded {{
+            min-width: 280px;
+            padding: 8px 10px;
+            cursor: default;
+        }}
+        #status .row {{
+            display: flex;
+            justify-content: space-between;
+            gap: 8px;
+            white-space: nowrap;
+        }}
+        #status .k {{ color: var(--overlay-muted); }}
+        #status .ok {{ color: var(--overlay-good); }}
+        #status .warn {{ color: var(--overlay-warn); }}
+        #status .bad {{ color: var(--overlay-bad); }}
+        #status .details {{
+            display: grid;
+            gap: 3px;
+            margin-top: 6px;
+        }}
+        #status .controls {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 8px;
+        }}
+        #status button {{
+            border: 1px solid var(--btn-border);
+            background: var(--btn-bg);
+            color: var(--btn-fg);
+            border-radius: 4px;
+            padding: 2px 7px;
+            font-size: 11px;
+            font-family: inherit;
+            cursor: pointer;
+        }}
+        #status button:hover {{
+            filter: brightness(1.12);
+        }}
   </style>
 </head>
 <body>
   <img id="frame" src="/image" alt="CASEDD frame" />
-  <div id="status">connecting…</div>
+    <div id="status" class="compact" title="Click for details"></div>
   <script>
-    const img    = document.getElementById('frame');
-    const status = document.getElementById('status');
-    let   ws, reconnect;
+        const cfg = Object.freeze({
+            wsPort: __CASEDD_WS_PORT__,
+            refreshHz: __CASEDD_REFRESH_RATE__,
+            template: __CASEDD_TEMPLATE_JSON__,
+            viewerBg: __CASEDD_VIEWER_BG_JSON__
+        });
 
-    function connect() {{
-      ws = new WebSocket('ws://' + location.hostname + ':{ws_port}/ws');
-      ws.onopen  = () => {{ status.textContent = 'live'; }};
-      ws.onclose = () => {{
-        status.textContent = 'reconnecting…';
-        reconnect = setTimeout(connect, 2000);
-      }};
-      ws.onerror = () => ws.close();
-      ws.onmessage = (ev) => {{
-        const msg = JSON.parse(ev.data);
-        if (msg.type === 'frame') {{
-          img.src = 'data:image/png;base64,' + msg.data;
-        }}
-      }};
-    }}
+        const img = document.getElementById('frame');
+        const status = document.getElementById('status');
 
-    connect();
+        let ws = null;
+        let reconnectTimer = null;
+        let reconnectDelayMs = 1000;
+        let connected = false;
+        let lastFrameAt = 0;
+        let frameCount = 0;
+        let fps = 0;
+        let isExpanded = false;
+
+        function wsUrl() {
+            const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
+            return scheme + '://' + location.hostname + ':' + cfg.wsPort + '/ws';
+        }
+
+        function formatClock(tsMs) {
+            if (tsMs <= 0) {
+                return 'n/a';
+            }
+            const d = new Date(tsMs);
+            return d.toLocaleTimeString();
+        }
+
+        function statusState() {
+            if (connected) {
+                return ['live', 'ok'];
+            }
+            if (reconnectTimer !== null) {
+                return ['reconnecting', 'warn'];
+            }
+            return ['offline', 'bad'];
+        }
+
+        function applyViewerBackground(color) {
+            document.body.style.backgroundColor = color;
+            localStorage.setItem('caseddViewerBg', color);
+        }
+
+        function currentViewerBackground() {
+            return localStorage.getItem('caseddViewerBg') || cfg.viewerBg;
+        }
+
+        function setTheme(kind) {
+            if (kind === 'light') {
+                applyViewerBackground('#ffffff');
+            } else if (kind === 'dark') {
+                applyViewerBackground('#000000');
+            } else {
+                applyViewerBackground(cfg.viewerBg);
+            }
+            renderStatus();
+        }
+
+        function renderStatus() {
+            const [stateLabel, stateClass] = statusState();
+            const compact = '<span class="' + stateClass + '">' + stateLabel + '</span>';
+                        const row = (k, v) =>
+                            '<div class="row"><span class="k">' +
+                            k +
+                            '</span><span>' +
+                            v +
+                            '</span></div>';
+                        const rowState = (k, klass, v) =>
+                            '<div class="row"><span class="k">' +
+                            k +
+                            '</span><span class="' +
+                            klass +
+                            '">' +
+                            v +
+                            '</span></div>';
+
+            if (!isExpanded) {
+                status.className = 'compact';
+                status.title = 'Click for details';
+                status.innerHTML = compact;
+                return;
+            }
+
+            const ageMs = lastFrameAt > 0 ? Date.now() - lastFrameAt : null;
+            const ageText = ageMs === null ? 'n/a' : (ageMs / 1000).toFixed(1) + 's ago';
+            const tsText = formatClock(lastFrameAt);
+
+            status.className = 'expanded';
+            status.title = 'Click header to collapse';
+            status.innerHTML = [
+                rowState('state', stateClass, stateLabel),
+                '<div class="details">',
+                    row('template', cfg.template),
+                    row('render', cfg.refreshHz.toFixed(1) + ' Hz'),
+                    row('viewer fps', fps.toFixed(1)),
+                    row('last update', tsText),
+                    row('last frame age', ageText),
+                '</div>',
+                '<div class="controls">',
+                    '<button id="bgDefaultBtn" type="button">BG default</button>',
+                    '<button id="bgDarkBtn" type="button">BG black</button>',
+                    '<button id="bgLightBtn" type="button">BG white</button>',
+                    '<button id="collapseBtn" type="button">Hide details</button>',
+                '</div>'
+            ].join('');
+
+            document.getElementById('bgDefaultBtn').onclick = (ev) => {
+                ev.stopPropagation();
+                setTheme('default');
+            };
+            document.getElementById('bgDarkBtn').onclick = (ev) => {
+                ev.stopPropagation();
+                setTheme('dark');
+            };
+            document.getElementById('bgLightBtn').onclick = (ev) => {
+                ev.stopPropagation();
+                setTheme('light');
+            };
+            document.getElementById('collapseBtn').onclick = (ev) => {
+                ev.stopPropagation();
+                isExpanded = false;
+                renderStatus();
+            };
+        }
+
+        function scheduleReconnect() {
+            if (reconnectTimer !== null) {
+                return;
+            }
+            renderStatus();
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                connect();
+            }, reconnectDelayMs);
+            reconnectDelayMs = Math.min(Math.floor(reconnectDelayMs * 1.6), 10000);
+        }
+
+        function resetBackoff() {
+            reconnectDelayMs = 1000;
+            if (reconnectTimer !== null) {
+                clearTimeout(reconnectTimer);
+                reconnectTimer = null;
+            }
+        }
+
+        function noteFrame() {
+            lastFrameAt = Date.now();
+            frameCount += 1;
+        }
+
+        function connect() {
+            try {
+                ws = new WebSocket(wsUrl());
+            } catch (_err) {
+                connected = false;
+                scheduleReconnect();
+                return;
+            }
+
+            renderStatus();
+
+            ws.onopen = () => {
+                connected = true;
+                resetBackoff();
+                renderStatus();
+            };
+
+            ws.onclose = () => {
+                connected = false;
+                scheduleReconnect();
+            };
+
+            ws.onerror = () => {
+                connected = false;
+                if (ws) {
+                    ws.close();
+                }
+            };
+
+            ws.onmessage = (ev) => {
+                try {
+                    const msg = JSON.parse(ev.data);
+                    if (msg.type === 'frame' && typeof msg.data === 'string') {
+                        img.src = 'data:image/png;base64,' + msg.data;
+                        noteFrame();
+                    }
+                } catch (_err) {
+                    // Ignore malformed payloads; keep connection alive.
+                }
+            };
+        }
+
+        setInterval(async () => {
+            const staleMs = Date.now() - lastFrameAt;
+            if (!connected || staleMs > 4000) {
+                try {
+                    const resp = await fetch('/image?t=' + Date.now(), { cache: 'no-store' });
+                    if (resp.ok) {
+                        const blob = await resp.blob();
+                        const url = URL.createObjectURL(blob);
+                        img.src = url;
+                        setTimeout(() => URL.revokeObjectURL(url), 1000);
+                        noteFrame();
+                    }
+                } catch (_err) {
+                    // Ignore transient HTTP errors while daemon is restarting.
+                }
+            }
+        }, 2000);
+
+        setInterval(() => {
+            fps = frameCount;
+            frameCount = 0;
+            renderStatus();
+        }, 1000);
+
+        status.addEventListener('click', () => {
+            isExpanded = !isExpanded;
+            renderStatus();
+        });
+
+        applyViewerBackground(currentViewerBackground());
+        renderStatus();
+        connect();
   </script>
 </body>
 </html>
@@ -109,7 +399,14 @@ _VIEWER_HTML = """\
 # ---------------------------------------------------------------------------
 
 
-def _build_app(store: DataStore, frame_holder: _FrameHolder, ws_port: int) -> FastAPI:
+def _build_app(  # noqa: PLR0913 — explicit params keep wiring clear at callsite
+    store: DataStore,
+    frame_holder: _FrameHolder,
+    ws_port: int,
+    refresh_rate: float,
+    template_name: str,
+    viewer_bg: str,
+) -> FastAPI:
     """Build and configure the FastAPI application.
 
     Args:
@@ -131,7 +428,11 @@ def _build_app(store: DataStore, frame_holder: _FrameHolder, ws_port: int) -> Fa
     @app.get("/", response_class=HTMLResponse, summary="Live display viewer")
     async def root() -> str:
         """Return the browser live-view page with embedded WebSocket client."""
-        return _VIEWER_HTML.format(ws_port=ws_port)
+        html = _VIEWER_HTML.replace("{{", "{").replace("}}", "}")
+        html = html.replace("__CASEDD_WS_PORT__", str(ws_port))
+        html = html.replace("__CASEDD_REFRESH_RATE__", f"{refresh_rate:.3f}")
+        html = html.replace("__CASEDD_TEMPLATE_JSON__", json.dumps(template_name))
+        return html.replace("__CASEDD_VIEWER_BG_JSON__", json.dumps(viewer_bg))
 
     @app.get("/image", summary="Current display frame (PNG)")
     async def current_image() -> Response:
@@ -205,12 +506,15 @@ class HttpViewerOutput:
         ws_port: WebSocket port, embedded in the viewer HTML.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 — constructor mirrors runtime wiring dependencies
         self,
         store: DataStore,
         host: str,
         port: int,
         ws_port: int,
+        refresh_rate: float,
+        template_name: str,
+        viewer_bg: str,
     ) -> None:
         """Initialise the HTTP viewer output.
 
@@ -219,11 +523,21 @@ class HttpViewerOutput:
             host: TCP host to bind on.
             port: TCP port to bind on.
             ws_port: WebSocket port shown in the viewer page.
+            refresh_rate: Configured daemon render rate in Hz.
+            template_name: Active template name shown in viewer status.
+            viewer_bg: Default viewer page background color.
         """
         self._host = host
         self._port = port
         self._frame_holder = _FrameHolder()
-        self._app = _build_app(store, self._frame_holder, ws_port)
+        self._app = _build_app(
+            store,
+            self._frame_holder,
+            ws_port,
+            refresh_rate,
+            template_name,
+            viewer_bg,
+        )
         self._task: asyncio.Task[None] | None = None
 
     async def start(self) -> None:
@@ -253,7 +567,7 @@ class HttpViewerOutput:
                 await self._task
         _log.info("HTTP server stopped.")
 
-    def set_latest_image(self, image: Image) -> None:  # type: ignore[name-defined]  # noqa: F821
+    def set_latest_image(self, image: Image.Image) -> None:
         """Update the latest frame available at ``GET /image``.
 
         Called by the render loop after each frame is produced.  This method
@@ -262,9 +576,7 @@ class HttpViewerOutput:
         Args:
             image: Latest rendered PIL Image (RGB mode).
         """
-        from PIL import Image as _Image  # noqa: PLC0415 — inner import only for type hint
-
-        assert isinstance(image, _Image.Image)
+        assert isinstance(image, Image.Image)
         buf = io.BytesIO()
         image.save(buf, format="PNG", optimize=False)
         self._frame_holder.set(buf.getvalue())

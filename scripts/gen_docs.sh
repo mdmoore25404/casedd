@@ -36,9 +36,23 @@ else
     STARTED_HERE=true
     # Ensure no-FB so we don't need hardware
     export CASEDD_NO_FB=1
+    export CASEDD_SOCKET_PATH="${CASEDD_SOCKET_PATH:-$REPO_ROOT/run/casedd.sock}"
+    export CASEDD_PID_FILE="$PID_FILE"
     mkdir -p "$REPO_ROOT/run" "$REPO_ROOT/logs"
     nohup python -m casedd >> "$REPO_ROOT/logs/casedd.log" 2>&1 &
-    echo $! > "$PID_FILE"
+    launcher_pid=$!
+
+    # Wait for daemon to write its own PID file and start accepting HTTP.
+    for _ in {1..20}; do
+        if [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null; then
+            break
+        fi
+        if ! kill -0 "$launcher_pid" 2>/dev/null; then
+            break
+        fi
+        sleep 0.2
+    done
+
     echo "    Waiting for HTTP server to be ready..."
     for _ in {1..15}; do
         if curl -sf "$BASE_URL/openapi.json" > /dev/null 2>&1; then

@@ -51,6 +51,34 @@ _ensure_dirs() {
     mkdir -p "$REPO_ROOT/run" "$REPO_ROOT/logs"
 }
 
+_prepare_socket_dir() {
+    local socket_dir
+    socket_dir="$(dirname "$CASEDD_SOCKET_PATH")"
+
+    if [[ -w "$socket_dir" ]]; then
+        return 0
+    fi
+
+    if mkdir -p "$socket_dir" 2>/dev/null; then
+        return 0
+    fi
+
+    if ! command -v sudo >/dev/null 2>&1; then
+        echo "ERROR: cannot create socket directory '$socket_dir' without sudo." >&2
+        return 1
+    fi
+
+    echo "Preparing socket directory with sudo: $socket_dir"
+    sudo mkdir -p "$socket_dir"
+    sudo chown "$(id -u):$(id -g)" "$socket_dir"
+    sudo chmod 775 "$socket_dir"
+
+    if [[ ! -w "$socket_dir" ]]; then
+        echo "ERROR: socket directory '$socket_dir' is still not writable." >&2
+        return 1
+    fi
+}
+
 _is_running() {
     [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
 }
@@ -69,10 +97,30 @@ cmd_start() {
     _load_env
     _ensure_dirs
 
+    # In local dev, default to a repo-local Unix socket to avoid requiring
+    # write access to /run/casedd. Deployments can override via .env.
+    export CASEDD_SOCKET_PATH="${CASEDD_SOCKET_PATH:-$REPO_ROOT/run/casedd.sock}"
+    export CASEDD_PID_FILE="${CASEDD_PID_FILE:-$PID_FILE}"
+
+    _prepare_socket_dir
+
     echo "Starting casedd..."
     nohup python -m casedd >> "$LOG_FILE" 2>&1 &
-    echo $! > "$PID_FILE"
-    sleep 1   # brief pause to let the process write its own startup log
+    local launcher_pid=$!
+
+    # The daemon writes CASEDD_PID_FILE itself; wait briefly for that file
+    # to appear and for the process to become alive.
+    local waited=0
+    while (( waited < 20 )); do
+        if _is_running; then
+            break
+        fi
+        if ! kill -0 "$launcher_pid" 2>/dev/null; then
+            break
+        fi
+        sleep 0.2
+        (( waited++ )) || true
+    done
 
     if _is_running; then
         echo "casedd started (PID $(cat "$PID_FILE"))"

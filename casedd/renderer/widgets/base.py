@@ -95,10 +95,10 @@ def draw_label(
     lh = bbox[3] - bbox[1]
     x = rect.x + (rect.w - lw) // 2  # horizontally centered
     draw.text((x, rect.y + 2), label, fill=color, font=font)
-    return lh + 4  # 2px top padding + 2px bottom gap
+    return int(lh) + 4  # 2px top padding + 2px bottom gap
 
 
-def draw_value_text(
+def draw_value_text(  # noqa: PLR0913 — helper genuinely needs all parameters; a config dataclass would add ceremony without benefit
     draw: ImageDraw.ImageDraw,
     rect: Rect,
     text: str,
@@ -146,3 +146,52 @@ def fill_background(img: Image.Image, rect: Rect, color: str | None) -> None:
     # Create a solid color overlay and paste it
     overlay = Image.new("RGB", (rect.w, rect.h), rgb)
     img.paste(overlay, (rect.x, rect.y))
+
+
+def _normalize_padding(padding: int | list[int]) -> tuple[int, int, int, int]:
+    """Normalize widget padding to a (top, right, bottom, left) tuple.
+
+    Supports CSS-like shorthand:
+    - int: all four sides
+    - [vertical, horizontal]
+    - [top, right, bottom, left]
+
+    Any other list shape is treated as no padding.
+
+    Args:
+        padding: Widget padding value from config.
+
+    Returns:
+        Normalized integer padding tuple.
+    """
+    if isinstance(padding, int):
+        p = max(0, padding)
+        return (p, p, p, p)
+
+    if len(padding) == 2:
+        v = max(0, int(padding[0]))
+        h = max(0, int(padding[1]))
+        return (v, h, v, h)
+
+    if len(padding) == 4:
+        return tuple(max(0, int(v)) for v in padding)  # type: ignore[return-value]
+
+    return (0, 0, 0, 0)
+
+
+def content_rect(rect: Rect, padding: int | list[int]) -> Rect:
+    """Return an inset rect for widget drawing content.
+
+    Args:
+        rect: Outer widget rectangle.
+        padding: Padding value from widget config.
+
+    Returns:
+        Inset rectangle with non-negative size.
+    """
+    top, right, bottom, left = _normalize_padding(padding)
+    x = rect.x + left
+    y = rect.y + top
+    w = max(1, rect.w - left - right)
+    h = max(1, rect.h - top - bottom)
+    return Rect(x=x, y=y, w=w, h=h)

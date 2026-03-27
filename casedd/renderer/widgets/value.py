@@ -25,6 +25,7 @@ from casedd.data_store import DataStore
 from casedd.renderer.color import parse_color
 from casedd.renderer.widgets.base import (
     BaseWidget,
+    content_rect,
     draw_label,
     draw_value_text,
     fill_background,
@@ -59,12 +60,13 @@ class ValueWidget(BaseWidget):
             _state: Unused for this widget type.
         """
         fill_background(img, rect, cfg.background)
+        inner = content_rect(rect, cfg.padding)
         draw = ImageDraw.Draw(img)
         color = parse_color(cfg.color, fallback=(220, 220, 220))
 
         label_h = 0
         if cfg.label:
-            label_h = draw_label(draw, rect, cfg.label, color=(150, 150, 150))
+            label_h = draw_label(draw, inner, cfg.label, color=(150, 150, 150))
 
         raw = resolve_value(cfg, data)
         if raw is None:
@@ -77,4 +79,4 @@ class ValueWidget(BaseWidget):
         if cfg.unit:
             display = f"{display}{cfg.unit}"
 
-        draw_value_text(draw, rect, display, color, cfg.font_size, label_offset=label_h)
+        draw_value_text(draw, inner, display, color, cfg.font_size, label_offset=label_h)

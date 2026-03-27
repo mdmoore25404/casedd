@@ -24,6 +24,7 @@ from casedd.data_store import DataStore
 from casedd.renderer.color import parse_color
 from casedd.renderer.widgets.base import (
     BaseWidget,
+    content_rect,
     draw_label,
     draw_value_text,
     fill_background,
@@ -53,12 +54,13 @@ class ClockWidget(BaseWidget):
             _state: Unused for this widget type.
         """
         fill_background(img, rect, cfg.background)
+        inner = content_rect(rect, cfg.padding)
         draw = ImageDraw.Draw(img)
         color = parse_color(cfg.color, fallback=(220, 220, 220))
 
         label_h = 0
         if cfg.label:
-            label_h = draw_label(draw, rect, cfg.label, color=(150, 150, 150))
+            label_h = draw_label(draw, inner, cfg.label, color=(150, 150, 150))
 
         time_str = time.strftime(cfg.format)
-        draw_value_text(draw, rect, time_str, color, cfg.font_size, label_offset=label_h)
+        draw_value_text(draw, inner, time_str, color, cfg.font_size, label_offset=label_h)
