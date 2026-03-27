@@ -16,7 +16,7 @@ from casedd.data_store import DataStore, StoreValue
 from casedd.renderer.color import RGBTuple, parse_color
 from casedd.renderer.fonts import fit_font, get_font
 from casedd.template.grid import Rect
-from casedd.template.models import WidgetConfig
+from casedd.template.models import BorderStyle, WidgetConfig
 
 
 class BaseWidget(ABC):
@@ -195,3 +195,136 @@ def content_rect(rect: Rect, padding: int | list[int]) -> Rect:
     w = max(1, rect.w - left - right)
     h = max(1, rect.h - top - bottom)
     return Rect(x=x, y=y, w=w, h=h)
+
+
+def _clamp_channel(value: float) -> int:
+    """Clamp a color channel to 0-255."""
+    return max(0, min(255, int(value)))
+
+
+def _shade(color: RGBTuple, factor: float) -> RGBTuple:
+    """Return a lightened/darkened shade of the input color."""
+    return (
+        _clamp_channel(color[0] * factor),
+        _clamp_channel(color[1] * factor),
+        _clamp_channel(color[2] * factor),
+    )
+
+
+def _draw_patterned_border(  # noqa: PLR0913 -- explicit geometry args keep helper stateless
+    draw: ImageDraw.ImageDraw,
+    rect: Rect,
+    width: int,
+    color: RGBTuple,
+    dash_len: int,
+    gap_len: int,
+) -> None:
+    """Draw a dashed or dotted border pattern around a rectangle."""
+    x0 = rect.x
+    y0 = rect.y
+    x1 = rect.x + rect.w - 1
+    y1 = rect.y + rect.h - 1
+
+    for layer in range(width):
+        lx0 = x0 + layer
+        ly0 = y0 + layer
+        lx1 = x1 - layer
+        ly1 = y1 - layer
+        if lx1 <= lx0 or ly1 <= ly0:
+            break
+
+        step = dash_len + gap_len
+        # Top and bottom edges
+        x = lx0
+        while x <= lx1:
+            end_x = min(lx1, x + dash_len - 1)
+            draw.line([(x, ly0), (end_x, ly0)], fill=color, width=1)
+            draw.line([(x, ly1), (end_x, ly1)], fill=color, width=1)
+            x += step
+
+        # Left and right edges
+        y = ly0
+        while y <= ly1:
+            end_y = min(ly1, y + dash_len - 1)
+            draw.line([(lx0, y), (lx0, end_y)], fill=color, width=1)
+            draw.line([(lx1, y), (lx1, end_y)], fill=color, width=1)
+            y += step
+
+
+def _draw_inset_outset_border(
+    draw: ImageDraw.ImageDraw,
+    rect: Rect,
+    width: int,
+    base_color: RGBTuple,
+    style: BorderStyle,
+) -> None:
+    """Draw a beveled inset/outset border."""
+    light = _shade(base_color, 1.35)
+    dark = _shade(base_color, 0.6)
+    if style == BorderStyle.INSET:
+        top_left = dark
+        bottom_right = light
+    else:
+        top_left = light
+        bottom_right = dark
+
+    x0 = rect.x
+    y0 = rect.y
+    x1 = rect.x + rect.w - 1
+    y1 = rect.y + rect.h - 1
+
+    for layer in range(width):
+        lx0 = x0 + layer
+        ly0 = y0 + layer
+        lx1 = x1 - layer
+        ly1 = y1 - layer
+        if lx1 <= lx0 or ly1 <= ly0:
+            break
+        draw.line([(lx0, ly0), (lx1, ly0)], fill=top_left, width=1)
+        draw.line([(lx0, ly0), (lx0, ly1)], fill=top_left, width=1)
+        draw.line([(lx1, ly0), (lx1, ly1)], fill=bottom_right, width=1)
+        draw.line([(lx0, ly1), (lx1, ly1)], fill=bottom_right, width=1)
+
+
+def draw_widget_border(img: Image.Image, rect: Rect, cfg: WidgetConfig) -> None:
+    """Draw a configurable border around a widget's cell rectangle.
+
+    Args:
+        img: Canvas image (modified in-place).
+        rect: Widget cell rectangle.
+        cfg: Widget configuration with border fields.
+    """
+    if cfg.border_style == BorderStyle.NONE:
+        return
+
+    if rect.w < 2 or rect.h < 2:
+        return
+
+    width = max(1, cfg.border_width)
+    color = parse_color(cfg.border_color or cfg.color, fallback=(110, 110, 120))
+    draw = ImageDraw.Draw(img)
+
+    if cfg.border_style == BorderStyle.SOLID:
+        for layer in range(width):
+            draw.rectangle(
+                [
+                    rect.x + layer,
+                    rect.y + layer,
+                    rect.x + rect.w - 1 - layer,
+                    rect.y + rect.h - 1 - layer,
+                ],
+                outline=color,
+                width=1,
+            )
+        return
+
+    if cfg.border_style == BorderStyle.DASHED:
+        _draw_patterned_border(draw, rect, width, color, dash_len=7, gap_len=4)
+        return
+
+    if cfg.border_style == BorderStyle.DOTTED:
+        _draw_patterned_border(draw, rect, width, color, dash_len=1, gap_len=2)
+        return
+
+    if cfg.border_style in (BorderStyle.INSET, BorderStyle.OUTSET):
+        _draw_inset_outset_border(draw, rect, width, color, cfg.border_style)

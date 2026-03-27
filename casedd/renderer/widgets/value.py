@@ -22,7 +22,7 @@ from __future__ import annotations
 from PIL import Image, ImageDraw
 
 from casedd.data_store import DataStore
-from casedd.renderer.color import parse_color
+from casedd.renderer.color import interpolate_color_stops, parse_color
 from casedd.renderer.widgets.base import (
     BaseWidget,
     content_rect,
@@ -69,12 +69,21 @@ class ValueWidget(BaseWidget):
             label_h = draw_label(draw, inner, cfg.label, color=(150, 150, 150))
 
         raw = resolve_value(cfg, data)
+        numeric_value: float | None = None
         if raw is None:
             display = "--"
         elif isinstance(raw, float):
+            numeric_value = raw
             display = f"{raw:.{cfg.precision}f}"
         else:
+            try:
+                numeric_value = float(raw)
+            except (TypeError, ValueError):
+                numeric_value = None
             display = str(raw)
+
+        if cfg.color_stops and numeric_value is not None:
+            color = interpolate_color_stops(numeric_value, cfg.color_stops, cfg.min, cfg.max)
 
         if cfg.unit:
             display = f"{display}{cfg.unit}"

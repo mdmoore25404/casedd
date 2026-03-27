@@ -141,6 +141,51 @@ _VIEWER_HTML = """\
             gap: 6px;
             margin-top: 8px;
         }}
+        #status .pushbox {{
+            display: grid;
+            gap: 6px;
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px solid var(--overlay-border);
+        }}
+        #status .pushrow {{
+            display: flex;
+            gap: 6px;
+        }}
+        #status input,
+        #status select {{
+            border: 1px solid var(--btn-border);
+            background: #0f141b;
+            color: var(--overlay-fg);
+            border-radius: 4px;
+            padding: 3px 6px;
+            font-size: 11px;
+            font-family: inherit;
+            min-width: 0;
+        }}
+        #status textarea {{
+            width: 100%;
+            min-height: 80px;
+            resize: vertical;
+            border: 1px solid var(--btn-border);
+            background: #0f141b;
+            color: var(--overlay-fg);
+            border-radius: 4px;
+            padding: 5px 6px;
+            font-size: 11px;
+            font-family: inherit;
+            box-sizing: border-box;
+        }}
+        #status #pushKey {{
+            flex: 1 1 58%;
+        }}
+        #status #pushValue {{
+            flex: 1 1 42%;
+        }}
+        #status #pushResult {{
+            color: var(--overlay-muted);
+            min-height: 14px;
+        }}
         #status button {{
             border: 1px solid var(--btn-border);
             background: var(--btn-bg);
@@ -164,7 +209,8 @@ _VIEWER_HTML = """\
             wsPort: __CASEDD_WS_PORT__,
             refreshHz: __CASEDD_REFRESH_RATE__,
             template: __CASEDD_TEMPLATE_JSON__,
-            viewerBg: __CASEDD_VIEWER_BG_JSON__
+            viewerBg: __CASEDD_VIEWER_BG_JSON__,
+            advancedPayload: __CASEDD_ADV_PAYLOAD_JSON__
         });
 
         const img = document.getElementById('frame');
@@ -178,6 +224,7 @@ _VIEWER_HTML = """\
         let frameCount = 0;
         let fps = 0;
         let isExpanded = false;
+        const LIVE_FRAME_AGE_MS = 2500;
 
         function wsUrl() {
             const scheme = location.protocol === 'https:' ? 'wss' : 'ws';
@@ -194,6 +241,9 @@ _VIEWER_HTML = """\
 
         function statusState() {
             if (connected) {
+                return ['live', 'ok'];
+            }
+            if (lastFrameAt > 0 && Date.now() - lastFrameAt < LIVE_FRAME_AGE_MS) {
                 return ['live', 'ok'];
             }
             if (reconnectTimer !== null) {
@@ -223,6 +273,9 @@ _VIEWER_HTML = """\
         }
 
         function renderStatus() {
+            if (isExpanded && statusEditorHasFocus()) {
+                return;
+            }
             const [stateLabel, stateClass] = statusState();
             const compact = '<span class="' + stateClass + '">' + stateLabel + '</span>';
                         const row = (k, v) =>
@@ -267,6 +320,32 @@ _VIEWER_HTML = """\
                     '<button id="bgDarkBtn" type="button">BG black</button>',
                     '<button id="bgLightBtn" type="button">BG white</button>',
                     '<button id="collapseBtn" type="button">Hide details</button>',
+                '</div>',
+                '<div class="pushbox">',
+                    '<div class="k">push test update</div>',
+                    '<div class="pushrow">',
+                        '<input id="pushKey" type="text" value="outside_temp_f" />',
+                        '<input id="pushValue" type="text" value="10" />',
+                    '</div>',
+                    '<div class="pushrow">',
+                        '<select id="pushType">',
+                            '<option value="number">number</option>',
+                            '<option value="string">string</option>',
+                            '<option value="boolean">boolean</option>',
+                            '<option value="json">json</option>',
+                        '</select>',
+                        '<button id="pushSendBtn" type="button">Push</button>',
+                    '</div>',
+                    '<div id="pushResult"></div>',
+                    '<div class="k">advanced json payload</div>',
+                    '<textarea id="pushJsonPayload">' +
+                        cfg.advancedPayload +
+                    '</textarea>',
+                    '<div class="pushrow">',
+                        '<button id="pushJsonValidateBtn" type="button">Validate JSON</button>',
+                        '<button id="pushJsonSendBtn" type="button" disabled>Push JSON</button>',
+                    '</div>',
+                    '<div id="pushJsonResult"></div>',
                 '</div>'
             ].join('');
 
@@ -287,6 +366,165 @@ _VIEWER_HTML = """\
                 isExpanded = false;
                 renderStatus();
             };
+            document.getElementById('pushSendBtn').onclick = async (ev) => {
+                ev.stopPropagation();
+                await sendPushUpdate();
+            };
+            const jsonPayloadNode = document.getElementById('pushJsonPayload');
+            const jsonValidateBtn = document.getElementById('pushJsonValidateBtn');
+            const jsonSendBtn = document.getElementById('pushJsonSendBtn');
+            if (jsonPayloadNode && jsonValidateBtn && jsonSendBtn) {
+                jsonPayloadNode.onclick = (ev) => ev.stopPropagation();
+                jsonPayloadNode.oninput = () => validateAdvancedPayload(false);
+                jsonValidateBtn.onclick = async (ev) => {
+                    ev.stopPropagation();
+                    validateAdvancedPayload(true);
+                };
+                jsonSendBtn.onclick = async (ev) => {
+                    ev.stopPropagation();
+                    await sendAdvancedPushUpdate();
+                };
+            }
+            validateAdvancedPayload(false);
+        }
+
+        function parseAdvancedPayload() {
+            const payloadNode = document.getElementById('pushJsonPayload');
+            if (!payloadNode) {
+                throw new Error('JSON editor not found');
+            }
+            const parsed = JSON.parse(payloadNode.value);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+                throw new Error('payload must be a JSON object');
+            }
+            return parsed;
+        }
+
+        function validateAdvancedPayload(showOk) {
+            const resultNode = document.getElementById('pushJsonResult');
+            const sendBtn = document.getElementById('pushJsonSendBtn');
+            if (!resultNode || !sendBtn) {
+                return false;
+            }
+            try {
+                parseAdvancedPayload();
+                sendBtn.disabled = false;
+                if (showOk) {
+                    resultNode.textContent = 'JSON is valid';
+                    resultNode.className = 'ok';
+                } else {
+                    resultNode.textContent = '';
+                    resultNode.className = '';
+                }
+                return true;
+            } catch (err) {
+                sendBtn.disabled = true;
+                resultNode.textContent = 'invalid JSON: ' + err.message;
+                resultNode.className = 'bad';
+                return false;
+            }
+        }
+
+        async function sendAdvancedPushUpdate() {
+            const resultNode = document.getElementById('pushJsonResult');
+            if (!resultNode) {
+                return;
+            }
+            let payload;
+            try {
+                payload = parseAdvancedPayload();
+            } catch (err) {
+                resultNode.textContent = 'invalid JSON: ' + err.message;
+                resultNode.className = 'bad';
+                return;
+            }
+            try {
+                const response = await fetch('/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                if (!response.ok) {
+                    resultNode.textContent = 'push failed: HTTP ' + response.status;
+                    resultNode.className = 'bad';
+                    return;
+                }
+                resultNode.textContent =
+                    'advanced payload pushed @ ' + new Date().toLocaleTimeString();
+                resultNode.className = 'ok';
+            } catch (_err) {
+                resultNode.textContent = 'push failed: network error';
+                resultNode.className = 'bad';
+            }
+        }
+
+        function coercePushValue(raw, kind) {
+            if (kind === 'number') {
+                const n = Number(raw);
+                if (Number.isNaN(n)) {
+                    throw new Error('value is not a number');
+                }
+                return n;
+            }
+            if (kind === 'boolean') {
+                const v = String(raw).toLowerCase();
+                if (v === 'true' || v === '1' || v === 'yes') {
+                    return true;
+                }
+                if (v === 'false' || v === '0' || v === 'no') {
+                    return false;
+                }
+                throw new Error('value is not a boolean');
+            }
+            if (kind === 'json') {
+                return JSON.parse(raw);
+            }
+            return raw;
+        }
+
+        async function sendPushUpdate() {
+            const keyInput = document.getElementById('pushKey');
+            const valueInput = document.getElementById('pushValue');
+            const typeInput = document.getElementById('pushType');
+            const resultNode = document.getElementById('pushResult');
+            if (!keyInput || !valueInput || !typeInput || !resultNode) {
+                return;
+            }
+
+            const key = keyInput.value.trim();
+            const rawValue = valueInput.value;
+            if (!key) {
+                resultNode.textContent = 'key is required';
+                resultNode.className = 'bad';
+                return;
+            }
+
+            let value;
+            try {
+                value = coercePushValue(rawValue, typeInput.value);
+            } catch (err) {
+                resultNode.textContent = 'parse error: ' + err.message;
+                resultNode.className = 'bad';
+                return;
+            }
+
+            try {
+                const response = await fetch('/update', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ update: { [key]: value } })
+                });
+                if (!response.ok) {
+                    resultNode.textContent = 'push failed: HTTP ' + response.status;
+                    resultNode.className = 'bad';
+                    return;
+                }
+                resultNode.textContent = 'pushed ' + key + ' @ ' + new Date().toLocaleTimeString();
+                resultNode.className = 'ok';
+            } catch (_err) {
+                resultNode.textContent = 'push failed: network error';
+                resultNode.className = 'bad';
+            }
         }
 
         function scheduleReconnect() {
@@ -312,6 +550,15 @@ _VIEWER_HTML = """\
         function noteFrame() {
             lastFrameAt = Date.now();
             frameCount += 1;
+        }
+
+        function statusEditorHasFocus() {
+            const active = document.activeElement;
+            if (!active || !status.contains(active)) {
+                return false;
+            }
+            const tag = active.tagName;
+            return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
         }
 
         function connect() {
@@ -358,7 +605,7 @@ _VIEWER_HTML = """\
 
         setInterval(async () => {
             const staleMs = Date.now() - lastFrameAt;
-            if (!connected || staleMs > 4000) {
+            if (!connected || staleMs > LIVE_FRAME_AGE_MS) {
                 try {
                     const resp = await fetch('/image?t=' + Date.now(), { cache: 'no-store' });
                     if (resp.ok) {
@@ -372,17 +619,41 @@ _VIEWER_HTML = """\
                     // Ignore transient HTTP errors while daemon is restarting.
                 }
             }
-        }, 2000);
+        }, 1000);
 
         setInterval(() => {
             fps = frameCount;
             frameCount = 0;
             renderStatus();
-        }, 1000);
+        }, 500);
 
-        status.addEventListener('click', () => {
-            isExpanded = !isExpanded;
-            renderStatus();
+        status.addEventListener('click', (ev) => {
+            if (!isExpanded) {
+                isExpanded = true;
+                renderStatus();
+                return;
+            }
+            if (ev.target === status) {
+                isExpanded = false;
+                renderStatus();
+            }
+        });
+
+        document.addEventListener('click', (ev) => {
+            if (!isExpanded) {
+                return;
+            }
+            if (!status.contains(ev.target)) {
+                isExpanded = false;
+                renderStatus();
+            }
+        });
+
+        document.addEventListener('keydown', (ev) => {
+            if (ev.key === 'Escape' && isExpanded) {
+                isExpanded = false;
+                renderStatus();
+            }
         });
 
         applyViewerBackground(currentViewerBackground());
@@ -428,11 +699,20 @@ def _build_app(  # noqa: PLR0913 — explicit params keep wiring clear at callsi
     @app.get("/", response_class=HTMLResponse, summary="Live display viewer")
     async def root() -> str:
         """Return the browser live-view page with embedded WebSocket client."""
+        starter_payload = json.dumps(
+            {
+                "update": {
+                    "outside_temp_f": 72.0,
+                    "custom.note": "hello",
+                }
+            }
+        )
         html = _VIEWER_HTML.replace("{{", "{").replace("}}", "}")
         html = html.replace("__CASEDD_WS_PORT__", str(ws_port))
         html = html.replace("__CASEDD_REFRESH_RATE__", f"{refresh_rate:.3f}")
         html = html.replace("__CASEDD_TEMPLATE_JSON__", json.dumps(template_name))
-        return html.replace("__CASEDD_VIEWER_BG_JSON__", json.dumps(viewer_bg))
+        html = html.replace("__CASEDD_VIEWER_BG_JSON__", json.dumps(viewer_bg))
+        return html.replace("__CASEDD_ADV_PAYLOAD_JSON__", json.dumps(starter_payload))
 
     @app.get("/image", summary="Current display frame (PNG)")
     async def current_image() -> Response:

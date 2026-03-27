@@ -22,6 +22,7 @@ from PIL import Image, ImageDraw
 
 from casedd.data_store import DataStore
 from casedd.renderer.color import parse_color
+from casedd.renderer.fonts import fit_font, get_font
 from casedd.renderer.widgets.base import (
     BaseWidget,
     content_rect,
@@ -63,4 +64,22 @@ class ClockWidget(BaseWidget):
             label_h = draw_label(draw, inner, cfg.label, color=(150, 150, 150))
 
         time_str = time.strftime(cfg.format)
-        draw_value_text(draw, inner, time_str, color, cfg.font_size, label_offset=label_h)
+        if "\n" not in time_str:
+            draw_value_text(draw, inner, time_str, color, cfg.font_size, label_offset=label_h)
+            return
+
+        available_h = inner.h - label_h
+        available_w = inner.w - 8
+
+        if cfg.font_size == "auto":
+            longest_line = max(time_str.splitlines(), key=len, default="")
+            font = fit_font(longest_line, available_w, max(8, available_h // 2 - 4))
+        else:
+            font = get_font(int(cfg.font_size))
+
+        bbox = draw.multiline_textbbox((0, 0), time_str, font=font, spacing=2, align="center")
+        tw = bbox[2] - bbox[0]
+        th = bbox[3] - bbox[1]
+        x = inner.x + (inner.w - tw) // 2
+        y = inner.y + label_h + max(0, (available_h - th) // 2)
+        draw.multiline_text((x, y), time_str, fill=color, font=font, spacing=2, align="center")

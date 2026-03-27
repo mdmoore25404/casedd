@@ -40,6 +40,18 @@ class Config:
         assets_dir: Directory containing static assets.
         disk_mount: Filesystem mount point to monitor for disk metrics.
         viewer_bg: Default browser viewer page background color.
+        speedtest_interval: Interval between speed tests in seconds.
+        speedtest_advertised_down_mbps: Advertised download speed in Mb/s.
+        speedtest_advertised_up_mbps: Advertised upload speed in Mb/s.
+        speedtest_reference_down_mbps: Optional effective downlink baseline in Mb/s.
+        speedtest_reference_up_mbps: Optional effective uplink baseline in Mb/s.
+        speedtest_marginal_ratio: Ratio under which speeds are considered marginal.
+        speedtest_critical_ratio: Ratio under which speeds are considered critical.
+        speedtest_binary: Speedtest CLI binary name or absolute path.
+        speedtest_server_id: Optional Ookla server ID to force test target.
+        ollama_api_base: Base URL for Ollama HTTP API.
+        ollama_interval: Ollama polling interval in seconds.
+        ollama_timeout: Ollama request timeout in seconds.
     """
 
     log_level: str = Field(default="INFO")
@@ -56,6 +68,18 @@ class Config:
     assets_dir: Path = Field(default=Path("assets"))
     disk_mount: str = Field(default="/")
     viewer_bg: str = Field(default="#0d0f12")
+    speedtest_interval: float = Field(default=1800.0)
+    speedtest_advertised_down_mbps: float = Field(default=2000.0)
+    speedtest_advertised_up_mbps: float = Field(default=200.0)
+    speedtest_reference_down_mbps: float | None = Field(default=None)
+    speedtest_reference_up_mbps: float | None = Field(default=None)
+    speedtest_marginal_ratio: float = Field(default=0.9)
+    speedtest_critical_ratio: float = Field(default=0.7)
+    speedtest_binary: str = Field(default="speedtest")
+    speedtest_server_id: str | None = Field(default=None)
+    ollama_api_base: str = Field(default="http://localhost:11434")
+    ollama_interval: float = Field(default=10.0)
+    ollama_timeout: float = Field(default=3.0)
 
     @field_validator("log_level")
     @classmethod
@@ -97,6 +121,120 @@ class Config:
             raise ValueError(msg)
         return v
 
+    @field_validator("speedtest_interval")
+    @classmethod
+    def _validate_speedtest_interval(cls, v: float) -> float:
+        """Ensure speedtest interval is positive and practical.
+
+        Args:
+            v: Speedtest polling interval in seconds.
+
+        Returns:
+            Validated interval.
+
+        Raises:
+            ValueError: If interval is outside accepted bounds.
+        """
+        if not (60.0 <= v <= 86400.0):
+            msg = f"speedtest_interval must be between 60 and 86400 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("speedtest_advertised_down_mbps", "speedtest_advertised_up_mbps")
+    @classmethod
+    def _validate_advertised_speeds(cls, v: float) -> float:
+        """Ensure advertised speed values are positive.
+
+        Args:
+            v: Advertised speed value in Mb/s.
+
+        Returns:
+            Validated advertised speed.
+
+        Raises:
+            ValueError: If the value is not positive.
+        """
+        if v <= 0.0:
+            msg = f"Advertised speed values must be > 0, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("speedtest_reference_down_mbps", "speedtest_reference_up_mbps")
+    @classmethod
+    def _validate_reference_speeds(cls, v: float | None) -> float | None:
+        """Ensure optional reference speed values are positive.
+
+        Args:
+            v: Optional reference speed in Mb/s.
+
+        Returns:
+            Validated optional value.
+
+        Raises:
+            ValueError: If the value is present but non-positive.
+        """
+        if v is not None and v <= 0.0:
+            msg = f"Reference speed values must be > 0 when set, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("speedtest_marginal_ratio", "speedtest_critical_ratio")
+    @classmethod
+    def _validate_threshold_ratios(cls, v: float) -> float:
+        """Ensure threshold ratios are sensible percentages.
+
+        Args:
+            v: Ratio value between 0 and 1.
+
+        Returns:
+            Validated ratio.
+
+        Raises:
+            ValueError: If ratio is outside (0, 1].
+        """
+        if not (0.0 < v <= 1.0):
+            msg = f"Threshold ratios must be between 0 and 1, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("ollama_interval")
+    @classmethod
+    def _validate_ollama_interval(cls, v: float) -> float:
+        """Ensure Ollama polling interval is positive and practical.
+
+        Args:
+            v: Poll interval in seconds.
+
+        Returns:
+            Validated interval.
+
+        Raises:
+            ValueError: If interval is outside accepted bounds.
+        """
+        if not (1.0 <= v <= 3600.0):
+            msg = f"ollama_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("ollama_timeout")
+    @classmethod
+    def _validate_ollama_timeout(cls, v: float) -> float:
+        """Ensure Ollama timeout is a positive value.
+
+        Args:
+            v: Timeout in seconds.
+
+        Returns:
+            Validated timeout.
+
+        Raises:
+            ValueError: If timeout is non-positive.
+        """
+        if v <= 0.0:
+            msg = f"ollama_timeout must be > 0, got {v}"
+            raise ValueError(msg)
+        return v
+
 
 def _read_yaml(path: Path) -> dict[str, object]:
     """Read a YAML file and return its top-level mapping.
@@ -135,6 +273,13 @@ def load_config() -> Config:
             return env_val
         return yaml_data.get(yaml_key, default)
 
+    def _get_optional_float(env_key: str, yaml_key: str) -> float | None:
+        """Parse an optional float from env/yaml merged config."""
+        raw = str(_get(env_key, yaml_key, "")).strip()
+        if not raw:
+            return None
+        return float(raw)
+
     return Config(
         log_level=str(_get("CASEDD_LOG_LEVEL", "log_level", "INFO")),
         no_fb=str(_get("CASEDD_NO_FB", "no_fb", "0")) not in {"0", "false", "False", ""},
@@ -152,4 +297,47 @@ def load_config() -> Config:
         assets_dir=Path(str(_get("CASEDD_ASSETS_DIR", "assets_dir", "assets"))),
         disk_mount=str(_get("CASEDD_DISK_MOUNT", "disk_mount", "/")),
         viewer_bg=str(_get("CASEDD_VIEWER_BG", "viewer_bg", "#0d0f12")),
+        speedtest_interval=float(
+            str(_get("CASEDD_SPEEDTEST_INTERVAL", "speedtest_interval", 1800.0))
+        ),
+        speedtest_advertised_down_mbps=float(
+            str(
+                _get(
+                    "CASEDD_SPEEDTEST_ADVERTISED_DOWN_MBPS",
+                    "speedtest_advertised_down_mbps",
+                    2000.0,
+                )
+            )
+        ),
+        speedtest_advertised_up_mbps=float(
+            str(
+                _get(
+                    "CASEDD_SPEEDTEST_ADVERTISED_UP_MBPS",
+                    "speedtest_advertised_up_mbps",
+                    200.0,
+                )
+            )
+        ),
+        speedtest_reference_down_mbps=_get_optional_float(
+            "CASEDD_SPEEDTEST_REFERENCE_DOWN_MBPS",
+            "speedtest_reference_down_mbps",
+        ),
+        speedtest_reference_up_mbps=_get_optional_float(
+            "CASEDD_SPEEDTEST_REFERENCE_UP_MBPS",
+            "speedtest_reference_up_mbps",
+        ),
+        speedtest_marginal_ratio=float(
+            str(_get("CASEDD_SPEEDTEST_MARGINAL_RATIO", "speedtest_marginal_ratio", 0.9))
+        ),
+        speedtest_critical_ratio=float(
+            str(_get("CASEDD_SPEEDTEST_CRITICAL_RATIO", "speedtest_critical_ratio", 0.7))
+        ),
+        speedtest_binary=str(_get("CASEDD_SPEEDTEST_BINARY", "speedtest_binary", "speedtest")),
+        speedtest_server_id=str(
+            _get("CASEDD_SPEEDTEST_SERVER_ID", "speedtest_server_id", "")
+        )
+        or None,
+        ollama_api_base=str(_get("CASEDD_OLLAMA_API_BASE", "ollama_api_base", "http://localhost:11434")),
+        ollama_interval=float(str(_get("CASEDD_OLLAMA_INTERVAL", "ollama_interval", 10.0))),
+        ollama_timeout=float(str(_get("CASEDD_OLLAMA_TIMEOUT", "ollama_timeout", 3.0))),
     )

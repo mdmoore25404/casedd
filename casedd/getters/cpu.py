@@ -62,7 +62,9 @@ class CpuGetter(BaseGetter):
         """
         result: dict[str, StoreValue] = {}
 
-        result["cpu.percent"] = psutil.cpu_percent(interval=None)
+        # Use a short sampling interval for a more stable/visible utilisation
+        # signal than the instantaneous interval=None variant.
+        result["cpu.percent"] = psutil.cpu_percent(interval=0.2)
 
         # Temperature — try common sensor key names
         temp = self._read_temperature()

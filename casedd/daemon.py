@@ -27,23 +27,28 @@ from PIL import Image
 
 from casedd.config import Config
 from casedd.data_store import DataStore
+from casedd.getters.base import BaseGetter
 from casedd.getters.cpu import CpuGetter
 from casedd.getters.disk import DiskGetter
 from casedd.getters.gpu import GpuGetter
 from casedd.getters.memory import MemoryGetter
 from casedd.getters.network import NetworkGetter
+from casedd.getters.ollama import OllamaGetter
+from casedd.getters.speedtest import SpeedtestGetter
 from casedd.getters.system import SystemGetter
 from casedd.ingestion.unix_socket import UnixSocketIngestion
 from casedd.outputs.framebuffer import FramebufferOutput
 from casedd.outputs.http_viewer import HttpViewerOutput
 from casedd.outputs.websocket import WebSocketOutput
 from casedd.renderer.engine import RenderEngine
+from casedd.template.models import Template, WidgetConfig
 from casedd.template.registry import TemplateRegistry
 
 _log = logging.getLogger(__name__)
 
 # Bind host for both WS and HTTP servers (all interfaces)
 _BIND_HOST = "0.0.0.0"  # noqa: S104 — intentional; CASEDD is a local display server
+_GETTER_SYNC_INTERVAL_SEC = 5.0
 
 
 class Daemon:
@@ -78,6 +83,8 @@ class Daemon:
 
         # --- Build subsystems ---
         getters = self._create_getters()
+        getters_by_name = {type(getter).__name__: getter for getter in getters}
+        getter_tasks: dict[str, asyncio.Task[None]] = {}
         registry = TemplateRegistry(Path(self._cfg.templates_dir))
         engine = RenderEngine(self._cfg.width, self._cfg.height)
 
@@ -101,15 +108,13 @@ class Daemon:
         )
 
         # --- Start network services ---
+        await registry.start()
         await ws_output.start()
         await http_output.start()
         await unix_ingestion.start()
 
-        # --- Start data getter tasks ---
-        getter_tasks = [
-            asyncio.create_task(g.run(), name=f"getter-{g.__class__.__name__}")
-            for g in getters
-        ]
+        # --- Start only getters required by the active template ---
+        await self._sync_getter_tasks(registry, getters_by_name, getter_tasks)
 
         _log.info(
             "CASEDD daemon started. Template: %s | Refresh: %.1f Hz",
@@ -118,24 +123,37 @@ class Daemon:
         )
 
         try:
-            await self._render_loop(registry, engine, fb_output, ws_output, http_output)
+            await self._render_loop(
+                registry,
+                engine,
+                fb_output,
+                ws_output,
+                http_output,
+                getters_by_name,
+                getter_tasks,
+            )
         finally:
             _log.info("Shutting down CASEDD daemon…")
-            for task in getter_tasks:
+            for getter in getters:
+                getter.stop()
+            for task in getter_tasks.values():
                 task.cancel()
-            await asyncio.gather(*getter_tasks, return_exceptions=True)
+            await asyncio.gather(*getter_tasks.values(), return_exceptions=True)
             await unix_ingestion.stop()
             await ws_output.stop()
             await http_output.stop()
+            await registry.stop()
             _log.info("Daemon shutdown complete.")
 
-    async def _render_loop(
+    async def _render_loop(  # noqa: PLR0913 -- orchestrator loop needs explicit deps
         self,
         registry: TemplateRegistry,
         engine: RenderEngine,
         fb_output: FramebufferOutput,
         ws_output: WebSocketOutput,
         http_output: HttpViewerOutput,
+        getters_by_name: dict[str, BaseGetter],
+        getter_tasks: dict[str, asyncio.Task[None]],
     ) -> None:
         """Drive the render/output cycle at the configured refresh rate.
 
@@ -145,10 +163,17 @@ class Daemon:
             fb_output: Framebuffer output sink.
             ws_output: WebSocket broadcast output.
             http_output: HTTP viewer image holder.
+            getters_by_name: Getter instances indexed by class name.
+            getter_tasks: Active getter task map.
         """
         interval = 1.0 / self._cfg.refresh_rate
+        last_getter_sync = 0.0
         while not self._shutdown.is_set():
             tick_start = asyncio.get_event_loop().time()
+
+            if tick_start - last_getter_sync >= _GETTER_SYNC_INTERVAL_SEC:
+                await self._sync_getter_tasks(registry, getters_by_name, getter_tasks)
+                last_getter_sync = tick_start
 
             # Render in a thread pool so PIL doesn't block the event loop
             image = await asyncio.to_thread(self._render_one, registry, engine)
@@ -196,9 +221,7 @@ class Daemon:
 
     def _create_getters(
         self,
-    ) -> list[
-        CpuGetter | GpuGetter | MemoryGetter | DiskGetter | NetworkGetter | SystemGetter
-    ]:
+    ) -> list[BaseGetter]:
         """Instantiate all data getter objects with the shared data store.
 
         Returns:
@@ -211,4 +234,92 @@ class Daemon:
             DiskGetter(self._store, mount=self._cfg.disk_mount),
             NetworkGetter(self._store),
             SystemGetter(self._store),
+            SpeedtestGetter(
+                self._store,
+                interval=self._cfg.speedtest_interval,
+                binary=self._cfg.speedtest_binary,
+                server_id=self._cfg.speedtest_server_id,
+                advertised_down_mbps=self._cfg.speedtest_advertised_down_mbps,
+                advertised_up_mbps=self._cfg.speedtest_advertised_up_mbps,
+                reference_down_mbps=self._cfg.speedtest_reference_down_mbps,
+                reference_up_mbps=self._cfg.speedtest_reference_up_mbps,
+                marginal_ratio=self._cfg.speedtest_marginal_ratio,
+                critical_ratio=self._cfg.speedtest_critical_ratio,
+            ),
+            OllamaGetter(
+                self._store,
+                base_url=self._cfg.ollama_api_base,
+                interval=self._cfg.ollama_interval,
+                timeout=self._cfg.ollama_timeout,
+            ),
         ]
+
+    async def _sync_getter_tasks(
+        self,
+        registry: TemplateRegistry,
+        getters_by_name: dict[str, BaseGetter],
+        getter_tasks: dict[str, asyncio.Task[None]],
+    ) -> None:
+        """Start/stop getter tasks based on sources used by active template."""
+        needed = self._needed_getter_names(registry)
+
+        for name in list(getter_tasks.keys()):
+            if name in needed:
+                continue
+            getter = getters_by_name[name]
+            getter.stop()
+            task = getter_tasks.pop(name)
+            task.cancel()
+
+        for name in sorted(needed):
+            if name in getter_tasks:
+                continue
+            getter_opt = getters_by_name.get(name)
+            if getter_opt is None:
+                continue
+            task = asyncio.create_task(getter_opt.run(), name=f"getter-{name}")
+            getter_tasks[name] = task
+
+    def _needed_getter_names(self, registry: TemplateRegistry) -> set[str]:
+        """Resolve which getters are required by the active template sources."""
+        template = registry.get(self._cfg.template)
+        if template is None:
+            return set()
+
+        names: set[str] = set()
+        for source in self._template_sources(template):
+            if source.startswith("cpu."):
+                names.add("CpuGetter")
+            elif source.startswith("nvidia."):
+                names.add("GpuGetter")
+            elif source.startswith("memory."):
+                names.add("MemoryGetter")
+            elif source.startswith("disk."):
+                names.add("DiskGetter")
+            elif source.startswith("net."):
+                names.add("NetworkGetter")
+            elif source.startswith("system."):
+                names.add("SystemGetter")
+            elif source.startswith("speedtest."):
+                names.add("SpeedtestGetter")
+            elif source.startswith("ollama."):
+                names.add("OllamaGetter")
+        return names
+
+    def _template_sources(self, template: Template) -> set[str]:
+        """Collect all widget source keys referenced by a template tree."""
+        sources: set[str] = set()
+        for cfg in template.widgets.values():
+            self._collect_widget_sources(cfg, sources)
+        return sources
+
+    def _collect_widget_sources(self, cfg: WidgetConfig, out: set[str]) -> None:
+        """Recursively collect source keys from one widget config."""
+        if cfg.source is not None:
+            out.add(cfg.source)
+        for source in cfg.sources:
+            out.add(source)
+        for child in cfg.children:
+            self._collect_widget_sources(child, out)
+        for child in cfg.children_named.values():
+            self._collect_widget_sources(child, out)

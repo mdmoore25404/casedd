@@ -33,7 +33,7 @@ import logging
 from PIL import Image
 
 from casedd.data_store import DataStore
-from casedd.renderer.widgets.base import BaseWidget, fill_background
+from casedd.renderer.widgets.base import BaseWidget, draw_widget_border, fill_background
 from casedd.template.grid import Rect, resolve_grid
 from casedd.template.models import LayoutDirection, WidgetConfig
 
@@ -127,6 +127,7 @@ class PanelWidget(BaseWidget):
 
             renderer = get_widget_renderer(child_cfg.type)
             renderer.draw(img, child_rect, child_cfg, data, child_state)
+            draw_widget_border(img, child_rect, child_cfg)
 
     def _draw_grid_children(
         self,
@@ -177,3 +178,4 @@ class PanelWidget(BaseWidget):
 
             renderer = get_widget_renderer(child_cfg.type)
             renderer.draw(img, child_rect, child_cfg, data, child_state)
+            draw_widget_border(img, child_rect, child_cfg)

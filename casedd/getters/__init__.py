@@ -10,5 +10,7 @@ Available getters:
     - :mod:`casedd.getters.memory` — RAM usage
     - :mod:`casedd.getters.disk` — Disk usage
     - :mod:`casedd.getters.network` — Network byte rates
+    - :mod:`casedd.getters.ollama` — Ollama API runtime state
+    - :mod:`casedd.getters.speedtest` — Ookla speed test sampling
     - :mod:`casedd.getters.system` — Hostname, uptime, load average
 """

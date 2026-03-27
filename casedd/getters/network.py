@@ -19,6 +19,7 @@ from casedd.data_store import DataStore, StoreValue
 from casedd.getters.base import BaseGetter
 
 _MB = 1024 * 1024
+_MEGABIT = 1_000_000
 
 
 class NetworkGetter(BaseGetter):
@@ -66,16 +67,20 @@ class NetworkGetter(BaseGetter):
         # Avoid division by zero on very first poll or clock skip
         elapsed = max(elapsed, 0.001)
 
-        recv_rate = (counters.bytes_recv - self._last_recv) / elapsed / _MB
-        sent_rate = (counters.bytes_sent - self._last_sent) / elapsed / _MB
+        recv_rate_mb = (counters.bytes_recv - self._last_recv) / elapsed / _MB
+        sent_rate_mb = (counters.bytes_sent - self._last_sent) / elapsed / _MB
+        recv_rate_mbit = (counters.bytes_recv - self._last_recv) * 8.0 / elapsed / _MEGABIT
+        sent_rate_mbit = (counters.bytes_sent - self._last_sent) * 8.0 / elapsed / _MEGABIT
 
         self._last_recv = counters.bytes_recv
         self._last_sent = counters.bytes_sent
         self._last_time = now
 
         return {
-            "net.bytes_recv_rate": round(max(recv_rate, 0.0), 3),
-            "net.bytes_sent_rate": round(max(sent_rate, 0.0), 3),
+            "net.bytes_recv_rate": round(max(recv_rate_mb, 0.0), 3),
+            "net.bytes_sent_rate": round(max(sent_rate_mb, 0.0), 3),
+            "net.recv_mbps": round(max(recv_rate_mbit, 0.0), 3),
+            "net.sent_mbps": round(max(sent_rate_mbit, 0.0), 3),
             "net.bytes_recv_total": round(counters.bytes_recv / _MB, 1),
             "net.bytes_sent_total": round(counters.bytes_sent / _MB, 1),
         }

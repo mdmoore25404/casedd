@@ -31,6 +31,13 @@ from casedd.renderer.widgets.base import (
 from casedd.template.grid import Rect
 from casedd.template.models import WidgetConfig
 
+_STATUS_COLORS: dict[str, tuple[int, int, int]] = {
+    "good": (46, 204, 113),
+    "marginal": (242, 204, 61),
+    "critical": (228, 85, 85),
+    "out_of_spec": (228, 85, 85),
+}
+
 
 def _wrap_text(
     text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, max_width: int
@@ -48,25 +55,28 @@ def _wrap_text(
     Returns:
         List of wrapped line strings.
     """
-    # PIL font objects have getbbox; use it for accurate measurement
-    words = text.split()
-    lines: list[str] = []
-    current = ""
+    # Preserve explicit line breaks while still applying word-wrap per line.
+    wrapped: list[str] = []
+    for raw_line in text.splitlines() or [text]:
+        words = raw_line.split()
+        if not words:
+            wrapped.append("")
+            continue
 
-    for word in words:
-        candidate = f"{current} {word}".strip() if current else word
-        bbox = font.getbbox(candidate)
-        if bbox[2] - bbox[0] <= max_width:
-            current = candidate
-        else:
-            if current:
-                lines.append(current)
-            current = word
+        current = ""
+        for word in words:
+            candidate = f"{current} {word}".strip() if current else word
+            bbox = font.getbbox(candidate)
+            if bbox[2] - bbox[0] <= max_width:
+                current = candidate
+            else:
+                if current:
+                    wrapped.append(current)
+                current = word
+        if current:
+            wrapped.append(current)
 
-    if current:
-        lines.append(current)
-
-    return lines if lines else [""]
+    return wrapped if wrapped else [""]
 
 
 class TextWidget(BaseWidget):
@@ -103,6 +113,16 @@ class TextWidget(BaseWidget):
         size = cfg.font_size if isinstance(cfg.font_size, int) else 14
         font = get_font(size)
 
+        if cfg.source == "speedtest.simple_summary" and self._draw_speedtest_simple(
+            draw,
+            rect,
+            cfg,
+            data,
+            font,
+            label_h,
+        ):
+            return
+
         available_w = rect.w - 8
         lines = _wrap_text(text, font, available_w)
 
@@ -118,3 +138,71 @@ class TextWidget(BaseWidget):
             lw = bbox[2] - bbox[0]
             x = rect.x + (rect.w - lw) // 2
             draw.text((x, y_start + i * line_h), line, fill=color, font=font)
+
+    def _draw_speedtest_simple(  # noqa: PLR0913 -- render helper needs explicit context
+        self,
+        draw: ImageDraw.ImageDraw,
+        rect: Rect,
+        cfg: WidgetConfig,
+        data: DataStore,
+        font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+        label_h: int,
+    ) -> bool:
+        """Draw speedtest summary as down/up segments with independent status colors.
+
+        Args:
+            draw: PIL draw context.
+            rect: Widget bounding box.
+            cfg: Widget config.
+            data: Live data store.
+            font: Font chosen for this widget.
+            label_h: Vertical pixels consumed by the label.
+
+        Returns:
+            ``True`` when custom drawing was performed, else ``False``.
+        """
+        down_raw = data.get("speedtest.download_mbps")
+        up_raw = data.get("speedtest.upload_mbps")
+        if down_raw is None or up_raw is None:
+            return False
+
+        try:
+            down = float(down_raw)
+            up = float(up_raw)
+        except (TypeError, ValueError):
+            return False
+
+        down_status_raw = data.get("speedtest.download_status")
+        up_status_raw = data.get("speedtest.upload_status")
+        down_status = str(down_status_raw).lower() if down_status_raw is not None else ""
+        up_status = str(up_status_raw).lower() if up_status_raw is not None else ""
+
+        down_text = f"{down:.0f}"
+        mid_text = " / "
+        up_text = f"{up:.0f} Mb/s"
+
+        fallback_color = parse_color(cfg.color, fallback=(200, 200, 200))
+        down_color = _STATUS_COLORS.get(down_status, fallback_color)
+        up_color = _STATUS_COLORS.get(up_status, fallback_color)
+        mid_color = parse_color(cfg.color, fallback=(185, 185, 185))
+
+        down_bbox = font.getbbox(down_text)
+        mid_bbox = font.getbbox(mid_text)
+        up_bbox = font.getbbox(up_text)
+        down_w = down_bbox[2] - down_bbox[0]
+        mid_w = mid_bbox[2] - mid_bbox[0]
+        up_w = up_bbox[2] - up_bbox[0]
+        total_w = down_w + mid_w + up_w
+
+        available_h = rect.h - label_h
+        line_bbox = font.getbbox("Ag")
+        line_h = line_bbox[3] - line_bbox[1]
+        y = rect.y + label_h + max(0, (available_h - line_h) // 2)
+        x = rect.x + max(0, (rect.w - total_w) // 2)
+
+        draw.text((x, y), down_text, fill=down_color, font=font)
+        x += down_w
+        draw.text((x, y), mid_text, fill=mid_color, font=font)
+        x += mid_w
+        draw.text((x, y), up_text, fill=up_color, font=font)
+        return True

@@ -20,6 +20,7 @@ from PIL import Image
 
 from casedd.data_store import DataStore
 from casedd.renderer.color import parse_color
+from casedd.renderer.widgets.base import draw_widget_border
 from casedd.renderer.widgets.registry import get_widget_renderer
 from casedd.template.grid import resolve_grid
 from casedd.template.models import Template
@@ -99,6 +100,7 @@ class RenderEngine:
             try:
                 renderer = get_widget_renderer(cfg.type)
                 renderer.draw(img, rect, cfg, data, state)
+                draw_widget_border(img, rect, cfg)
             except Exception:
                 _log.exception("Widget '%s' (%s) raised during render:", name, cfg.type)
 

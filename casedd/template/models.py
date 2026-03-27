@@ -20,7 +20,7 @@ from __future__ import annotations
 from enum import StrEnum
 import re
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class WidgetType(StrEnum):
@@ -66,6 +66,17 @@ class AlignMode(StrEnum):
     START = "start"
     CENTER = "center"
     END = "end"
+
+
+class BorderStyle(StrEnum):
+    """Border drawing styles for widget cells."""
+
+    NONE = "none"
+    SOLID = "solid"
+    DASHED = "dashed"
+    DOTTED = "dotted"
+    INSET = "inset"
+    OUTSET = "outset"
 
 
 # A color stop is a 2-element list: [threshold, hex_color]
@@ -115,6 +126,10 @@ class WidgetConfig(BaseModel):
         interval: Slideshow seconds per image.
         transition: Slideshow transition effect.
         samples: History length for histogram/sparkline.
+        window_seconds: Optional time window for histogram/sparkline history.
+        sources: Optional list of source keys for multi-series histogram mode.
+        series_labels: Optional labels for each source series.
+        series_colors: Optional colors for each source series.
         format: strftime format string for clock widget.
         direction: Panel child layout direction.
         align: Panel child alignment.
@@ -126,6 +141,10 @@ class WidgetConfig(BaseModel):
         children_named: Named child widgets for nested grid panels.
         arc_start: Gauge arc start angle in degrees.
         arc_end: Gauge arc end angle in degrees.
+        gauge_ticks: Number of tick marks to draw along a gauge arc.
+        border_style: Widget border style (none/solid/dashed/dotted/inset/outset).
+        border_color: Border color string.
+        border_width: Border line width in pixels.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -162,6 +181,10 @@ class WidgetConfig(BaseModel):
 
     # Histogram / sparkline
     samples: int = Field(default=60, gt=0)
+    window_seconds: float | None = Field(default=None, gt=0)
+    sources: list[str] = Field(default_factory=list)
+    series_labels: list[str] = Field(default_factory=list)
+    series_colors: list[str] = Field(default_factory=list)
 
     # Clock widget
     format: str = "%H:%M:%S"
@@ -181,6 +204,20 @@ class WidgetConfig(BaseModel):
     # Gauge-specific
     arc_start: float = 225.0
     arc_end: float = -45.0
+    gauge_ticks: int = Field(default=0, ge=0, le=20)
+
+    # Widget border
+    border_style: BorderStyle = BorderStyle.NONE
+    border_color: str | None = None
+    border_width: int = Field(default=1, ge=1, le=16)
+
+    @field_validator("border_style", mode="before")
+    @classmethod
+    def _normalize_border_style(cls, value: object) -> object:
+        """Normalize common border-style aliases before enum parsing."""
+        if isinstance(value, str) and value.strip().lower() == "outsed":
+            return "outset"
+        return value
 
     @model_validator(mode="after")
     def _check_font_size(self) -> WidgetConfig:

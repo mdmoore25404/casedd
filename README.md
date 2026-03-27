@@ -15,8 +15,10 @@ HTTP for remote viewing.
 - **Dual output** — push rendered images to `/dev/fb1` (framebuffer) AND a browser via WebSocket simultaneously
 - **Custom layout engine** — declare layouts in `.casedd` YAML files using CSS Grid Template Areas syntax; widget tree supports unlimited nesting via `type: panel`
 - **10 widget types** — `value`, `text`, `bar`, `gauge`, `histogram`, `sparkline`, `image`, `slideshow`, `clock`, `panel`
-- **Live data getters** — CPU temp/percent/fan, GPU (nvidia-smi, graceful fallback), RAM, disk, network rates, hostname, uptime
+- **Live data getters** — CPU, NVIDIA GPU (including multi-GPU keys), RAM, disk, network, system uptime/host, speedtest, Ollama API runtime state
+- **Speedtest integration** — optional Ookla CLI getter (default every 30 min) with plan-relative metrics and status keys
 - **External data push** — accept JSON updates via Unix domain socket or REST POST; values cached in RAM and used on next render
+- **Template-aware polling** — getters run only when their key namespaces are referenced by the active template
 - **Dev-friendly** — `CASEDD_NO_FB=1` disables framebuffer for dev; browser WebSocket view is the primary dev display
 - **Multiple deployment modes** — plain Python, systemd service, Docker Compose
 
@@ -104,6 +106,7 @@ mypy --strict casedd/
 ## Template format (.casedd)
 
 Templates are YAML files in `templates/`. See [docs/template_format.md](docs/template_format.md) for the full specification.
+Getter key reference lives at [docs/getters.md](docs/getters.md).
 
 Quick example:
 
@@ -155,7 +158,7 @@ widgets:
 ## Data push via Unix socket
 
 ```bash
-echo '{"update": {"outside_temp_c": 21.5}}' | nc -U /run/casedd/casedd.sock
+echo '{"update": {"outside_temp_f": 72.0}}' | nc -U /run/casedd/casedd.sock
 ```
 
 Or via REST:
@@ -163,8 +166,45 @@ Or via REST:
 ```bash
 curl -X POST http://localhost:8080/update \
   -H "Content-Type: application/json" \
-  -d '{"update": {"outside_temp_c": 21.5}}'
+  -d '{"update": {"outside_temp_f": 72.0}}'
 ```
+
+### Browser push tester (dev)
+
+The web viewer now includes a built-in push test panel:
+
+1. Open `http://localhost:8080`
+2. Click the status badge (`live` / `reconnecting`) to expand details
+3. Use **push test update** to send key/value updates to `POST /update`
+
+This is useful for quickly testing ingestion without leaving the browser.
+
+### Push demo template
+
+An example template is provided at [templates/push_demo.casedd](templates/push_demo.casedd).
+It visualizes externally pushed values like `outside_temp_f` and `custom.note`.
+
+To try it:
+
+```bash
+# 1) Set the active template
+export CASEDD_TEMPLATE=push_demo
+./dev.sh restart
+
+# 2) Push demo values
+./scripts/push_demo.sh 72.0 "Patio sensor online"
+```
+
+### Immediate speedtest push helper
+
+Run an on-demand Ookla speedtest and push the result into CASEDD via REST:
+
+```bash
+./scripts/speedtest_push.sh
+```
+
+This writes ``speedtest.*`` keys including down/up Mb/s, ping, jitter,
+plan-relative percentages, status, and summary text.
 
 ---
 
@@ -195,6 +235,32 @@ To generate a static `docs/api.json`:
 
 ```bash
 ./dev.sh docs
+```
+
+## Timezone
+
+The clock widget renders the host machine's local time. If the host timezone is
+wrong, set it at the OS level (example for US Eastern):
+
+```bash
+sudo timedatectl set-timezone America/New_York
+timedatectl | grep "Time zone"
+```
+
+## Speedtest configuration
+
+Speedtest polling and threshold behavior can be tuned via environment variables:
+
+```bash
+CASEDD_SPEEDTEST_INTERVAL=1800
+CASEDD_SPEEDTEST_BINARY=speedtest
+CASEDD_SPEEDTEST_ADVERTISED_DOWN_MBPS=2000
+CASEDD_SPEEDTEST_ADVERTISED_UP_MBPS=200
+CASEDD_SPEEDTEST_MARGINAL_RATIO=0.9
+CASEDD_SPEEDTEST_CRITICAL_RATIO=0.7
+CASEDD_OLLAMA_API_BASE=http://localhost:11434
+CASEDD_OLLAMA_INTERVAL=10
+CASEDD_OLLAMA_TIMEOUT=3
 ```
 
 ---

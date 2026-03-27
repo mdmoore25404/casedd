@@ -24,10 +24,8 @@ from casedd.getters.base import BaseGetter
 
 _log = logging.getLogger(__name__)
 
-# nvidia-smi query fields — order must match _KEYS below
-_QUERY = "utilization.gpu,temperature.gpu,memory.used,memory.total,power.draw"
-_KEYS = ("nvidia.percent", "nvidia.temperature", "nvidia.memory_used_mb",
-         "nvidia.memory_total_mb", "nvidia.power_w")
+# nvidia-smi query fields — order must match parsed columns below.
+_QUERY = "index,utilization.gpu,temperature.gpu,memory.used,memory.total,power.draw"
 
 
 class GpuGetter(BaseGetter):
@@ -90,16 +88,58 @@ class GpuGetter(BaseGetter):
             self._enabled = False
             return {}
 
-        parts = [p.strip() for p in result.stdout.strip().split(",")]
-        if len(parts) != len(_KEYS):
+        lines = [line.strip() for line in result.stdout.strip().splitlines() if line.strip()]
+        if not lines:
             _log.warning("Unexpected nvidia-smi output: %r", result.stdout)
             return {}
 
         data: dict[str, StoreValue] = {}
-        for key, raw in zip(_KEYS, parts, strict=True):
+        gpu_rows: list[dict[str, float]] = []
+        for line in lines:
+            parts = [p.strip() for p in line.split(",")]
+            if len(parts) != 6:
+                continue
             try:
-                data[key] = float(raw)
+                gpu_idx = int(parts[0])
+                row = {
+                    "idx": float(gpu_idx),
+                    "percent": float(parts[1]),
+                    "temperature": float(parts[2]),
+                    "memory_used_mb": float(parts[3]),
+                    "memory_total_mb": float(parts[4]),
+                    "power_w": float(parts[5]),
+                }
+                gpu_rows.append(row)
             except ValueError:
                 # Field may be "[N/A]" — leave the key absent rather than emit garbage
-                _log.debug("Could not parse nvidia-smi field %s=%r", key, raw)
+                _log.debug("Could not parse nvidia-smi row: %r", line)
+
+        if not gpu_rows:
+            return {}
+
+        data["nvidia.gpu_count"] = float(len(gpu_rows))
+        for row in gpu_rows:
+            idx = int(row["idx"])
+            data[f"nvidia.{idx}.percent"] = row["percent"]
+            data[f"nvidia.{idx}.temperature"] = row["temperature"]
+            data[f"nvidia.{idx}.memory_used_mb"] = row["memory_used_mb"]
+            data[f"nvidia.{idx}.memory_total_mb"] = row["memory_total_mb"]
+            data[f"nvidia.{idx}.power_w"] = row["power_w"]
+
+        # Backward-compatible primary keys map to GPU index 0 if present,
+        # otherwise the first reported GPU.
+        primary = next((row for row in gpu_rows if int(row["idx"]) == 0), gpu_rows[0])
+        data["nvidia.percent"] = primary["percent"]
+        data["nvidia.temperature"] = primary["temperature"]
+        data["nvidia.memory_used_mb"] = primary["memory_used_mb"]
+        data["nvidia.memory_total_mb"] = primary["memory_total_mb"]
+        data["nvidia.power_w"] = primary["power_w"]
+        # Compute VRAM utilisation % for the primary GPU.
+        if primary["memory_total_mb"] > 0:
+            data["nvidia.memory_percent"] = round(
+                (primary["memory_used_mb"] / primary["memory_total_mb"]) * 100.0, 2
+            )
+
+        data["nvidia.total_memory_used_mb"] = sum(row["memory_used_mb"] for row in gpu_rows)
+        data["nvidia.total_memory_mb"] = sum(row["memory_total_mb"] for row in gpu_rows)
         return data

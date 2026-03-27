@@ -175,6 +175,18 @@ edits the agent **must** restart the relevant development process:
 
 Then confirm the process restarted cleanly by checking `./dev.sh status`.
 
+## Agent visual self-check workflow
+
+When modifying templates or renderer behavior, the agent should self-validate
+visual output by fetching the live rendered frame and inspecting it directly:
+
+```bash
+curl -sS http://localhost:8080/image -o /tmp/casedd-frame.png
+```
+
+Then review `/tmp/casedd-frame.png` with the available image-viewing tool before
+finalizing layout/typography changes.
+
 ---
 
 ## Environment variables

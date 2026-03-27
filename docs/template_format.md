@@ -93,6 +93,9 @@ widgets:
 | `label` | string | Display label drawn near the widget |
 | `color` | string | Primary color (hex or rgb()) |
 | `background` | string | Widget background (defaults to transparent / parent bg) |
+| `border_style` | string | Cell border style: `none`, `solid`, `dashed`, `dotted`, `inset`, `outset` |
+| `border_color` | string | Border color (hex, rgb(), or supported named color) |
+| `border_width` | int | Border line width in pixels (1-16) |
 | `font_size` | int \| `"auto"` | Font size in points. `auto` scales to fill the bounding box. |
 | `padding` | int \| [int, int, int, int] | Inner padding in pixels (all sides, or [top, right, bottom, left]) |
 
@@ -173,19 +176,24 @@ cpu:
   max: 100
   arc_start: 225    # degrees (default: 225 — bottom-left)
   arc_end: -45      # degrees (default: -45 — bottom-right)
+  gauge_ticks: 10   # optional tick marks along the arc
   color_stops:
     - [0,  "#6bcb77"]
     - [70, "#ffd93d"]
     - [90, "#ff6b6b"]
 ```
 
-Additional fields: `min`, `max`, `arc_start`, `arc_end`, `color_stops`
+Additional fields: `min`, `max`, `arc_start`, `arc_end`, `gauge_ticks`, `color_stops`
 
 ---
 
 ### `histogram`
 
 Rolling bar chart showing recent history of a value.
+
+Histograms are generic: point `source` at any numeric key in the data store
+(`cpu.temperature`, `outside_temp_f`, `custom.sensor_42`, etc.) and the widget
+will maintain and draw history for that stream.
 
 ```yaml
 ram_hist:
@@ -196,9 +204,31 @@ ram_hist:
   color: "#4d96ff"
   min: 0
   max: 100
+  precision: 1
+  unit: "%"
 ```
 
-Additional fields: `samples` (int, default 60), `min`, `max`
+Multi-series mode (single cell, multiple live series):
+
+```yaml
+net_multi:
+  type: histogram
+  label: "Net Up/Down (Mb/s)"
+  sources:
+    - net.recv_mbps
+    - net.sent_mbps
+  series_labels: ["Dn", "Up"]
+  series_colors: ["#22cc88", "#ffaa22"]
+  unit: Mb/s
+  precision: 2
+  min: 0
+  max: 200
+  samples: 120
+```
+
+Additional fields: `samples` (int, default 60), `min`, `max`, `precision`, `unit`, `sources`, `series_labels`, `series_colors`
+
+Note: missing/invalid source values are skipped instead of inserted as zero/min-value bars.
 
 ---
 
@@ -215,7 +245,27 @@ net_in:
   color: "#6bcb77"
 ```
 
-Additional fields: `samples` (int, default 60)
+Multi-series mode:
+
+```yaml
+net_multi:
+  type: sparkline
+  label: "Net Up/Down (Mb/s)"
+  sources:
+    - net.recv_mbps
+    - net.sent_mbps
+  series_labels: ["Dn", "Up"]
+  series_colors: ["#22cc88", "#ffaa22"]
+  unit: Mb/s
+  precision: 2
+  min: 0
+  max: 200
+  samples: 120
+```
+
+Additional fields: `samples` (int, default 60), `sources`, `series_labels`, `series_colors`
+
+Note: missing/invalid source values are skipped rather than inserted as zero.
 
 ---
 
@@ -232,6 +282,22 @@ time:
 ```
 
 Additional fields: `format` (strftime string, default `"%H:%M:%S"`)
+
+Common `format` examples:
+
+```yaml
+# 24-hour time
+format: "%H:%M:%S"
+
+# 12-hour time with AM/PM
+format: "%I:%M:%S %p"
+
+# Date only
+format: "%a %b %d"
+
+# Two-line date + time block
+format: "%a %b %d\n%H:%M:%S"
+```
 
 ---
 

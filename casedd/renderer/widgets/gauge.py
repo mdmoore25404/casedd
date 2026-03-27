@@ -42,6 +42,8 @@ from casedd.template.models import WidgetConfig
 
 _TRACK_COLOR = (50, 50, 50)
 _ARC_WIDTH_RATIO = 0.12   # arc stroke width as a fraction of radius
+_TICK_COLOR = (120, 120, 120)
+_OVER_RANGE_MAX_RATIO = 0.35  # allow needle to sweep up to +35% past arc end
 
 
 class GaugeWidget(BaseWidget):
@@ -52,7 +54,7 @@ class GaugeWidget(BaseWidget):
     (going clockwise through the bottom) gives the classic tachometer look.
     """
 
-    def draw(
+    def draw(  # noqa: PLR0915 -- explicit geometry/render flow keeps hot-path readable
         self,
         img: Image.Image,
         rect: Rect,
@@ -79,15 +81,19 @@ class GaugeWidget(BaseWidget):
 
         # Resolve value
         raw = resolve_value(cfg, data)
+        value: float | None = None
         try:
-            value = float(raw) if raw is not None else cfg.min
+            if raw is not None:
+                value = float(raw)
         except (ValueError, TypeError):
-            value = cfg.min
-        value = max(cfg.min, min(cfg.max, value))
+            value = None
+
+        has_value = value is not None
+        clamped_value = cfg.min if value is None else max(cfg.min, min(cfg.max, value))
 
         # Determine fill color
         if cfg.color_stops:
-            fill_rgb = interpolate_color_stops(value, cfg.color_stops, cfg.min, cfg.max)
+            fill_rgb = interpolate_color_stops(clamped_value, cfg.color_stops, cfg.min, cfg.max)
         else:
             fill_rgb = parse_color(cfg.color, fallback=(70, 130, 200))
 
@@ -112,32 +118,46 @@ class GaugeWidget(BaseWidget):
         # Compute the value angle within [start_deg, end_deg] span
         total_sweep = (end_deg - start_deg) % 360 or 360
         span = cfg.max - cfg.min
-        ratio = (value - cfg.min) / span if span > 0 else 0.0
+        ratio = (clamped_value - cfg.min) / span if span > 0 else 0.0
+        raw_ratio = ((value or cfg.min) - cfg.min) / span if span > 0 else 0.0
+        over_ratio = max(0.0, raw_ratio - 1.0)
+        over_ratio = min(_OVER_RANGE_MAX_RATIO, over_ratio)
         value_deg = start_deg + total_sweep * ratio
+        needle_deg = value_deg + (total_sweep * over_ratio)
 
         # Draw track (unfilled arc)
         draw.arc(box, start=start_deg, end=end_deg, fill=_TRACK_COLOR, width=arc_w)
 
+        # Optional tick marks along the gauge arc.
+        if cfg.gauge_ticks > 0:
+            self._draw_ticks(draw, cx, cy, radius, arc_w, start_deg, total_sweep, cfg.gauge_ticks)
+
         # Draw filled arc
-        if ratio > 0.001:
+        if has_value and ratio > 0.001:
             draw.arc(box, start=start_deg, end=value_deg, fill=fill_rgb, width=arc_w)
 
+        # Draw over-range extension for values above cfg.max.
+        if has_value and over_ratio > 0.001:
+            draw.arc(box, start=end_deg, end=needle_deg, fill=fill_rgb, width=arc_w)
+
         # Draw needle line from center to arc edge at value angle
-        needle_angle_rad = math.radians(value_deg)
+        needle_angle_rad = math.radians(needle_deg)
         inner_r = radius - arc_w - 2
         nx = cx + int(inner_r * math.cos(needle_angle_rad))
         ny = cy + int(inner_r * math.sin(needle_angle_rad))
-        draw.line([(cx, cy), (nx, ny)], fill=fill_rgb, width=2)
+        if has_value:
+            draw.line([(cx, cy), (nx, ny)], fill=fill_rgb, width=2)
 
         # Center dot
         dot_r = max(3, arc_w // 2)
         draw.ellipse(
             [cx - dot_r, cy - dot_r, cx + dot_r, cy + dot_r],
-            fill=fill_rgb,
+            fill=fill_rgb if has_value else _TICK_COLOR,
         )
 
-        # Value text below center
-        val_str = f"{value:.0f}"
+        # Value text below center — append unit suffix when configured (e.g. "%")
+        unit_suffix = cfg.unit or ""
+        val_str = "--" if value is None else f"{value:.1f}{unit_suffix}"
         font = get_font(max(10, size // 5))
         bbox = font.getbbox(val_str)
         tw = bbox[2] - bbox[0]
@@ -148,3 +168,28 @@ class GaugeWidget(BaseWidget):
             fill=(220, 220, 220),
             font=font,
         )
+
+    def _draw_ticks(  # noqa: PLR0913 -- geometry helper needs explicit args
+        self,
+        draw: ImageDraw.ImageDraw,
+        cx: int,
+        cy: int,
+        radius: int,
+        arc_w: int,
+        start_deg: float,
+        total_sweep: float,
+        tick_count: int,
+    ) -> None:
+        """Draw evenly spaced tick marks along the gauge arc."""
+        inner_r = max(2, radius - arc_w - 2)
+        outer_r = max(inner_r + 1, radius + 1)
+        for tick in range(tick_count + 1):
+            ratio = tick / tick_count
+            angle = start_deg + total_sweep * ratio
+            rad = math.radians(angle)
+
+            x1 = cx + int(inner_r * math.cos(rad))
+            y1 = cy + int(inner_r * math.sin(rad))
+            x2 = cx + int(outer_r * math.cos(rad))
+            y2 = cy + int(outer_r * math.sin(rad))
+            draw.line([(x1, y1), (x2, y2)], fill=_TICK_COLOR, width=1)
