@@ -9,6 +9,17 @@ HTTP for remote viewing.
 **Stack:** Python 3.12, FastAPI, uvicorn, Pillow, Pydantic v2, psutil, PyYAML
 
 ---
+## Licensing
+
+**casedd** is released under the **[Business Source License 1.1](LICENSE)**.
+
+- **Free** for personal, hobbyist, and home-lab use (including AI workstations and single-user setups).
+- **Commercial use**, white-labeling, enterprise deployments, or bundling with hardware requires a paid commercial license.
+
+See [`LICENSE`](LICENSE) and [`license-commercial.md`](license-commercial.md) for full details.
+
+Interested in commercial use or white-label rights? Feel free to reach out.
+
 
 ## Features
 
