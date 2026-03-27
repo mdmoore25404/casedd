@@ -194,6 +194,16 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 
+# CASEDD runtime dirs (dev — PID files, logs)
+run/*.pid
+logs/*.log
+
+# Generated API docs (regenerate locally with ./dev.sh docs)
+docs/api.json
+
+# Casedd config override (local only — .env.example is committed)
+casedd.yaml
+
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data

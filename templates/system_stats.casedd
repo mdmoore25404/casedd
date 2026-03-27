@@ -1,0 +1,158 @@
+# system_stats.casedd — Default system statistics display template
+#
+# Layout: 800×480 display divided into a 4×6 CSS grid.
+#
+#   +------------------+------------------+
+#   |   cpu_gauge      |   gpu_gauge      |
+#   +------------------+------------------+
+#   |   cpu_temp       |   gpu_temp       |
+#   +--------+---------+------------------+
+#   |  ram   |  disk   |   net_recv       |
+#   +--------+---------+------------------+
+#   |  ram_h |  disk_h |   net_send       |
+#   +--------+---------+------------------+
+#   |  clock           |   hostname       |
+#   +------------------+------------------+
+#   |  uptime                             |
+#   +-------------------------------------+
+
+grid:
+  template_areas: |
+    cpu_gauge  gpu_gauge
+    cpu_temp   gpu_temp
+    ram        net_recv
+    disk       net_send
+    clock      hostname
+    uptime     uptime
+  columns: 1fr 1fr
+  rows: 2fr 1fr 1.5fr 1.5fr 1fr 1fr
+
+background: "#111111"
+
+widgets:
+  cpu_gauge:
+    type: gauge
+    label: CPU
+    source: cpu.percent
+    min: 0
+    max: 100
+    unit: "%"
+    arc_start: 180
+    arc_end: 360
+    color_stops:
+      - value: 0
+        color: "#22cc44"
+      - value: 70
+        color: "#ffcc00"
+      - value: 90
+        color: "#ff4422"
+
+  gpu_gauge:
+    type: gauge
+    label: GPU
+    source: nvidia.percent
+    min: 0
+    max: 100
+    unit: "%"
+    arc_start: 180
+    arc_end: 360
+    color_stops:
+      - value: 0
+        color: "#22aaff"
+      - value: 70
+        color: "#ffcc00"
+      - value: 90
+        color: "#ff4422"
+
+  cpu_temp:
+    type: value
+    label: CPU Temp
+    source: cpu.temperature
+    unit: "°C"
+    precision: 1
+    color_stops:
+      - value: 0
+        color: "#aaaaaa"
+      - value: 70
+        color: "#ffcc00"
+      - value: 90
+        color: "#ff4422"
+
+  gpu_temp:
+    type: value
+    label: GPU Temp
+    source: nvidia.temperature
+    unit: "°C"
+    precision: 1
+    color_stops:
+      - value: 0
+        color: "#aaaaaa"
+      - value: 70
+        color: "#ffcc00"
+      - value: 85
+        color: "#ff4422"
+
+  ram:
+    type: bar
+    label: RAM
+    source: memory.percent
+    min: 0
+    max: 100
+    unit: "%"
+    color_stops:
+      - value: 0
+        color: "#22aaff"
+      - value: 75
+        color: "#ffcc00"
+      - value: 90
+        color: "#ff4422"
+
+  disk:
+    type: bar
+    label: Disk
+    source: disk.percent
+    min: 0
+    max: 100
+    unit: "%"
+    color_stops:
+      - value: 0
+        color: "#aa44ff"
+      - value: 80
+        color: "#ffcc00"
+      - value: 95
+        color: "#ff4422"
+
+  net_recv:
+    type: sparkline
+    label: "↓ Net Recv"
+    source: net.bytes_recv_rate
+    unit: MB/s
+    precision: 2
+    samples: 60
+    color: "#22cc88"
+
+  net_send:
+    type: sparkline
+    label: "↑ Net Send"
+    source: net.bytes_sent_rate
+    unit: MB/s
+    precision: 2
+    samples: 60
+    color: "#ffaa22"
+
+  clock:
+    type: clock
+    format: "%H:%M:%S"
+    color: "#ffffff"
+
+  hostname:
+    type: value
+    label: Host
+    source: system.hostname
+    color: "#aaaaaa"
+
+  uptime:
+    type: value
+    label: Uptime
+    source: system.uptime
+    color: "#666666"

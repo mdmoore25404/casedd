@@ -1,0 +1,72 @@
+"""Widget type registry.
+
+Maps :class:`~casedd.template.models.WidgetType` values to their
+:class:`~casedd.renderer.widgets.base.BaseWidget` renderer instances.
+
+This module is the single source of truth for widget type → renderer
+mapping, imported by both the render engine and the panel widget to avoid
+circular imports.
+
+Public API:
+    - :func:`get_widget_renderer` — look up the renderer for a widget type
+"""
+
+from __future__ import annotations
+
+from casedd.renderer.widgets.bar import BarWidget
+from casedd.renderer.widgets.base import BaseWidget
+from casedd.renderer.widgets.clock import ClockWidget
+from casedd.renderer.widgets.gauge import GaugeWidget
+from casedd.renderer.widgets.histogram import HistogramWidget
+from casedd.renderer.widgets.image import ImageWidget
+from casedd.renderer.widgets.slideshow import SlideshowWidget
+from casedd.renderer.widgets.sparkline import SparklineWidget
+from casedd.renderer.widgets.text import TextWidget
+from casedd.renderer.widgets.value import ValueWidget
+from casedd.template.models import WidgetType
+
+# Instantiated once; all renderers are stateless — state lives in the engine's
+# per-widget state dicts, not in the renderer instances.
+# PanelWidget is imported lazily by get_widget_renderer to avoid the circular
+# import that would arise from panel.py importing this module at parse time.
+_REGISTRY: dict[WidgetType, BaseWidget] = {
+    WidgetType.VALUE: ValueWidget(),
+    WidgetType.TEXT: TextWidget(),
+    WidgetType.BAR: BarWidget(),
+    WidgetType.GAUGE: GaugeWidget(),
+    WidgetType.HISTOGRAM: HistogramWidget(),
+    WidgetType.SPARKLINE: SparklineWidget(),
+    WidgetType.IMAGE: ImageWidget(),
+    WidgetType.SLIDESHOW: SlideshowWidget(),
+    WidgetType.CLOCK: ClockWidget(),
+}
+
+
+def get_widget_renderer(widget_type: WidgetType) -> BaseWidget:
+    """Return the renderer instance for a given widget type.
+
+    The ``panel`` type is handled specially: it is instantiated on first
+    access to avoid a module-level circular import
+    (PanelWidget → registry → PanelWidget).
+
+    Args:
+        widget_type: The :class:`~casedd.template.models.WidgetType` to look up.
+
+    Returns:
+        The :class:`~casedd.renderer.widgets.base.BaseWidget` renderer.
+
+    Raises:
+        KeyError: If ``widget_type`` has no registered renderer.
+    """
+    if widget_type == WidgetType.PANEL:
+        # Import panel here to break the circular dependency at module-load time.
+        # This is the ONE permitted exception to the no-local-imports rule,
+        # documented here: panel.py ↔ registry.py is an unavoidable cycle because
+        # panels contain child widgets of any type including other panels.
+        from casedd.renderer.widgets.panel import PanelWidget  # noqa: PLC0415
+
+        if WidgetType.PANEL not in _REGISTRY:
+            _REGISTRY[WidgetType.PANEL] = PanelWidget()
+        return _REGISTRY[WidgetType.PANEL]
+
+    return _REGISTRY[widget_type]

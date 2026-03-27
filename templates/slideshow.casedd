@@ -1,0 +1,21 @@
+# slideshow.casedd — Full-screen image slideshow template
+#
+# Cycles through all images in assets/slideshow/ with a 5-second interval
+# and a 0.5-second crossfade transition.
+
+grid:
+  template_areas: |
+    slides
+  columns: 1fr
+  rows: 1fr
+
+background: "#000000"
+
+widgets:
+  slides:
+    type: slideshow
+    paths:
+      - assets/slideshow
+    interval: 5.0
+    transition: fade
+    scale: fill
