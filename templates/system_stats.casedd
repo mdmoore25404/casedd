@@ -10,13 +10,13 @@ refresh_rate: 2.0
 
 grid:
   # 5-column dashboard layout — row 2 carries 5 gauges, so all rows are 5-wide.
-  # Row 1: cpu_temp spans cols 2-3 for a wider histogram; net_multi spans cols 1-3;
-  # datetime spans cols 1-2 for the clock.
+  # Row 1 is: CPU Use, CPU Temp, GPU Use, GPU Temp, Mascot.
+  # Net multi spans cols 1-3; ollama_meta spans cols 1-3 in row4.
   template_areas: |
-    cpu_gauge  cpu_temp   cpu_temp   gpu_gauge   gpu_temp
+    cpu_gauge  cpu_temp   gpu_gauge  gpu_temp    mascot
     ram        gpu_vram   disk       speed_down  speed_up
     net_multi  net_multi  net_multi  disk_read   disk_write
-    datetime   datetime   speed_meta mascot      outside
+    ollama_meta ollama_meta ollama_meta speed_meta outside
   columns: 1fr 1fr 1fr 1fr 1fr
   rows: 1.4fr 1.1fr 1fr 1fr
 
@@ -24,7 +24,7 @@ background: "#111111"
 
 widgets:
   cpu_gauge:
-    type: histogram
+    type: sparkline
     label: CPU Use (%)
     source: cpu.percent
     padding: 4
@@ -40,7 +40,7 @@ widgets:
       - [90, "#ff4422"]
 
   gpu_gauge:
-    type: histogram
+    type: sparkline
     label: GPU Use (%)
     source: nvidia.percent
     padding: 4
@@ -56,7 +56,7 @@ widgets:
       - [90, "#ff4422"]
 
   cpu_temp:
-    type: histogram
+    type: sparkline
     label: CPU Temp (C)
     source: cpu.temperature
     padding: [4, 6]
@@ -72,7 +72,7 @@ widgets:
       - [80, "#e45555"]
 
   gpu_temp:
-    type: histogram
+    type: sparkline
     label: GPU Temp (C)
     source: nvidia.temperature
     padding: [4, 6]
@@ -189,7 +189,7 @@ widgets:
     window_seconds: 120
 
   disk_read:
-    type: histogram
+    type: sparkline
     label: "Disk R (Mb/s)"
     source: disk.read_mbps
     padding: [2, 6]
@@ -205,7 +205,7 @@ widgets:
       - [150, "#ff5533"]
 
   disk_write:
-    type: histogram
+    type: sparkline
     label: "Disk W (Mb/s)"
     source: disk.write_mbps
     padding: [2, 6]
@@ -220,12 +220,12 @@ widgets:
       - [80, "#ffcc00"]
       - [150, "#ff5533"]
 
-  datetime:
-    type: clock
-    format: "%a %b %d\n%H:%M:%S"
-    label: Date / Time
+  ollama_meta:
+    type: text
+    label: "Active Ollama"
+    source: ollama.active_compact
     padding: [2, 6]
-    font_size: 30
+    font_size: 22
     color: "#ffffff"
 
   speed_meta:

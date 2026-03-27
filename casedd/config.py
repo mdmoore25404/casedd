@@ -52,6 +52,10 @@ class Config:
         ollama_api_base: Base URL for Ollama HTTP API.
         ollama_interval: Ollama polling interval in seconds.
         ollama_timeout: Ollama request timeout in seconds.
+        net_interfaces: Explicit network interface names to monitor (e.g.
+            ``["enp8s0"]``). Traffic from all other interfaces (Docker bridges,
+            veth pairs, loopback) is excluded. Empty list falls back to the
+            psutil aggregate across all interfaces.
     """
 
     log_level: str = Field(default="INFO")
@@ -80,6 +84,7 @@ class Config:
     ollama_api_base: str = Field(default="http://localhost:11434")
     ollama_interval: float = Field(default=10.0)
     ollama_timeout: float = Field(default=3.0)
+    net_interfaces: list[str] = Field(default_factory=list)
 
     @field_validator("log_level")
     @classmethod
@@ -340,4 +345,9 @@ def load_config() -> Config:
         ollama_api_base=str(_get("CASEDD_OLLAMA_API_BASE", "ollama_api_base", "http://localhost:11434")),
         ollama_interval=float(str(_get("CASEDD_OLLAMA_INTERVAL", "ollama_interval", 10.0))),
         ollama_timeout=float(str(_get("CASEDD_OLLAMA_TIMEOUT", "ollama_timeout", 3.0))),
+        net_interfaces=[
+            iface.strip()
+            for iface in str(_get("CASEDD_NET_INTERFACES", "net_interfaces", "")).split(",")
+            if iface.strip()
+        ],
     )

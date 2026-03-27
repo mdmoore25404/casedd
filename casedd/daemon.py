@@ -232,7 +232,7 @@ class Daemon:
             GpuGetter(self._store),
             MemoryGetter(self._store),
             DiskGetter(self._store, mount=self._cfg.disk_mount),
-            NetworkGetter(self._store),
+            NetworkGetter(self._store, interfaces=self._cfg.net_interfaces),
             SystemGetter(self._store),
             SpeedtestGetter(
                 self._store,

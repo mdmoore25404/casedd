@@ -6,6 +6,7 @@ under the ``ollama.*`` namespace.
 Store keys written:
     - ``ollama.active_count`` (float)
     - ``ollama.active_models`` (str)
+    - ``ollama.active_compact`` (str)
     - ``ollama.primary_model`` (str)
     - ``ollama.primary_size_gb`` (float)
     - ``ollama.primary_gpu_percent`` (float)
@@ -29,7 +30,7 @@ from casedd.getters.base import BaseGetter
 
 _log = logging.getLogger(__name__)
 
-_GB = 1024 ** 3
+_GB = 1_000_000_000
 _GPU_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%\s*GPU", flags=re.IGNORECASE)
 _CPU_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%\s*CPU", flags=re.IGNORECASE)
 
@@ -98,7 +99,15 @@ class OllamaGetter(BaseGetter):
 
         models = [m for m in models_obj if isinstance(m, dict)]
         count = len(models)
-        names = ", ".join(_model_name(m) for m in models if _model_name(m))
+        names = ", ".join(_display_model_name(m) for m in models if _model_name(m))
+        compact_lines = [
+            (
+                f"{_display_model_name(m)}\t{_model_size_gb(m):.1f}GB"
+                f"\t{_processor_display(m)}\t{_model_ttl_compact(m)}"
+            )
+            for m in models
+        ]
+        compact = "\n".join(compact_lines) if compact_lines else "--"
 
         summary = f"{count} active"
         primary = models[0] if models else None
@@ -108,12 +117,13 @@ class OllamaGetter(BaseGetter):
         primary_gpu_pct = _processor_pct(primary, _GPU_RE) if primary is not None else 0.0
         primary_cpu_pct = _processor_pct(primary, _CPU_RE) if primary is not None else 0.0
 
-        if primary_name:
-            summary = f"{primary_name} ({primary_ttl})"
+        if primary_name and primary is not None:
+            summary = f"{_display_model_name(primary)} ({_model_ttl_compact(primary)})"
 
         return {
             "ollama.active_count": float(count),
             "ollama.active_models": names,
+            "ollama.active_compact": compact,
             "ollama.primary_model": primary_name,
             "ollama.primary_size_gb": round(primary_size_gb, 2),
             "ollama.primary_gpu_percent": round(primary_gpu_pct, 1),
@@ -136,6 +146,21 @@ def _model_name(model: dict[str, object] | None) -> str:
         return ""
     raw = model.get("name") or model.get("model")
     return raw if isinstance(raw, str) else ""
+
+
+def _display_model_name(model: dict[str, object] | None) -> str:
+    """Return human-friendly model name for dashboard display.
+
+    Strips the ``:latest`` tag suffix when present to keep the UI compact.
+
+    Args:
+        model: One model entry from ``/api/ps`` response.
+
+    Returns:
+        Display name without ``:latest`` suffix.
+    """
+    name = _model_name(model)
+    return name.removesuffix(":latest")
 
 
 def _model_size_gb(model: dict[str, object]) -> float:
@@ -166,6 +191,116 @@ def _model_ttl(model: dict[str, object]) -> str:
     if hours > 0:
         return f"{hours}h {mins}m"
     return f"{mins}m {sec}s"
+
+
+def _model_ttl_compact(model: dict[str, object]) -> str:
+    """Return compact TTL string for one-line dashboard summaries.
+
+    Args:
+        model: One model entry from ``/api/ps`` response.
+
+    Returns:
+        Compact TTL like ``41m`` or ``2h 05m``.
+    """
+    raw = model.get("expires_at")
+    if not isinstance(raw, str) or not raw:
+        return "n/a"
+    try:
+        expires = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        return "n/a"
+
+    now = datetime.now(UTC)
+    total_sec = int((expires - now).total_seconds())
+    if total_sec <= 0:
+        return "expired"
+    total_min = total_sec // 60
+    hours, mins = divmod(total_min, 60)
+    if hours > 0:
+        return f"{hours}h {mins:02d}m"
+    return f"{mins}m"
+
+
+def _processor_display(model: dict[str, object]) -> str:
+    """Return processor placement text matching ``ollama ps`` semantics.
+
+    Args:
+        model: One model entry from ``/api/ps`` response.
+
+    Returns:
+        Display string such as ``100% GPU``, ``100% CPU``, or
+        ``48%/52% CPU/GPU``.
+    """
+    by_size = _processor_display_from_size(model)
+    if by_size is not None:
+        return by_size
+
+    by_pct = _processor_display_from_pct(model)
+    if by_pct is not None:
+        return by_pct
+
+    by_text = _processor_display_from_text(model)
+    if by_text is not None:
+        return by_text
+
+    return "Unknown"
+
+
+def _processor_display_from_size(model: dict[str, object]) -> str | None:
+    """Infer processor placement from ``size`` and ``size_vram``.
+
+    This mirrors Ollama CLI behavior in ``cmd/cmd.go``.
+    """
+    size = model.get("size")
+    size_vram = model.get("size_vram")
+    if not isinstance(size, int | float) or not isinstance(size_vram, int | float):
+        return None
+
+    total = float(size)
+    vram = float(size_vram)
+    if total <= 0.0 or vram > total:
+        return "Unknown"
+    if vram == 0.0:
+        return "100% CPU"
+    if vram == total:
+        return "100% GPU"
+
+    size_cpu = total - vram
+    cpu_percent = round((size_cpu / total) * 100.0)
+    gpu_percent = int(100 - cpu_percent)
+    return f"{int(cpu_percent)}%/{gpu_percent}% CPU/GPU"
+
+
+def _processor_display_from_pct(model: dict[str, object]) -> str | None:
+    """Infer processor display from explicit CPU/GPU percentages."""
+    gpu = _processor_pct(model, _GPU_RE)
+    cpu = _processor_pct(model, _CPU_RE)
+    if gpu > 0.0 and cpu > 0.0:
+        cpu_pct = round(cpu)
+        gpu_pct = round(gpu)
+        return f"{cpu_pct}%/{gpu_pct}% CPU/GPU"
+    if gpu > 0.0:
+        return "100% GPU"
+    if cpu > 0.0:
+        return "100% CPU"
+    return None
+
+
+def _processor_display_from_text(model: dict[str, object]) -> str | None:
+    """Infer processor placement from textual processor descriptor."""
+    raw = model.get("processor")
+    if not isinstance(raw, str):
+        return None
+    upper = raw.upper()
+    has_gpu = "GPU" in upper
+    has_cpu = "CPU" in upper
+    if has_gpu and has_cpu:
+        return raw.replace(" / ", "/").strip()
+    if has_gpu:
+        return "100% GPU"
+    if has_cpu:
+        return "100% CPU"
+    return None
 
 
 def _processor_pct(model: dict[str, object], pattern: re.Pattern[str]) -> float:
