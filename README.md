@@ -265,6 +265,15 @@ CASEDD_OLLAMA_TIMEOUT=3
 
 ---
 
+## Licensing
+
+casedd is released under the **Business Source License 1.1**.
+
+- **Free** for personal, hobbyist, and home-lab use.
+- **Commercial use**, white-labeling, or enterprise deployments require a paid license.
+
+See [`LICENSE`](LICENSE) and [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md) for full details.
+
 ## Directory structure
 
 ```
