@@ -1,0 +1,257 @@
+# system_stats.casedd — Default system statistics display template
+#
+# Reference template covering gauges, bars, sparklines, value text, and clock.
+
+name: system_stats
+description: Full system statistics grid for 800x480 displays.
+width: 800
+height: 480
+refresh_rate: 2.0
+
+grid:
+  # 5-column dashboard layout — row 2 carries 5 gauges, so all rows are 5-wide.
+  # Row 1 is: CPU Use, CPU Temp, GPU Use, GPU Temp, Mascot.
+  # Net multi spans cols 1-3; ollama_meta spans cols 1-3 in row4.
+  template_areas: |
+    cpu_gauge  cpu_temp   gpu_gauge  gpu_temp    mascot
+    ram        gpu_vram   disk       speed_down  speed_up
+    net_multi  net_multi  net_multi  disk_read   disk_write
+    ollama_meta ollama_meta ollama_meta speed_meta outside
+  columns: 1fr 1fr 1fr 1fr 1fr
+  rows: 1.4fr 1.1fr 1fr 1fr
+
+background: "#111111"
+
+widgets:
+  cpu_gauge:
+    type: sparkline
+    label: CPU Use (%)
+    source: cpu.percent
+    padding: 4
+    precision: 1
+    min: 0
+    max: 100
+    unit: "%"
+    samples: 120
+    window_seconds: 120
+    color_stops:
+      - [0, "#22cc44"]
+      - [70, "#ffcc00"]
+      - [90, "#ff4422"]
+
+  gpu_gauge:
+    type: sparkline
+    label: GPU Use (%)
+    source: nvidia.percent
+    padding: 4
+    precision: 1
+    min: 0
+    max: 100
+    unit: "%"
+    samples: 120
+    window_seconds: 120
+    color_stops:
+      - [0, "#22aaff"]
+      - [70, "#ffcc00"]
+      - [90, "#ff4422"]
+
+  cpu_temp:
+    type: sparkline
+    label: CPU Temp (C)
+    source: cpu.temperature
+    padding: [4, 6]
+    unit: C
+    precision: 1
+    samples: 360
+    window_seconds: 900
+    min: 20
+    max: 110
+    color_stops:
+      - [35, "#2dbf73"]
+      - [65, "#f2cc3d"]
+      - [80, "#e45555"]
+
+  gpu_temp:
+    type: sparkline
+    label: GPU Temp (C)
+    source: nvidia.temperature
+    padding: [4, 6]
+    unit: C
+    precision: 1
+    samples: 360
+    window_seconds: 900
+    min: 20
+    max: 110
+    color_stops:
+      - [30, "#2dbf73"]
+      - [65, "#f2cc3d"]
+      - [82, "#e45555"]
+
+  ram:
+    type: gauge
+    label: RAM
+    source: memory.percent
+    padding: [4, 6]
+    min: 0
+    max: 100
+    unit: "%"
+    arc_start: 180
+    arc_end: 360
+    color_stops:
+      - [0, "#22aaff"]
+      - [75, "#ffcc00"]
+      - [90, "#ff4422"]
+
+  gpu_vram:
+    type: gauge
+    label: "GPU0 VRAM"
+    source: nvidia.memory_percent
+    padding: [4, 6]
+    min: 0
+    max: 100
+    unit: "%"
+    arc_start: 180
+    arc_end: 360
+    color_stops:
+      - [0, "#22ff99"]
+      - [70, "#ffcc00"]
+      - [88, "#ff5533"]
+
+  disk:
+    type: gauge
+    label: Disk
+    source: disk.percent
+    padding: [4, 6]
+    min: 0
+    max: 100
+    unit: "%"
+    arc_start: 180
+    arc_end: 360
+    color_stops:
+      - [0, "#aa44ff"]
+      - [80, "#ffcc00"]
+      - [95, "#ff4422"]
+
+  speed_down:
+    type: gauge
+    label: "Speed DL vs Plan"
+    source: speedtest.download_pct_ref
+    padding: [4, 6]
+    unit: "%"
+    min: 0
+    max: 100
+    arc_start: 180
+    arc_end: 360
+    gauge_ticks: 10
+    color_stops:
+      - [0, "#ff5533"]
+      - [70, "#ff5533"]
+      - [90, "#ffcc00"]
+      - [100, "#22cc88"]
+      - [130, "#66d9ff"]
+
+  speed_up:
+    type: gauge
+    label: "Speed UL vs Plan"
+    source: speedtest.upload_pct_ref
+    padding: [4, 6]
+    unit: "%"
+    min: 0
+    max: 100
+    arc_start: 180
+    arc_end: 360
+    gauge_ticks: 10
+    color_stops:
+      - [0, "#ff5533"]
+      - [70, "#ff5533"]
+      - [90, "#ffcc00"]
+      - [100, "#22cc88"]
+      - [130, "#66d9ff"]
+
+  net_multi:
+    type: sparkline
+    label: "Net Up/Down (Mb/s)"
+    sources:
+      - net.recv_mbps
+      - net.sent_mbps
+    series_labels:
+      - Dn
+      - Up
+    series_colors:
+      - "#22cc88"
+      - "#ffaa22"
+    padding: [2, 6]
+    unit: Mb/s
+    precision: 2
+    min: 0
+    max: 200
+    samples: 120
+    window_seconds: 120
+
+  disk_read:
+    type: sparkline
+    label: "Disk R (Mb/s)"
+    source: disk.read_mbps
+    padding: [2, 6]
+    unit: Mb/s
+    precision: 2
+    min: 0
+    max: 200
+    samples: 120
+    window_seconds: 120
+    color_stops:
+      - [0, "#22cc88"]
+      - [80, "#ffcc00"]
+      - [150, "#ff5533"]
+
+  disk_write:
+    type: sparkline
+    label: "Disk W (Mb/s)"
+    source: disk.write_mbps
+    padding: [2, 6]
+    unit: Mb/s
+    precision: 2
+    min: 0
+    max: 200
+    samples: 120
+    window_seconds: 120
+    color_stops:
+      - [0, "#ffaa22"]
+      - [80, "#ffcc00"]
+      - [150, "#ff5533"]
+
+  ollama_meta:
+    type: text
+    label: "Active Ollama"
+    source: ollama.active_compact
+    padding: [2, 6]
+    font_size: 22
+    color: "#ffffff"
+
+  speed_meta:
+    type: text
+    label: "Last Speedtest"
+    source: speedtest.simple_summary
+    padding: [2, 6]
+    font_size: 22
+    color: "#b3b9c5"
+
+  mascot:
+    type: slideshow
+    paths:
+      - assets/slideshow/animals
+    interval: 10
+    transition: none
+    scale: fit
+    background: "#0d0d0d"
+    padding: [4, 8]
+
+  outside:
+    type: value
+    label: Outside Temp
+    source: outside_temp_f
+    unit: "F"
+    precision: 1
+    font_size: 30
+    color: "#22cc88"
+    padding: [2, 6]

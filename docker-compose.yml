@@ -1,0 +1,38 @@
+name: casedd
+
+services:
+  casedd:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "${CASEDD_DOCKER_WS_PORT:-18765}:8765"
+      - "${CASEDD_DOCKER_HTTP_PORT:-18080}:8080"
+    volumes:
+      # Mount templates and assets for easy editing without rebuild
+      - ./templates:/app/templates:ro
+      - ./assets:/app/assets:ro
+      # Persist logs in Docker-managed storage (avoids host permission mismatches)
+      - casedd_logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      # Framebuffer is unavailable inside the container
+      - CASEDD_NO_FB=1
+      # Use writable in-container socket path (the host .env points to /run/casedd)
+      - CASEDD_SOCKET_PATH=/app/run/casedd.sock
+      # Reach host Ollama from inside container; port is controlled by CASEDD_OLLAMA_PORT.
+      - CASEDD_OLLAMA_API_BASE=http://host.docker.internal:${CASEDD_OLLAMA_PORT:-11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8080/image')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  casedd_logs:

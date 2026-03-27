@@ -1,0 +1,90 @@
+# stats_over_slideshow.casedd — Stats overlay on a rotating slideshow background
+#
+# Uses a slideshow as the full-canvas background and a bottom stats panel.
+
+name: stats_over_slideshow
+description: Slideshow background with a bottom row of live stats.
+width: 800
+height: 480
+refresh_rate: 2.0
+
+grid:
+  template_areas: |
+    bg     bg     bg     bg     bg     bg
+    bg     bg     bg     bg     bg     bg
+    stats  stats  stats  stats  stats  stats
+  columns: 1fr 1fr 1fr 1fr 1fr 1fr
+  rows: 1fr 1fr 1fr
+
+background: "#000000"
+
+widgets:
+  bg:
+    type: slideshow
+    paths:
+      - assets/slideshow
+    interval: 8.0
+    transition: fade
+    scale: fill
+
+  stats:
+    type: panel
+    direction: row
+    background: "#111111"
+    padding: 8
+    gap: 8
+    children:
+      - type: gauge
+        label: CPU
+        source: cpu.percent
+        min: 0
+        max: 100
+        unit: "%"
+        arc_start: 180
+        arc_end: 360
+        color_stops:
+          - [0, "#22cc44"]
+          - [70, "#ffcc00"]
+          - [90, "#ff4422"]
+
+      - type: gauge
+        label: GPU
+        source: nvidia.percent
+        min: 0
+        max: 100
+        unit: "%"
+        arc_start: 180
+        arc_end: 360
+        color_stops:
+          - [0, "#22aaff"]
+          - [70, "#ffcc00"]
+          - [90, "#ff4422"]
+
+      - type: bar
+        label: RAM
+        source: memory.percent
+        min: 0
+        max: 100
+        unit: "%"
+        color_stops:
+          - [0, "#22aaff"]
+          - [80, "#ffcc00"]
+
+      - type: bar
+        label: Disk
+        source: disk.percent
+        min: 0
+        max: 100
+        unit: "%"
+        color: "#aa44ff"
+
+      - type: sparkline
+        label: "Down MB/s"
+        source: net.bytes_recv_rate
+        samples: 30
+        precision: 1
+        color: "#22cc88"
+
+      - type: clock
+        format: "%H:%M"
+        color: "#ffffff"

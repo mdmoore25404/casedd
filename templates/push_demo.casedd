@@ -1,0 +1,60 @@
+# push_demo.casedd — Demonstrates externally pushed values in the live UI
+#
+# Use the web viewer's push test panel or curl to update outside_temp_f and
+# custom.note in real time.
+
+name: push_demo
+description: Demo template for testing /update push ingestion from browser or curl.
+width: 800
+height: 480
+refresh_rate: 2.0
+
+grid:
+  template_areas: |
+    title      title
+    outside    note
+    clock      mascot
+  columns: 1fr 1fr
+  rows: 0.7fr 1.1fr 1.2fr
+
+background: "#111111"
+
+widgets:
+  title:
+    type: text
+    content: "Push Demo: update outside_temp_f and custom.note"
+    color: "#d0d0d0"
+    font_size: 24
+    padding: [2, 10]
+
+  outside:
+    type: value
+    label: Outside Temp
+    source: outside_temp_f
+    unit: "F"
+    precision: 1
+    color: "#22cc88"
+    font_size: 68
+    padding: [2, 8]
+
+  note:
+    type: text
+    label: Note
+    source: custom.note
+    color: "#ffcc66"
+    font_size: 30
+    padding: [6, 10]
+
+  clock:
+    type: clock
+    format: "%H:%M:%S"
+    color: "#ffffff"
+    font_size: 58
+    padding: [2, 8]
+
+  mascot:
+    type: image
+    path: assets/slideshow/animals/raccoon.png
+    scale: fit
+    background: "#0d0d0d"
+    padding: [4, 8]

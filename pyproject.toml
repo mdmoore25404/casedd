@@ -1,0 +1,86 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "casedd"
+version = "0.1.0"
+description = "Case Display Daemon — drives a USB framebuffer display with WebSocket mirroring"
+requires-python = ">=3.12"
+readme = "README.md"
+license = { text = "MIT" }
+
+[project.scripts]
+casedd = "casedd.__main__:main"
+
+# ---------------------------------------------------------------------------
+# Ruff — linting and formatting (replaces flake8, isort, pyupgrade, bandit)
+# ---------------------------------------------------------------------------
+[tool.ruff]
+target-version = "py312"
+line-length = 99
+src = ["casedd"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "S",    # flake8-bandit (security)
+    "A",    # flake8-builtins
+    "C4",   # flake8-comprehensions
+    "DTZ",  # flake8-datetimez
+    "ISC",  # flake8-implicit-str-concat
+    "PIE",  # flake8-pie
+    "RET",  # flake8-return
+    "SIM",  # flake8-simplify
+    "TID",  # flake8-tidy-imports (no relative imports beyond 1 level)
+    "TCH",  # flake8-type-checking
+    "ARG",  # flake8-unused-arguments
+    "PTH",  # flake8-use-pathlib
+    "ERA",  # eradicate (no commented-out code)
+    "PL",   # pylint
+    "RUF",  # ruff-specific rules
+]
+ignore = [
+    "S101",    # assert is fine in non-test code for invariant checks
+    "PLR2004", # magic value comparisons — we use named constants where it matters
+    # TC001/002/003: we use `from __future__ import annotations` everywhere, so all
+    # annotations are already lazy strings. Moving imports to TYPE_CHECKING blocks would
+    # fragment the import section without a meaningful startup-time benefit for a daemon.
+    "TC001",
+    "TC002",
+    "TC003",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["casedd"]
+force-sort-within-sections = true
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "ARG"]   # security and unused-arg rules relaxed in tests
+
+# ---------------------------------------------------------------------------
+# mypy — strict static type checking
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_reexport = true
+show_error_codes = true
+
+[[tool.mypy.overrides]]
+# Third-party libs without stubs — add as needed
+module = [
+    "PIL.*",
+    "uvicorn.*",
+]
+ignore_missing_imports = true
