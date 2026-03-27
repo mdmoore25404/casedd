@@ -1,12 +1,21 @@
-# Commercial Licensing
+# Commercial Licensing for casedd
 
-casedd is free for non-commercial, hobbyist, and home-lab use under the Business Source License 1.1.
+**casedd** is free for **non-commercial, personal, hobbyist, and home-lab use** under the Business Source License 1.1.
 
-**Commercial use** (including but not limited to white-labeling, bundling with hardware, data center deployments, or offering as part of a product/service) requires a paid commercial license.
+## What requires a commercial license?
 
-Please contact me at [your email] for commercial licensing, white-label rights, or custom feature development.
+Any of the following uses require a paid commercial license:
 
-Examples of commercial use that require a license:
-- Hardware vendors bundling casedd as their official display software
-- Companies using casedd in data center monitoring solutions
-- Reselling or rebranding casedd in any paid product
+- Using casedd in a commercial product or service
+- White-labeling or rebranding casedd (for example, hardware vendors bundling it as their official display software)
+- Deploying casedd in a data center or enterprise environment serving multiple users
+- Offering casedd (or any derivative) as part of a paid product or managed service
+- Any revenue-generating use of the software
+
+## How to obtain a commercial license
+
+Please contact me directly for commercial licensing, white-label rights, or custom feature development.
+
+I'm happy to discuss terms with individuals and companies who want to use or build upon casedd commercially.
+
+**Contact:** [your email address here]
