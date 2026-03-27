@@ -9,13 +9,15 @@ Parameters
 
 Licensor:                     Michael Moore
 Licensed Work:                casedd
-                              The Licensed Work is (c) 2026 Michael Moore
+                              The Licensed Work is (c) 2026 Michael Moore.
+                              All rights reserved.
+
 Additional Use Grant:         You may use the Licensed Work for non-commercial,
                               personal, hobbyist, or home-lab purposes without
-                              charge, including running it on personal computers,
-                              homelab servers, AI workstations, and similar
-                              non-commercial setups where the software is used
-                              by a single individual or household.
+                              charge. This includes running casedd on personal
+                              computers, homelab servers, AI workstations, and
+                              similar non-commercial setups used by a single
+                              individual or household.
 
 Change Date:                  2029-03-27
 Change License:               Apache License, Version 2.0
@@ -28,21 +30,17 @@ The Licensor hereby grants you the right to copy, modify, create derivative
 works, redistribute, and make non-commercial use of the Licensed Work, subject
 to the terms and conditions of this License.
 
-You may not make commercial use of the Licensed Work, including but not limited to:
-- Using the Licensed Work in a commercial product or service
-- Offering the Licensed Work (or any derivative) as a hosted service
+You may **not** make commercial use of the Licensed Work. Commercial use includes,
+but is not limited to:
+- Using the Licensed Work in any commercial product or service
+- Offering the Licensed Work (or any derivative) as a hosted or managed service
 - White-labeling, rebranding, or bundling the Licensed Work with hardware or
   software sold to third parties
-- Using the Licensed Work in a data center, enterprise, or production environment
-  serving multiple users or generating revenue
-
-Additional Use Grant:
-The Licensor grants you a limited, non-exclusive, royalty-free license to use
-the Licensed Work for non-commercial, personal, hobbyist, and home-lab purposes,
-including single-user AI inference rigs, homelab monitoring, and personal projects.
+- Using the Licensed Work in a data center, enterprise environment, or any
+  deployment serving multiple users or generating revenue
 
 If you wish to use the Licensed Work for any commercial purpose, you must obtain
-a commercial license from the Licensor.
+a separate commercial license from the Licensor.
 
 -----------------------------------------------------------------------------
 
