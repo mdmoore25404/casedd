@@ -210,7 +210,21 @@ function collectUpsPrefixedKeys(prefix) {
     `${root}.runtime_minutes`,
     `${root}.input_voltage`,
     `${root}.input_frequency`,
+    `${root}.on_battery`,
+    `${root}.in_use`,
   ];
+}
+
+function isBooleanMetric(key) {
+  const token = key.toLowerCase();
+  return (
+    token.endsWith(".on_battery") ||
+    token.endsWith(".in_use") ||
+    token.endsWith(".present") ||
+    token.endsWith(".connected") ||
+    token.endsWith(".enabled") ||
+    token.endsWith(".available")
+  );
 }
 
 function generateScenarioData(template) {
@@ -238,6 +252,12 @@ function generateScenarioData(template) {
       }
     }
 
+    if (isBooleanMetric(key)) {
+      const token = key.toLowerCase();
+      updatePayload[key] = !token.endsWith(".on_battery");
+      return;
+    }
+
     if (isStringMetric(key, widget)) {
       const suffix = key.split(".").at(-1) || key;
       updatePayload[key] = `${suffix} sample`;
@@ -258,6 +278,16 @@ function generateScenarioData(template) {
   const replayRecords = [0.6, 0.9, 0.7].map((scale, index) => {
     const update = {};
     entries.forEach(({ key, widget }) => {
+      if (isBooleanMetric(key)) {
+        const token = key.toLowerCase();
+        if (token.endsWith(".on_battery")) {
+          update[key] = index === 1;
+        } else {
+          update[key] = index !== 1;
+        }
+        return;
+      }
+
       if (isStringMetric(key, widget)) {
         update[key] = updatePayload[key];
         return;

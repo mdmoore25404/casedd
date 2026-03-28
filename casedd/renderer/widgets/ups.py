@@ -61,6 +61,32 @@ def _to_text(value: StoreValue | None, default: str = "") -> str:
     return str(value)
 
 
+def _to_bool(value: StoreValue | None, default: bool = False) -> bool:
+    """Convert a store value to bool with fallback.
+
+    Args:
+        value: Raw store value.
+        default: Fallback when conversion fails.
+
+    Returns:
+        Parsed boolean value.
+    """
+    result = default
+    if value is None:
+        return result
+    if isinstance(value, bool):
+        result = value
+    elif isinstance(value, (int, float)):
+        result = value != 0
+    elif isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            result = True
+        elif normalized in {"0", "false", "no", "off"}:
+            result = False
+    return result
+
+
 def _battery_color(percent: float) -> tuple[int, int, int]:
     """Select urgency color for battery percentage.
 
@@ -129,6 +155,9 @@ class UpsWidget(BaseWidget):
         runtime_min = max(0.0, _to_float(data.get(f"{prefix}.runtime_minutes"), 0.0))
         input_v = max(0.0, _to_float(data.get(f"{prefix}.input_voltage"), 0.0))
         input_hz = max(0.0, _to_float(data.get(f"{prefix}.input_frequency"), 0.0))
+        default_on_battery = status in {"ONBATT", "ON_BATTERY", "ON-BATTERY", "BATTERY"}
+        on_battery = _to_bool(data.get(f"{prefix}.on_battery"), default_on_battery)
+        in_use = _to_bool(data.get(f"{prefix}.in_use"), load_watts > 0.0)
         last_change_ts = _to_float(data.get(f"{prefix}.last_change_ts"), 0.0)
 
         title = cfg.label if cfg.label else "UPS"
@@ -178,10 +207,21 @@ class UpsWidget(BaseWidget):
             font=body_font,
         )
 
+        row4_y = row3_y + max(16, inner.h // 12)
+        mode = "battery" if on_battery else "line"
+        use_state = "in use" if in_use else "idle"
+        mode_color = (220, 120, 90) if on_battery else (112, 200, 140)
+        draw.text(
+            (inner.x + 6, row4_y),
+            f"Mode: {mode} | UPS: {use_state}",
+            fill=mode_color,
+            font=body_font,
+        )
+
         if last_change_ts > 0.0:
             ago_seconds = max(0, int(time.time() - last_change_ts))
             draw.text(
-                (inner.x + 6, row3_y + max(14, inner.h // 13)),
+                (inner.x + 6, row4_y + max(14, inner.h // 13)),
                 f"Last change: {ago_seconds}s ago",
                 fill=(140, 140, 140),
                 font=tiny_font,
