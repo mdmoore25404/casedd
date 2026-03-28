@@ -261,6 +261,15 @@ docker compose up -d
 docker compose logs -f
 ```
 
+Compose starts two services:
+- `casedd` backend (HTTP/WS)
+- `casedd-web` advanced app (Vite dev mode with hot reload)
+
+Default Docker URLs:
+- lightweight viewer: `http://localhost:18080/`
+- advanced app redirect entry: `http://localhost:18080/app`
+- direct advanced app: `http://localhost:15173/`
+
 ---
 
 ## API

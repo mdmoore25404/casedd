@@ -1,8 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-const backendPort = process.env.CASEDD_HTTP_PORT || "8080";
-const backendTarget = `http://127.0.0.1:${backendPort}`;
+const backendTarget =
+  process.env.CASEDD_API_BASE ||
+  `http://127.0.0.1:${process.env.CASEDD_HTTP_PORT || "8080"}`;
 
 export default defineConfig({
   plugins: [react()],
