@@ -2,7 +2,7 @@
 # Runs the daemon with CASEDD_NO_FB=1 (no framebuffer access inside container).
 # WebSocket port 8765 and HTTP port 8080 are exposed for LAN access.
 
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # Install system dependencies for Pillow
 RUN apt-get update \
