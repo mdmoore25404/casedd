@@ -416,6 +416,20 @@ export function App() {
     return selectedWidgetConfig.sources.join("\n");
   }, [selectedWidgetConfig]);
 
+  const seriesLabelListValue = useMemo(() => {
+    if (!selectedWidgetConfig?.series_labels || !Array.isArray(selectedWidgetConfig.series_labels)) {
+      return "";
+    }
+    return selectedWidgetConfig.series_labels.join("\n");
+  }, [selectedWidgetConfig]);
+
+  const seriesColorListValue = useMemo(() => {
+    if (!selectedWidgetConfig?.series_colors || !Array.isArray(selectedWidgetConfig.series_colors)) {
+      return "";
+    }
+    return selectedWidgetConfig.series_colors.join("\n");
+  }, [selectedWidgetConfig]);
+
   const applyScenarioFromTemplate = useCallback((template) => {
     const scenario = generateScenarioData(template);
     setUpdateJson(prettyJson(scenario.updatePayload));
@@ -591,6 +605,14 @@ export function App() {
       .map((item) => item.trim())
       .filter((item) => item.length > 0);
     updateWidgetField("sources", parsed);
+  }
+
+  function updateWidgetStringList(field, rawValue) {
+    const parsed = rawValue
+      .split("\n")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    updateWidgetField(field, parsed);
   }
 
   async function handleLoadTemplate() {
@@ -998,7 +1020,11 @@ export function App() {
           {templateDoc ? (
             <div className="card border-secondary bg-dark-subtle mb-3">
               <div className="card-body">
-                <h5 className="card-title">Widget Inspector</h5>
+                <h5 className="card-title mb-1">Widget Inspector</h5>
+                <div className="small text-body-secondary inspector-subtitle mb-3">
+                  Edit display behavior for the selected widget. For multi-series sparkline,
+                  set sources + per-series labels to control shown text like Dn/Up.
+                </div>
                 <div className="row g-2">
                   <div className="col-12 col-md-4">
                     <label className="form-label small">Widget</label>
@@ -1051,6 +1077,24 @@ export function App() {
                       rows={3}
                       value={sourceListValue}
                       onChange={(event) => updateWidgetSources(event.target.value)}
+                    />
+                  </div>
+                  <div className="col-12 col-md-4">
+                    <label className="form-label small">Series labels (one per line)</label>
+                    <textarea
+                      className="form-control form-control-sm font-monospace"
+                      rows={3}
+                      value={seriesLabelListValue}
+                      onChange={(event) => updateWidgetStringList("series_labels", event.target.value)}
+                    />
+                  </div>
+                  <div className="col-12 col-md-4">
+                    <label className="form-label small">Series colors (one per line)</label>
+                    <textarea
+                      className="form-control form-control-sm font-monospace"
+                      rows={3}
+                      value={seriesColorListValue}
+                      onChange={(event) => updateWidgetStringList("series_colors", event.target.value)}
                     />
                   </div>
                   <div className="col-12 col-md-6">

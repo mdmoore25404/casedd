@@ -105,6 +105,24 @@ body {
   color: #ff8f8f;
 }
 
+.inspector-subtitle {
+  border: 1px solid #25303b;
+  background: linear-gradient(140deg, #101925, #0d141e);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.app-shell .card .form-label.small {
+  letter-spacing: 0.01em;
+  font-weight: 600;
+  color: #b9c7d8;
+}
+
+.app-shell .card .form-control,
+.app-shell .card .form-select {
+  border-radius: 7px;
+}
+
 .json-modal-backdrop {
   position: fixed;
   inset: 0;
