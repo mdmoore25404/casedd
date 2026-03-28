@@ -64,4 +64,3 @@ To keep docs README in sync with root README:
 ./scripts/sync_docs_to_pages.sh
 ```
 
-> This change closes issue #20.
