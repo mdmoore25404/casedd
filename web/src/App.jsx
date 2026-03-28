@@ -946,10 +946,48 @@ export function App() {
                         }
                       />
                       <div className="grid-syntax-help small text-body-secondary">
-                        <div>Syntax: whitespace-separated track sizes per axis.</div>
-                        <div>Use `fr`, `px`, or `%` units. Example: `1fr 2fr 160px`.</div>
-                        <div>Grid columns count should match each `template_areas` row token count.</div>
-                        <div>Grid rows count should match the number of `template_areas` lines.</div>
+                        <div className="fw-semibold text-light mb-1">How Grid Columns / Rows Work</div>
+                        <div>
+                          This uses standard CSS Grid track sizing. Each value is one track size.
+                        </div>
+                        <div>
+                          Columns define left-to-right widths. Rows define top-to-bottom heights.
+                        </div>
+                        <div>
+                          Common units:
+                          <span className="text-light"> fr </span>
+                          (share remaining space),
+                          <span className="text-light"> px </span>
+                          (fixed),
+                          <span className="text-light"> % </span>
+                          (percent of container).
+                        </div>
+                        <div>Example columns: <span className="text-light">1fr 1fr 240px</span></div>
+                        <div>Example rows: <span className="text-light">90px 1fr 1fr 70px</span></div>
+                        <div className="mt-1">
+                          Rule: each line in <span className="text-light">template_areas</span> must have
+                          the same number of tokens as the columns count.
+                        </div>
+                        <div>
+                          Rule: number of <span className="text-light">template_areas</span> lines should
+                          match the rows count.
+                        </div>
+                        <div className="mt-2 d-flex flex-wrap gap-3">
+                          <a
+                            href="https://developer.mozilla.org/en-US/docs/Web/CSS/grid-template-columns"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            grid-template-columns docs
+                          </a>
+                          <a
+                            href="https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_grid_layout/Grid_template_areas"
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            grid-template-areas guide
+                          </a>
+                        </div>
                       </div>
                     </>
                   ) : null}
