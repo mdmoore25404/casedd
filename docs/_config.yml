@@ -1,0 +1,5 @@
+title: CASEDD Documentation
+description: Documentation for the CASEDD project
+theme: jekyll-theme-cayman
+markdown: kramdown
+permalink: /:path/

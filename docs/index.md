@@ -1,10 +1,13 @@
 ---
 title: CASEDD Documentation
+layout: home
 ---
 
 # CASEDD Documentation
 
-This repository includes a live documentation site designed for GitHub Pages with source set to `docs/`.
+Welcome! This is the landing page for the CASEDD GitHub Pages docs. We now render with the `jekyll-theme-cayman` theme for readable, clean styling.
+
+This site is served from the `docs/` folder on the `main` branch.
 
 - README content is available from `docs/README.md` (synced from `/README.md`).
 - User documentation is in `docs/getters.md` and `docs/template_format.md`.
