@@ -90,6 +90,27 @@ _is_web_running() {
     [[ -f "$WEB_PID_FILE" ]] && kill -0 "$(cat "$WEB_PID_FILE")" 2>/dev/null
 }
 
+_cleanup_web_processes() {
+    local app_port
+    app_port="${CASEDD_APP_PORT:-5173}"
+
+    # Kill any stale listeners on the configured app port.
+    local pids
+    pids="$(ss -ltnp 2>/dev/null | grep -E ":${app_port}\\s" | grep -o 'pid=[0-9]\+' | cut -d= -f2 | sort -u || true)"
+    if [[ -n "$pids" ]]; then
+        while IFS= read -r stale_pid; do
+            [[ -z "$stale_pid" ]] && continue
+            kill "$stale_pid" 2>/dev/null || true
+            sleep 0.1
+            kill -9 "$stale_pid" 2>/dev/null || true
+        done <<< "$pids"
+    fi
+
+    # Also clean up stale vite/npm processes from this repo's web app.
+    pkill -f "$WEB_DIR/node_modules/.bin/vite" 2>/dev/null || true
+    pkill -f "npm run dev -- --host 0.0.0.0 --port" 2>/dev/null || true
+}
+
 _start_web() {
     if _is_web_running; then
         echo "advanced app dev server is already running (PID $(cat "$WEB_PID_FILE"))"
@@ -117,10 +138,14 @@ _start_web() {
     local app_port
     app_port="${CASEDD_APP_PORT:-5173}"
 
+    _cleanup_web_processes
+
     echo "Starting advanced app dev server (Vite)..."
     (
         cd "$WEB_DIR"
-        nohup npm run dev -- --host 0.0.0.0 --port "$app_port" >> "$WEB_LOG_FILE" 2>&1 &
+        # Run as its own process group so stop can terminate the full tree.
+        nohup setsid npm run dev -- --host 0.0.0.0 --port "$app_port" \
+            >> "$WEB_LOG_FILE" 2>&1 &
         echo $! > "$WEB_PID_FILE"
     )
 
@@ -153,7 +178,7 @@ _stop_web() {
     local pid
     pid=$(cat "$WEB_PID_FILE")
     echo "Stopping advanced app dev server (PID $pid)..."
-    kill "$pid"
+    kill -- "-$pid" 2>/dev/null || kill "$pid" 2>/dev/null || true
 
     local waited=0
     while kill -0 "$pid" 2>/dev/null && (( waited < 10 )); do
@@ -163,8 +188,10 @@ _stop_web() {
 
     if kill -0 "$pid" 2>/dev/null; then
         echo "WARNING: app dev server did not stop in 10s — sending SIGKILL" >&2
-        kill -9 "$pid" 2>/dev/null || true
+        kill -9 -- "-$pid" 2>/dev/null || kill -9 "$pid" 2>/dev/null || true
     fi
+
+    _cleanup_web_processes
 
     rm -f "$WEB_PID_FILE"
     echo "advanced app dev server stopped"
