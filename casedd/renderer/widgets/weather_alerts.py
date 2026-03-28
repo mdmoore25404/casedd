@@ -54,26 +54,55 @@ class WeatherAlertsWidget(BaseWidget):
         count = int(_to_float(data.get(f"{root}.alert_count"), 0.0))
         summary = str(data.get(f"{root}.alert_summary") or "No active alerts")
         watch_warning = str(data.get(f"{root}.watch_warning") or summary)
+        alert_level = str(data.get(f"{root}.alert_level") or "none").lower()
 
-        count_font = get_font(max(18, inner.h // 6))
-        body_font = get_font(max(12, inner.h // 14))
+        count_font = get_font(max(15, inner.h // 7))
+        body_font = get_font(max(11, inner.h // 15))
 
         has_alerts = count > 0
-        tone = parse_color(cfg.color, fallback=(228, 96, 96) if has_alerts else (102, 214, 140))
-        count_text = f"{count} active" if has_alerts else "No active alerts"
+        tone = _alert_tone(cfg.color, has_alerts, alert_level)
+        count_text = f"{count} active alert(s)" if has_alerts else "All clear"
+        body_color = (220, 226, 232) if has_alerts else (165, 176, 186)
 
         y = inner.y + label_h + 4
         draw.text((inner.x + 4, y), count_text, fill=tone, font=count_font)
         count_h = int(count_font.getbbox("Ag")[3] - count_font.getbbox("Ag")[1])
-        y += count_h + 3
+        y += count_h + 2
+
+        if not has_alerts:
+            draw.text(
+                (inner.x + 4, y),
+                "No active watches or warnings",
+                fill=body_color,
+                font=body_font,
+            )
+            return
 
         wrapped = _wrap_lines(body_font, watch_warning, max_width=inner.w - 8)
-        for line in wrapped[:4]:
-            draw.text((inner.x + 4, y), line, fill=(220, 226, 232), font=body_font)
-            y += 15
+        for line in wrapped[:2]:
+            draw.text((inner.x + 4, y), line, fill=body_color, font=body_font)
+            y += 14
 
         if summary and summary != watch_warning and y + 14 < inner.y + inner.h:
-            draw.text((inner.x + 4, y), summary[:80], fill=(172, 182, 192), font=body_font)
+            draw.text((inner.x + 4, y), summary[:72], fill=(172, 182, 192), font=body_font)
+
+
+def _alert_tone(
+    base_color: str | None,
+    has_alerts: bool,
+    alert_level: str,
+) -> tuple[int, int, int]:
+    """Choose alert accent color based on active severity."""
+    if not has_alerts:
+        return (140, 170, 150)
+
+    if alert_level == "warning":
+        return (238, 104, 92)
+    if alert_level == "watch":
+        return (242, 168, 84)
+    if alert_level == "advisory":
+        return (248, 206, 116)
+    return parse_color(base_color, fallback=(228, 96, 96))
 
 
 def _wrap_lines(

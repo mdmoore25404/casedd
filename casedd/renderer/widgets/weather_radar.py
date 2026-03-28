@@ -1,7 +1,7 @@
 """Weather radar widget renderer.
 
-Renders radar imagery from a remote URL when available and falls back to URL
-and station text when an image cannot be fetched.
+Renders radar imagery from a remote URL when available and falls back to a
+brief station status when an image cannot be fetched.
 """
 
 from __future__ import annotations
@@ -13,7 +13,6 @@ from urllib.request import Request, urlopen
 from PIL import Image, ImageDraw
 
 from casedd.data_store import DataStore
-from casedd.renderer.color import parse_color
 from casedd.renderer.fonts import fit_font, get_font
 from casedd.renderer.widgets.base import BaseWidget, content_rect, draw_label, fill_background
 from casedd.template.grid import Rect
@@ -48,13 +47,13 @@ class WeatherRadarWidget(BaseWidget):
             root = prefix
 
         radar_image_url = str(data.get(f"{root}.radar_image_url") or "").strip()
-        radar_url = str(data.get(f"{root}.radar_url") or "").strip()
         radar_station = str(data.get(f"{root}.radar_station") or "").strip()
+        zoom = cfg.zoom if cfg.zoom >= 1.0 else 1.0
 
-        image_rect = Rect(inner.x + 2, inner.y + label_h + 2, inner.w - 4, inner.h - label_h - 22)
+        image_rect = Rect(inner.x + 2, inner.y + label_h + 2, inner.w - 4, inner.h - label_h - 6)
         image = self._get_cached_image(state, radar_image_url)
         if image is not None and image_rect.w > 10 and image_rect.h > 10:
-            fitted = image.copy()
+            fitted = self._apply_zoom(image, zoom)
             fitted.thumbnail((image_rect.w, image_rect.h), Image.Resampling.LANCZOS)
             x = image_rect.x + (image_rect.w - fitted.width) // 2
             y = image_rect.y + (image_rect.h - fitted.height) // 2
@@ -69,15 +68,27 @@ class WeatherRadarWidget(BaseWidget):
             ty = image_rect.y + max(2, (image_rect.h - th) // 2)
             draw.text((tx, ty), fallback, fill=(195, 205, 215), font=font)
 
-        footer = radar_url if radar_url else "No radar URL"
-        footer_font = get_font(max(10, inner.h // 20))
-        footer_color = parse_color(cfg.color, fallback=(120, 182, 220))
-        draw.text(
-            (inner.x + 4, inner.y + inner.h - 14),
-            footer[:90],
-            fill=footer_color,
-            font=footer_font,
-        )
+        if zoom > 1.01:
+            zoom_text = f"{zoom:.1f}x"
+            draw.text(
+                (inner.x + inner.w - 44, inner.y + 2),
+                zoom_text,
+                fill=(125, 175, 205),
+                font=get_font(max(10, inner.h // 24)),
+            )
+
+    def _apply_zoom(self, image: Image.Image, zoom: float) -> Image.Image:
+        """Crop the radar image around center to emulate camera zoom."""
+        if zoom <= 1.01:
+            return image.copy()
+
+        crop_w = max(8, int(image.width / zoom))
+        crop_h = max(8, int(image.height / zoom))
+        left = max(0, (image.width - crop_w) // 2)
+        top = max(0, (image.height - crop_h) // 2)
+        right = left + crop_w
+        bottom = top + crop_h
+        return image.crop((left, top, right, bottom))
 
     def _get_cached_image(self, state: dict[str, object], url: str) -> Image.Image | None:
         """Fetch radar image with simple URL cache."""

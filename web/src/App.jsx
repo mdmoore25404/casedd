@@ -125,6 +125,7 @@ const WIDGET_TYPES = [
   "ups",
   "htop",
   "weather_conditions",
+  "weather_forecast",
   "weather_alerts",
   "weather_radar",
 ];
@@ -242,7 +243,9 @@ function collectWeatherPrefixedKeys(prefix) {
     `${root}.wind_mph`,
     `${root}.humidity_percent`,
     `${root}.forecast_short`,
+    `${root}.forecast_table`,
     `${root}.alert_count`,
+    `${root}.alert_level`,
     `${root}.alert_summary`,
     `${root}.watch_warning`,
     `${root}.radar_station`,
@@ -277,6 +280,7 @@ function generateScenarioData(template) {
 
       if (
         widget?.type === "weather_conditions" ||
+        widget?.type === "weather_forecast" ||
         widget?.type === "weather_alerts" ||
         widget?.type === "weather_radar"
       ) {

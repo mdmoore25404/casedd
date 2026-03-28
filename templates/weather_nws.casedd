@@ -10,9 +10,10 @@ refresh_rate: 1.0
 grid:
   template_areas: |
     conditions  radar
+    forecast    radar
     alerts      radar
   columns: 1fr 1fr
-  rows: 1fr 1fr
+  rows: 1.05fr 0.95fr 0.55fr
 
 widgets:
   conditions:
@@ -20,6 +21,14 @@ widgets:
     label: "Current Conditions"
     source: weather.conditions
     color: "#66ddaa"
+    background: "#111923"
+    padding: [6, 8]
+
+  forecast:
+    type: weather_forecast
+    label: "Forecast"
+    source: weather.forecast_table
+    color: "#9dd4ff"
     background: "#111923"
     padding: [6, 8]
 
@@ -36,5 +45,6 @@ widgets:
     label: "Radar"
     source: weather.radar_url
     color: "#6ec4ff"
+    zoom: 1.8
     background: "#111923"
     padding: [6, 8]

@@ -39,6 +39,7 @@ class WidgetType(StrEnum):
     UPS = "ups"
     HTOP = "htop"
     WEATHER_CONDITIONS = "weather_conditions"
+    WEATHER_FORECAST = "weather_forecast"
     WEATHER_ALERTS = "weather_alerts"
     WEATHER_RADAR = "weather_radar"
 
@@ -178,6 +179,7 @@ class WidgetConfig(BaseModel):
     # Image widget
     path: str | None = None
     scale: ScaleMode = ScaleMode.FIT
+    zoom: float = Field(default=1.0, ge=1.0, le=8.0)
 
     # Slideshow widget
     paths: list[str] = Field(default_factory=list)

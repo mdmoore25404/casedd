@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from datetime import date, datetime
 import json
 import logging
 from typing import cast
@@ -177,6 +178,7 @@ class WeatherGetter(BaseGetter):
             wind_mph = wind_kmh * 0.621371 if wind_kmh is not None else 0.0
 
         short_forecast = ""
+        forecast_table = ""
         if forecast_url:
             forecast = self._request_json(forecast_url)
             if forecast is not None:
@@ -191,6 +193,7 @@ class WeatherGetter(BaseGetter):
                     first_period = periods[0]
                     if isinstance(first_period, dict):
                         short_forecast = str(first_period.get("shortForecast") or "")
+                    forecast_table = _build_nws_forecast_table(periods)
 
         alert_url = (
             "https://api.weather.gov/alerts/active?"
@@ -199,12 +202,14 @@ class WeatherGetter(BaseGetter):
         alerts = self._request_json(alert_url)
         alert_count = 0
         alert_summary = "None"
+        alert_level = "none"
         if alerts is not None:
             features = alerts.get("features")
             if isinstance(features, list):
                 alert_count = len(features)
                 if features:
                     headlines: list[str] = []
+                    top_rank = 0
                     for feature in features[:3]:
                         if not isinstance(feature, dict):
                             continue
@@ -214,8 +219,10 @@ class WeatherGetter(BaseGetter):
                         event = str(props_alert.get("event") or "Alert")
                         severity = str(props_alert.get("severity") or "")
                         headlines.append(f"{event} {severity}".strip())
+                        top_rank = max(top_rank, _alert_rank(event, severity))
                     if headlines:
                         alert_summary = " | ".join(headlines)
+                    alert_level = _rank_to_alert_level(top_rank)
 
         radar_image_url = ""
         radar_url = ""
@@ -235,8 +242,10 @@ class WeatherGetter(BaseGetter):
             "weather.humidity_percent": round(max(0.0, humidity), 1),
             "weather.icon_url": icon_url,
             "weather.forecast_short": short_forecast,
+            "weather.forecast_table": forecast_table,
             "weather.alert_count": float(alert_count),
             "weather.alert_active": 1 if alert_count > 0 else 0,
+            "weather.alert_level": alert_level,
             "weather.alert_summary": alert_summary,
             "weather.watch_warning": alert_summary,
             "weather.radar_station": radar_station,
@@ -253,6 +262,11 @@ class WeatherGetter(BaseGetter):
                     "latitude": f"{coords.lat:.4f}",
                     "longitude": f"{coords.lon:.4f}",
                     "current": "temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code",
+                    "daily": (
+                        "temperature_2m_max,temperature_2m_min,"
+                        "precipitation_probability_max,wind_speed_10m_max"
+                    ),
+                    "forecast_days": 5,
                     "temperature_unit": "fahrenheit",
                     "wind_speed_unit": "mph",
                     "timezone": "auto",
@@ -272,6 +286,7 @@ class WeatherGetter(BaseGetter):
         wind_mph = _safe_float(current.get("wind_speed_10m")) or 0.0
         code = int(_safe_float(current.get("weather_code")) or 0)
         condition = _open_meteo_code_to_text(code)
+        forecast_table = _build_open_meteo_forecast_table(payload)
 
         return {
             "weather.provider": "open-meteo",
@@ -282,8 +297,10 @@ class WeatherGetter(BaseGetter):
             "weather.humidity_percent": round(max(0.0, humidity), 1),
             "weather.icon_url": "",
             "weather.forecast_short": condition,
+            "weather.forecast_table": forecast_table,
             "weather.alert_count": 0.0,
             "weather.alert_active": 0,
+            "weather.alert_level": "none",
             "weather.alert_summary": "No external alert feed configured",
             "weather.watch_warning": "No external alert feed configured",
             "weather.radar_station": "",
@@ -324,6 +341,8 @@ class WeatherGetter(BaseGetter):
             "weather.conditions": message,
             "weather.alert_count": 0.0,
             "weather.alert_active": 0,
+            "weather.alert_level": "none",
+            "weather.forecast_table": "",
             "weather.alert_summary": "Unavailable",
             "weather.watch_warning": "Unavailable",
             "weather.radar_url": "",
@@ -369,3 +388,182 @@ def _open_meteo_code_to_text(code: int) -> str:
         99: "Severe thunderstorm hail",
     }
     return mapping.get(code, f"Code {code}")
+
+
+def _build_nws_forecast_table(periods: list[object]) -> str:
+    """Build a compact day/low-high/precip/wind forecast table from NWS periods."""
+    if not periods:
+        return ""
+
+    by_day: dict[str, dict[str, float | str | None]] = {}
+    day_order: list[str] = []
+
+    for period_obj in periods:
+        if not isinstance(period_obj, dict):
+            continue
+        day_key = _day_from_period(period_obj)
+        if day_key is None:
+            continue
+        if day_key not in by_day:
+            by_day[day_key] = {"hi": None, "lo": None, "pop": None, "wind": "--"}
+            day_order.append(day_key)
+
+        _merge_nws_period(by_day[day_key], period_obj)
+
+    if not day_order:
+        return ""
+
+    rows = ["DAY LO/HI PCP WIND"]
+    for day_key in day_order[:5]:
+        bucket = by_day[day_key]
+        hi = bucket["hi"]
+        lo = bucket["lo"]
+        pop = bucket["pop"]
+        wind = str(bucket["wind"] or "--")
+        lo_hi = f"{_fmt_temp(lo)}/{_fmt_temp(hi)}"
+        pop_text = f"{round(pop):>3}%" if isinstance(pop, float) else " --%"
+        rows.append(f"{day_key:>3} {lo_hi:>5} {pop_text} {wind[:10]}")
+
+    return "\n".join(rows)
+
+
+def _build_open_meteo_forecast_table(payload: dict[str, object]) -> str:
+    """Build forecast rows from Open-Meteo daily arrays."""
+    daily_obj = payload.get("daily")
+    if not isinstance(daily_obj, dict):
+        return ""
+
+    times = daily_obj.get("time")
+    hi_vals = daily_obj.get("temperature_2m_max")
+    lo_vals = daily_obj.get("temperature_2m_min")
+    pop_vals = daily_obj.get("precipitation_probability_max")
+    wind_vals = daily_obj.get("wind_speed_10m_max")
+
+    if not isinstance(times, list):
+        return ""
+
+    rows = ["DAY LO/HI PCP WIND"]
+    count = min(5, len(times))
+    for idx in range(count):
+        day = _short_day(str(times[idx]))
+        hi = _to_float_at(hi_vals, idx)
+        lo = _to_float_at(lo_vals, idx)
+        pop = _to_float_at(pop_vals, idx)
+        wind = _to_float_at(wind_vals, idx)
+        lo_hi = f"{_fmt_temp(lo)}/{_fmt_temp(hi)}"
+        pop_text = f"{round(pop):>3}%" if pop is not None else " --%"
+        wind_text = f"{round(wind)}mph" if wind is not None else "--"
+        rows.append(f"{day:>3} {lo_hi:>5} {pop_text} {wind_text}")
+
+    return "\n".join(rows)
+
+
+def _short_day(raw_date: str) -> str:
+    """Convert YYYY-MM-DD or ISO date strings to 3-letter uppercase day name."""
+    try:
+        dt = date.fromisoformat(raw_date[:10])
+    except ValueError:
+        return "DAY"
+    return dt.strftime("%a").upper()[:3]
+
+
+def _to_float_at(values: object, idx: int) -> float | None:
+    """Read one numeric element from an array-like object."""
+    if not isinstance(values, list):
+        return None
+    if idx < 0 or idx >= len(values):
+        return None
+    return _safe_float(values[idx])
+
+
+def _fmt_temp(value: float | str | None) -> str:
+    """Format temperature tokens for compact forecast rows."""
+    if isinstance(value, float):
+        return f"{round(value):>2}"
+    return "--"
+
+
+def _day_from_period(period_obj: dict[str, object]) -> str | None:
+    """Extract 3-letter day token from an NWS period object."""
+    start_raw = str(period_obj.get("startTime") or "")
+    dt = _parse_iso_datetime(start_raw)
+    if dt is None:
+        return None
+    return dt.strftime("%a").upper()[:3]
+
+
+def _merge_nws_period(
+    bucket: dict[str, float | str | None],
+    period_obj: dict[str, object],
+) -> None:
+    """Merge one NWS period into accumulated day bucket fields."""
+    temp = _safe_float(period_obj.get("temperature"))
+    is_daytime = bool(period_obj.get("isDaytime"))
+    if temp is not None:
+        if is_daytime:
+            bucket["hi"] = temp
+        elif bucket["lo"] is None:
+            bucket["lo"] = temp
+
+    pop_obj = period_obj.get("probabilityOfPrecipitation")
+    if isinstance(pop_obj, dict):
+        pop = _safe_float(pop_obj.get("value"))
+        if pop is not None:
+            current_pop = bucket["pop"]
+            if not isinstance(current_pop, float) or pop > current_pop:
+                bucket["pop"] = pop
+
+    if not is_daytime:
+        return
+
+    wind_speed = _extract_first_float(str(period_obj.get("windSpeed") or ""))
+    wind_dir = str(period_obj.get("windDirection") or "").strip().upper()
+    if wind_speed is not None:
+        speed_text = f"{round(wind_speed)}mph"
+        bucket["wind"] = f"{speed_text} {wind_dir}".strip()
+
+
+def _parse_iso_datetime(raw: str) -> datetime | None:
+    """Parse ISO datetime string, including trailing Z form."""
+    if not raw:
+        return None
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        return datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+
+
+def _extract_first_float(raw: str) -> float | None:
+    """Extract first numeric token from strings like '5 to 10 mph'."""
+    if not raw:
+        return None
+    for token in raw.replace("-", " ").split():
+        number = _safe_float(token)
+        if number is not None:
+            return number
+    return None
+
+
+def _alert_rank(event: str, severity: str) -> int:
+    """Map alert event/severity text to ranking for color policy."""
+    sev = severity.strip().lower()
+    evt = event.strip().lower()
+    if "warning" in evt or sev in {"extreme", "severe"}:
+        return 3
+    if "watch" in evt or sev == "moderate":
+        return 2
+    if "advisory" in evt or sev in {"minor", "unknown"}:
+        return 1
+    return 1 if evt else 0
+
+
+def _rank_to_alert_level(rank: int) -> str:
+    """Convert alert rank to canonical level string."""
+    if rank >= 3:
+        return "warning"
+    if rank == 2:
+        return "watch"
+    if rank == 1:
+        return "advisory"
+    return "none"

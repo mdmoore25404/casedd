@@ -27,6 +27,7 @@ from casedd.renderer.widgets.ups import UpsWidget
 from casedd.renderer.widgets.value import ValueWidget
 from casedd.renderer.widgets.weather_alerts import WeatherAlertsWidget
 from casedd.renderer.widgets.weather_conditions import WeatherConditionsWidget
+from casedd.renderer.widgets.weather_forecast import WeatherForecastWidget
 from casedd.renderer.widgets.weather_radar import WeatherRadarWidget
 from casedd.template.models import WidgetType
 
@@ -47,6 +48,7 @@ _REGISTRY: dict[WidgetType, BaseWidget] = {
     WidgetType.UPS: UpsWidget(),
     WidgetType.HTOP: HtopWidget(),
     WidgetType.WEATHER_CONDITIONS: WeatherConditionsWidget(),
+    WidgetType.WEATHER_FORECAST: WeatherForecastWidget(),
     WidgetType.WEATHER_ALERTS: WeatherAlertsWidget(),
     WidgetType.WEATHER_RADAR: WeatherRadarWidget(),
 }
