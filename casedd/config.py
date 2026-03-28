@@ -190,6 +190,14 @@ class Config:
         speedtest_critical_ratio: Ratio under which speeds are considered critical.
         speedtest_binary: Speedtest CLI binary name or absolute path.
         speedtest_server_id: Optional Ookla server ID to force test target.
+        htop_interval: Process table polling interval in seconds.
+        htop_max_rows: Maximum process rows for htop-style widget.
+        weather_provider: Weather provider identifier (nws/open-meteo).
+        weather_interval: Weather polling interval in seconds.
+        weather_zipcode: Optional US zipcode used for location lookup.
+        weather_lat: Optional latitude override for weather polling.
+        weather_lon: Optional longitude override for weather polling.
+        weather_user_agent: User-Agent header sent to weather APIs.
         ollama_api_base: Base URL for Ollama HTTP API.
         ollama_interval: Ollama polling interval in seconds.
         ollama_timeout: Ollama request timeout in seconds.
@@ -233,6 +241,16 @@ class Config:
     speedtest_critical_ratio: float = Field(default=0.7)
     speedtest_binary: str = Field(default="speedtest")
     speedtest_server_id: str | None = Field(default=None)
+    htop_interval: float = Field(default=2.0)
+    htop_max_rows: int = Field(default=12, ge=1, le=40)
+    weather_provider: str = Field(default="nws")
+    weather_interval: float = Field(default=300.0)
+    weather_zipcode: str | None = Field(default=None)
+    weather_lat: float | None = Field(default=None)
+    weather_lon: float | None = Field(default=None)
+    weather_user_agent: str = Field(
+        default="CASEDD/0.2 (https://github.com/casedd/casedd)",
+    )
     ollama_api_base: str = Field(default="http://localhost:11434")
     ollama_interval: float = Field(default=10.0)
     ollama_timeout: float = Field(default=3.0)
@@ -602,6 +620,23 @@ def load_config() -> Config:
             _get("CASEDD_SPEEDTEST_SERVER_ID", "speedtest_server_id", "")
         )
         or None,
+        htop_interval=float(str(_get("CASEDD_HTOP_INTERVAL", "htop_interval", 2.0))),
+        htop_max_rows=int(str(_get("CASEDD_HTOP_MAX_ROWS", "htop_max_rows", 12))),
+        weather_provider=str(_get("CASEDD_WEATHER_PROVIDER", "weather_provider", "nws")),
+        weather_interval=float(
+            str(_get("CASEDD_WEATHER_INTERVAL", "weather_interval", 300.0))
+        ),
+        weather_zipcode=str(_get("CASEDD_WEATHER_ZIPCODE", "weather_zipcode", "")).strip()
+        or None,
+        weather_lat=_get_optional_float("CASEDD_WEATHER_LAT", "weather_lat"),
+        weather_lon=_get_optional_float("CASEDD_WEATHER_LON", "weather_lon"),
+        weather_user_agent=str(
+            _get(
+                "CASEDD_WEATHER_USER_AGENT",
+                "weather_user_agent",
+                "CASEDD/0.2 (https://github.com/casedd/casedd)",
+            )
+        ),
         ollama_api_base=str(_get("CASEDD_OLLAMA_API_BASE", "ollama_api_base", "http://localhost:11434")),
         ollama_interval=float(str(_get("CASEDD_OLLAMA_INTERVAL", "ollama_interval", 10.0))),
         ollama_timeout=float(str(_get("CASEDD_OLLAMA_TIMEOUT", "ollama_timeout", 3.0))),

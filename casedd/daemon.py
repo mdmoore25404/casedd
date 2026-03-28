@@ -31,12 +31,14 @@ from casedd.getters.cpu import CpuGetter
 from casedd.getters.disk import DiskGetter
 from casedd.getters.fans import FanGetter
 from casedd.getters.gpu import GpuGetter
+from casedd.getters.htop import HtopGetter
 from casedd.getters.memory import MemoryGetter
 from casedd.getters.network import NetworkGetter
 from casedd.getters.ollama import OllamaGetter
 from casedd.getters.speedtest import SpeedtestGetter
 from casedd.getters.system import SystemGetter
 from casedd.getters.ups import UpsGetter
+from casedd.getters.weather import WeatherGetter
 from casedd.ingestion.unix_socket import UnixSocketIngestion
 from casedd.outputs.framebuffer import FramebufferOutput
 from casedd.outputs.http_viewer import HttpViewerOutput
@@ -337,6 +339,11 @@ class Daemon:
             NetworkGetter(self._store, interfaces=self._cfg.net_interfaces),
             SystemGetter(self._store),
             FanGetter(self._store),
+            HtopGetter(
+                self._store,
+                interval=self._cfg.htop_interval,
+                max_rows=self._cfg.htop_max_rows,
+            ),
             SpeedtestGetter(
                 self._store,
                 interval=self._cfg.speedtest_interval,
@@ -360,6 +367,15 @@ class Daemon:
                 interval=self._cfg.ups_interval,
                 command=self._cfg.ups_command,
                 upsc_target=self._cfg.ups_upsc_target,
+            ),
+            WeatherGetter(
+                self._store,
+                provider=self._cfg.weather_provider,
+                interval=self._cfg.weather_interval,
+                zipcode=self._cfg.weather_zipcode,
+                lat=self._cfg.weather_lat,
+                lon=self._cfg.weather_lon,
+                user_agent=self._cfg.weather_user_agent,
             ),
         ]
 
@@ -450,6 +466,8 @@ class Daemon:
             ("speedtest.", "SpeedtestGetter"),
             ("ollama.", "OllamaGetter"),
             ("ups.", "UpsGetter"),
+            ("htop.", "HtopGetter"),
+            ("weather.", "WeatherGetter"),
         )
         for prefix, getter_name in mapping:
             if source.startswith(prefix):

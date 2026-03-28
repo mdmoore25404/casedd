@@ -18,12 +18,16 @@ from casedd.renderer.widgets.base import BaseWidget
 from casedd.renderer.widgets.clock import ClockWidget
 from casedd.renderer.widgets.gauge import GaugeWidget
 from casedd.renderer.widgets.histogram import HistogramWidget
+from casedd.renderer.widgets.htop import HtopWidget
 from casedd.renderer.widgets.image import ImageWidget
 from casedd.renderer.widgets.slideshow import SlideshowWidget
 from casedd.renderer.widgets.sparkline import SparklineWidget
 from casedd.renderer.widgets.text import TextWidget
 from casedd.renderer.widgets.ups import UpsWidget
 from casedd.renderer.widgets.value import ValueWidget
+from casedd.renderer.widgets.weather_alerts import WeatherAlertsWidget
+from casedd.renderer.widgets.weather_conditions import WeatherConditionsWidget
+from casedd.renderer.widgets.weather_radar import WeatherRadarWidget
 from casedd.template.models import WidgetType
 
 # Instantiated once; all renderers are stateless — state lives in the engine's
@@ -41,6 +45,10 @@ _REGISTRY: dict[WidgetType, BaseWidget] = {
     WidgetType.SLIDESHOW: SlideshowWidget(),
     WidgetType.CLOCK: ClockWidget(),
     WidgetType.UPS: UpsWidget(),
+    WidgetType.HTOP: HtopWidget(),
+    WidgetType.WEATHER_CONDITIONS: WeatherConditionsWidget(),
+    WidgetType.WEATHER_ALERTS: WeatherAlertsWidget(),
+    WidgetType.WEATHER_RADAR: WeatherRadarWidget(),
 }
 
 

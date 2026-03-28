@@ -37,6 +37,10 @@ class WidgetType(StrEnum):
     SLIDESHOW = "slideshow"
     CLOCK = "clock"
     UPS = "ups"
+    HTOP = "htop"
+    WEATHER_CONDITIONS = "weather_conditions"
+    WEATHER_ALERTS = "weather_alerts"
+    WEATHER_RADAR = "weather_radar"
 
 
 class ScaleMode(StrEnum):

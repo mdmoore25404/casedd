@@ -123,6 +123,10 @@ const WIDGET_TYPES = [
   "slideshow",
   "clock",
   "ups",
+  "htop",
+  "weather_conditions",
+  "weather_alerts",
+  "weather_radar",
 ];
 
 function prettyJson(value) {
@@ -173,6 +177,14 @@ function isStringMetric(key, widget) {
     token.includes("meta") ||
     token.includes("status") ||
     token.includes("state") ||
+    token.includes("condition") ||
+    token.includes("location") ||
+    token.includes("provider") ||
+    token.includes("warning") ||
+    token.includes("forecast") ||
+    token.includes("radar_url") ||
+    token.includes("image_url") ||
+    token.includes("station") ||
     token.includes("name") ||
     token.includes("hostname")
   );
@@ -215,6 +227,30 @@ function collectUpsPrefixedKeys(prefix) {
   ];
 }
 
+function collectHtopPrefixedKeys(prefix) {
+  const root = prefix && prefix.trim() ? prefix.trim().replace(/\.rows$/, "") : "htop";
+  return [`${root}.rows`, `${root}.summary`, `${root}.process_count`];
+}
+
+function collectWeatherPrefixedKeys(prefix) {
+  const root = prefix && prefix.trim() ? prefix.trim().replace(/\.[^.]+$/, "") : "weather";
+  return [
+    `${root}.provider`,
+    `${root}.location`,
+    `${root}.conditions`,
+    `${root}.temp_f`,
+    `${root}.wind_mph`,
+    `${root}.humidity_percent`,
+    `${root}.forecast_short`,
+    `${root}.alert_count`,
+    `${root}.alert_summary`,
+    `${root}.watch_warning`,
+    `${root}.radar_station`,
+    `${root}.radar_url`,
+    `${root}.radar_image_url`,
+  ];
+}
+
 function isBooleanMetric(key) {
   const token = key.toLowerCase();
   return (
@@ -231,6 +267,26 @@ function generateScenarioData(template) {
   const entries = collectSourceEntries(template);
   if (template?.widgets) {
     Object.values(template.widgets).forEach((widget) => {
+      if (widget?.type === "htop") {
+        collectHtopPrefixedKeys(widget?.source || "htop.rows").forEach((key) => {
+          if (!entries.some((entry) => entry.key === key)) {
+            entries.push({ key, widget });
+          }
+        });
+      }
+
+      if (
+        widget?.type === "weather_conditions" ||
+        widget?.type === "weather_alerts" ||
+        widget?.type === "weather_radar"
+      ) {
+        collectWeatherPrefixedKeys(widget?.source || "weather.conditions").forEach((key) => {
+          if (!entries.some((entry) => entry.key === key)) {
+            entries.push({ key, widget });
+          }
+        });
+      }
+
       if (widget?.type !== "ups") {
         return;
       }
@@ -245,6 +301,17 @@ function generateScenarioData(template) {
   const randomFields = [];
 
   entries.forEach(({ key, widget }) => {
+    if (widget?.type === "htop") {
+      if (key.endsWith(".rows")) {
+        updatePayload[key] = " 1201  17.2%   3.1% python\n  942   8.4%   1.2% node\n  301   4.5%   0.9% casedd";
+      } else if (key.endsWith(".summary")) {
+        updatePayload[key] = "Top CPU: python 17.2%";
+      } else if (key.endsWith(".process_count")) {
+        updatePayload[key] = 248;
+      }
+      return;
+    }
+
     if (widget?.type === "ups") {
       const prefix = widget?.source && widget.source.trim() ? widget.source.trim() : "ups";
       if (key === prefix) {

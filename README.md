@@ -231,6 +231,45 @@ This template visualizes:
 - system fan count / avg / max
 - GPU fan count / avg / max (percent when sourced from nvidia-smi)
 
+### Htop-style process template
+
+A single-widget process table template is provided at [templates/htop.casedd](templates/htop.casedd).
+
+```bash
+export CASEDD_TEMPLATE=htop
+./dev.sh restart
+```
+
+The ``htop`` widget shows top processes sorted by CPU utilization.
+
+### Weather templates (NWS + external provider example)
+
+Weather templates are provided at:
+- [templates/weather_nws.casedd](templates/weather_nws.casedd)
+- [templates/weather_external.casedd](templates/weather_external.casedd)
+
+NWS mode (official US APIs):
+
+```bash
+export CASEDD_TEMPLATE=weather_nws
+export CASEDD_WEATHER_PROVIDER=nws
+export CASEDD_WEATHER_ZIPCODE=20852
+./dev.sh restart
+```
+
+External provider example (Open-Meteo):
+
+```bash
+export CASEDD_TEMPLATE=weather_external
+export CASEDD_WEATHER_PROVIDER=open-meteo
+export CASEDD_WEATHER_LAT=38.9856
+export CASEDD_WEATHER_LON=-77.0947
+./dev.sh restart
+```
+
+Both providers emit the same ``weather.*`` keys so the same widgets/templates
+can be reused without NWS-specific rendering logic.
+
 ### Immediate speedtest push helper
 
 Run an on-demand Ookla speedtest and push the result into CASEDD via REST:
