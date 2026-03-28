@@ -22,6 +22,7 @@ import logging
 import os
 from pathlib import Path
 import random
+import re
 import socket
 import threading
 import time
@@ -68,6 +69,15 @@ class TemplateSaveRequest(BaseModel):
     model_config = ConfigDict(strict=True, frozen=True)
 
     template: Annotated[dict[str, object], Field(min_length=1)]
+
+
+class TemplateImportRequest(BaseModel):
+    """Payload for importing a raw .casedd template file."""
+
+    model_config = ConfigDict(strict=True, frozen=True)
+
+    content: str = Field(min_length=1)
+    name: str | None = None
 
 
 class TestModeRequest(BaseModel):
@@ -450,6 +460,15 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     def _template_path(name: str) -> Path:
         return templates_dir / f"{name}.casedd"
 
+    def _validate_template_name(name: str) -> str:
+        cleaned = name.strip()
+        if not cleaned:
+            raise HTTPException(status_code=400, detail="Template name cannot be blank")
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", cleaned):
+            msg = "Template name may only contain letters, numbers, '_' and '-'"
+            raise HTTPException(status_code=400, detail=msg)
+        return cleaned
+
     def _load_template_payload(name: str) -> dict[str, object]:
         path = _template_path(name)
         try:
@@ -565,8 +584,9 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
 
     @app.put("/api/templates/{name}", summary="Validate and save template")
     async def put_template(name: str, body: TemplateSaveRequest) -> dict[str, object]:
+        safe_name = _validate_template_name(name)
         candidate = dict(body.template)
-        candidate["name"] = name
+        candidate["name"] = safe_name
 
         try:
             validated = Template.model_validate(candidate)
@@ -579,18 +599,76 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         output = validated.model_dump(mode="json")
         yaml_text = yaml.safe_dump(output, sort_keys=False)
 
-        path = _template_path(name)
+        path = _template_path(safe_name)
         try:
             path.write_text(yaml_text, encoding="utf-8")
         except OSError as exc:
             raise HTTPException(
                 status_code=500,
-                detail=f"Could not write template '{name}': {exc}",
+                detail=f"Could not write template '{safe_name}': {exc}",
             ) from exc
 
         return {
             "status": "ok",
-            "name": name,
+            "name": safe_name,
+            "path": str(path),
+            "template": output,
+        }
+
+    @app.get("/api/templates/{name}/export", summary="Export template .casedd YAML")
+    async def export_template(name: str) -> Response:
+        safe_name = _validate_template_name(name)
+        path = _template_path(safe_name)
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"Unknown template '{safe_name}'")
+        try:
+            content = path.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not read template '{safe_name}': {exc}",
+            ) from exc
+        headers = {
+            "Content-Disposition": f"attachment; filename={safe_name}.casedd",
+        }
+        return Response(content=content, media_type="text/yaml", headers=headers)
+
+    @app.post("/api/templates/import", summary="Import template .casedd YAML")
+    async def import_template(body: TemplateImportRequest) -> dict[str, object]:
+        try:
+            raw = yaml.safe_load(body.content)
+        except yaml.YAMLError as exc:
+            raise HTTPException(status_code=422, detail=f"YAML parse error: {exc}") from exc
+
+        if not isinstance(raw, dict):
+            msg = "Template import failed: top-level YAML must be a mapping"
+            raise HTTPException(status_code=422, detail=msg)
+
+        try:
+            validated = Template.model_validate(raw)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Template validation failed: {exc}",
+            ) from exc
+
+        template_name = body.name if body.name else str(validated.name)
+        safe_name = _validate_template_name(template_name)
+        output = validated.model_dump(mode="json")
+        output["name"] = safe_name
+
+        path = _template_path(safe_name)
+        try:
+            path.write_text(yaml.safe_dump(output, sort_keys=False), encoding="utf-8")
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not write template '{safe_name}': {exc}",
+            ) from exc
+
+        return {
+            "status": "ok",
+            "name": safe_name,
             "path": str(path),
             "template": output,
         }

@@ -3,6 +3,8 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBolt,
   faCirclePlay,
+  faFileArrowDown,
+  faFileArrowUp,
   faFlask,
   faFloppyDisk,
   faList,
@@ -15,9 +17,11 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import {
+  exportTemplateFile,
   fetchTemplate,
   fetchTemplates,
   fetchPanels,
+  importTemplateFile,
   getSimulationStatus,
   getTestMode,
   postDataUpdate,
@@ -120,77 +124,6 @@ const WIDGET_TYPES = [
   "ups",
 ];
 
-const DEFAULT_UPDATE_PAYLOAD = {
-  "cpu.percent": 36.2,
-  "cpu.temperature": 58.4,
-  "nvidia.percent": 42.0,
-  "nvidia.temperature": 63.1,
-  "memory.percent": 54.5,
-  "nvidia.memory_percent": 47.2,
-  "disk.percent": 62.4,
-  "net.recv_mbps": 28.3,
-  "net.sent_mbps": 6.8,
-  "disk.read_mbps": 124.2,
-  "disk.write_mbps": 17.4,
-  "speedtest.download_pct_ref": 69.4,
-  "speedtest.upload_pct_ref": 58.8,
-  "speedtest.simple_summary": "Down 925 Mb/s | Up 296 Mb/s | Ping 18 ms",
-  "ollama.active_compact": "llama3: 6 req/s",
-  "outside_temp_f": 72.3,
-  "fans.cpu.max_rpm": 1320,
-  "fans.system.max_rpm": 990,
-};
-
-const DEFAULT_RANDOM_SIMULATION = {
-  interval: 1.0,
-  fields: [
-    { key: "cpu.percent", min: 0, max: 100, step: 5 },
-    { key: "cpu.temperature", min: 45, max: 85, step: 1 },
-    { key: "nvidia.percent", min: 0, max: 100, step: 7 },
-    { key: "nvidia.temperature", min: 40, max: 90, step: 1 },
-    { key: "net.recv_mbps", min: 0, max: 200, step: 9 },
-    { key: "net.sent_mbps", min: 0, max: 80, step: 5 },
-    { key: "disk.read_mbps", min: 0, max: 250, step: 10 },
-    { key: "disk.write_mbps", min: 0, max: 120, step: 8 },
-  ],
-};
-
-const DEFAULT_REPLAY_RECORDS = [
-  {
-    at_ms: 0,
-    update: {
-      "cpu.percent": 18,
-      "cpu.temperature": 49,
-      "nvidia.percent": 15,
-      "nvidia.temperature": 52,
-      "net.recv_mbps": 8,
-      "net.sent_mbps": 2,
-    },
-  },
-  {
-    at_ms: 1200,
-    update: {
-      "cpu.percent": 56,
-      "cpu.temperature": 66,
-      "nvidia.percent": 52,
-      "nvidia.temperature": 71,
-      "net.recv_mbps": 44,
-      "net.sent_mbps": 11,
-    },
-  },
-  {
-    at_ms: 2400,
-    update: {
-      "cpu.percent": 34,
-      "cpu.temperature": 58,
-      "nvidia.percent": 31,
-      "nvidia.temperature": 64,
-      "net.recv_mbps": 22,
-      "net.sent_mbps": 7,
-    },
-  },
-];
-
 function prettyJson(value) {
   return JSON.stringify(value, null, 2);
 }
@@ -204,6 +137,119 @@ function parseJson(rawText, label) {
   }
 }
 
+function inferNumericRange(key, widget) {
+  if (
+    typeof widget?.min === "number" &&
+    typeof widget?.max === "number" &&
+    widget.max > widget.min
+  ) {
+    return { min: widget.min, max: widget.max };
+  }
+
+  const token = key.toLowerCase();
+  if (token.includes("percent") || token.includes("pct")) {
+    return { min: 0, max: 100 };
+  }
+  if (token.includes("temp")) {
+    return { min: 30, max: 95 };
+  }
+  if (token.includes("rpm")) {
+    return { min: 500, max: 2400 };
+  }
+  if (token.includes("mbps") || token.includes("speed") || token.includes("read") || token.includes("write")) {
+    return { min: 0, max: 300 };
+  }
+  return { min: 0, max: 100 };
+}
+
+function isStringMetric(key, widget) {
+  const token = key.toLowerCase();
+  if (widget?.type === "text" || widget?.type === "clock") {
+    return true;
+  }
+  return (
+    token.includes("summary") ||
+    token.includes("meta") ||
+    token.includes("status") ||
+    token.includes("state") ||
+    token.includes("name") ||
+    token.includes("hostname")
+  );
+}
+
+function collectSourceEntries(template) {
+  if (!template?.widgets) {
+    return [];
+  }
+
+  const byKey = new Map();
+  Object.values(template.widgets).forEach((widget) => {
+    if (typeof widget?.source === "string" && widget.source.trim()) {
+      byKey.set(widget.source, widget);
+    }
+    if (Array.isArray(widget?.sources)) {
+      widget.sources.forEach((sourceKey) => {
+        if (typeof sourceKey === "string" && sourceKey.trim()) {
+          byKey.set(sourceKey, widget);
+        }
+      });
+    }
+  });
+
+  return Array.from(byKey.entries()).map(([key, widget]) => ({ key, widget }));
+}
+
+function generateScenarioData(template) {
+  const entries = collectSourceEntries(template);
+  const updatePayload = {};
+  const randomFields = [];
+
+  entries.forEach(({ key, widget }) => {
+    if (isStringMetric(key, widget)) {
+      const suffix = key.split(".").at(-1) || key;
+      updatePayload[key] = `${suffix} sample`;
+      return;
+    }
+
+    const range = inferNumericRange(key, widget);
+    const middle = Number(((range.min + range.max) / 2).toFixed(2));
+    updatePayload[key] = middle;
+    randomFields.push({
+      key,
+      min: range.min,
+      max: range.max,
+      step: Math.max(1, Number(((range.max - range.min) / 20).toFixed(2))),
+    });
+  });
+
+  const replayRecords = [0.6, 0.9, 0.7].map((scale, index) => {
+    const update = {};
+    entries.forEach(({ key, widget }) => {
+      if (isStringMetric(key, widget)) {
+        update[key] = updatePayload[key];
+        return;
+      }
+      const range = inferNumericRange(key, widget);
+      const value = range.min + ((range.max - range.min) * scale);
+      update[key] = Number(value.toFixed(2));
+    });
+
+    return {
+      at_ms: index * 1200,
+      update,
+    };
+  });
+
+  return {
+    updatePayload,
+    randomSimulation: {
+      interval: 1.0,
+      fields: randomFields,
+    },
+    replayRecords,
+  };
+}
+
 export function App() {
   const [panelsData, setPanelsData] = useState({ panels: [], default_panel: "", test_mode: false });
   const [templates, setTemplates] = useState([]);
@@ -213,13 +259,14 @@ export function App() {
   const [templateDirty, setTemplateDirty] = useState(false);
   const [status, setStatus] = useState("ready");
   const [selectedPanel, setSelectedPanel] = useState("");
-  const [templateName, setTemplateName] = useState("");
+  const [templateName, setTemplateName] = useState("auto");
   const [previewNonce, setPreviewNonce] = useState(() => Date.now());
-  const [updateJson, setUpdateJson] = useState(() => prettyJson(DEFAULT_UPDATE_PAYLOAD));
+  const [updateJson, setUpdateJson] = useState(() => prettyJson({}));
   const [testModeEnabled, setTestModeEnabled] = useState(false);
   const [simStatus, setSimStatus] = useState({ running: false, mode: "idle" });
-  const [randomJson, setRandomJson] = useState(() => prettyJson(DEFAULT_RANDOM_SIMULATION));
-  const [replayJson, setReplayJson] = useState(() => prettyJson(DEFAULT_REPLAY_RECORDS));
+  const [randomJson, setRandomJson] = useState(() => prettyJson({ interval: 1.0, fields: [] }));
+  const [replayJson, setReplayJson] = useState(() => prettyJson([]));
+  const importInputRef = useRef(null);
 
   const refreshPanels = useCallback(async () => {
     const payload = await fetchPanels();
@@ -302,6 +349,13 @@ export function App() {
     return selectedWidgetConfig.sources.join("\n");
   }, [selectedWidgetConfig]);
 
+  const applyScenarioFromTemplate = useCallback((template) => {
+    const scenario = generateScenarioData(template);
+    setUpdateJson(prettyJson(scenario.updatePayload));
+    setRandomJson(prettyJson(scenario.randomSimulation));
+    setReplayJson(prettyJson(scenario.replayRecords));
+  }, []);
+
   useEffect(() => {
     if (!selectedWidget && widgetNames.length > 0) {
       setSelectedWidget(widgetNames[0]);
@@ -319,10 +373,12 @@ export function App() {
     if (!selectedTemplate && selectedPanelData.current_template) {
       setSelectedTemplate(String(selectedPanelData.current_template));
     }
-    if (!templateName && selectedPanelData.current_template) {
-      setTemplateName(String(selectedPanelData.current_template));
-    }
-  }, [selectedPanelData, selectedTemplate, templateName]);
+    setTemplateName(
+      selectedPanelData.forced_template
+        ? String(selectedPanelData.forced_template)
+        : "auto",
+    );
+  }, [selectedPanelData, selectedTemplate]);
 
   function updateTemplate(mutator) {
     setTemplateDoc((previous) => {
@@ -393,6 +449,7 @@ export function App() {
     const payload = await fetchTemplate(selectedTemplate);
     setTemplateDoc(payload.template);
     setTemplateDirty(false);
+    applyScenarioFromTemplate(payload.template);
     setStatus(`loaded template ${selectedTemplate}`);
   }
 
@@ -414,8 +471,13 @@ export function App() {
       setStatus("select a panel first");
       return;
     }
-    await postTemplateOverride(selectedPanel, templateName || null);
-    setStatus(templateName ? `forced ${templateName} on ${selectedPanel}` : `cleared override on ${selectedPanel}`);
+    const forced = templateName === "auto" ? null : templateName;
+    await postTemplateOverride(selectedPanel, forced);
+    setStatus(
+      forced
+        ? `forced ${forced} on ${selectedPanel}`
+        : `cleared override on ${selectedPanel}`,
+    );
     await refreshPanels();
   }
 
@@ -440,6 +502,10 @@ export function App() {
       setStatus("fix random simulation JSON before starting");
       return;
     }
+    if (!Array.isArray(randomJsonState.value.fields) || randomJsonState.value.fields.length === 0) {
+      setStatus("random simulation needs at least one numeric field");
+      return;
+    }
     await startRandomSimulation(randomJsonState.value);
     setStatus("random simulation started");
     await refreshStatus();
@@ -451,6 +517,10 @@ export function App() {
       return;
     }
     const records = replayJsonState.value;
+    if (records.length === 0 || !records.some((item) => item && item.update)) {
+      setStatus("replay JSON needs at least one record with an update object");
+      return;
+    }
     await startReplaySimulation({ records, loop: true, speed: 1.0 });
     setStatus("replay simulation started");
     await refreshStatus();
@@ -484,6 +554,43 @@ export function App() {
     updateGridField("template_areas", stringifyTemplateAreas(nextRows));
   }
 
+  async function handleExportTemplate() {
+    if (!selectedTemplate) {
+      setStatus("select a template to export");
+      return;
+    }
+    const content = await exportTemplateFile(selectedTemplate);
+    const blob = new Blob([content], { type: "text/yaml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${selectedTemplate}.casedd`;
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setStatus(`exported ${selectedTemplate}.casedd`);
+  }
+
+  async function handleImportFileChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    const content = await file.text();
+    const stem = file.name.replace(/\.[^.]+$/, "");
+    const suggestedName = stem.trim() || null;
+    const payload = await importTemplateFile(content, suggestedName);
+    await refreshTemplates();
+    setSelectedTemplate(payload.name);
+    setTemplateDoc(payload.template);
+    setTemplateDirty(false);
+    applyScenarioFromTemplate(payload.template);
+    setStatus(`imported ${payload.name}.casedd`);
+    event.target.value = "";
+  }
+
   return (
     <div className="container-fluid py-3 app-shell">
       <div className="row g-3">
@@ -513,12 +620,18 @@ export function App() {
               ) : null}
               <hr />
               <label className="form-label small">Template override</label>
-              <input
-                className="form-control form-control-sm mb-2"
-                placeholder="template name or blank for auto"
+              <select
+                className="form-select form-select-sm mb-2"
                 value={templateName}
                 onChange={(event) => setTemplateName(event.target.value)}
-              />
+              >
+                <option value="auto">auto</option>
+                {templates.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
               <button className="btn btn-primary btn-sm" onClick={() => void handleTemplateForce()}>
                 <FontAwesomeIcon icon={faWandMagicSparkles} className="me-1" /> Apply
               </button>
@@ -556,6 +669,30 @@ export function App() {
                   <FontAwesomeIcon icon={faFloppyDisk} className="me-1" />
                   Save
                 </button>
+              </div>
+              <div className="d-flex flex-wrap gap-2 mb-2">
+                <button
+                  className="btn btn-outline-light btn-sm"
+                  onClick={() => void handleExportTemplate()}
+                  disabled={!selectedTemplate}
+                >
+                  <FontAwesomeIcon icon={faFileArrowDown} className="me-1" />
+                  Export .casedd
+                </button>
+                <button
+                  className="btn btn-outline-light btn-sm"
+                  onClick={() => importInputRef.current?.click()}
+                >
+                  <FontAwesomeIcon icon={faFileArrowUp} className="me-1" />
+                  Import .casedd
+                </button>
+                <input
+                  ref={importInputRef}
+                  type="file"
+                  accept=".casedd,.yaml,.yml"
+                  className="d-none"
+                  onChange={(event) => void handleImportFileChange(event)}
+                />
               </div>
               <div className="small text-body-secondary">
                 {templateDoc ? (

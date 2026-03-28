@@ -101,3 +101,24 @@ export async function saveTemplate(name, template) {
   );
   return readJson(response);
 }
+
+export async function exportTemplateFile(name) {
+  const response = await fetch(
+    `${API_ROOT}/api/templates/${encodeURIComponent(name)}/export`,
+    { cache: "no-store" },
+  );
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `HTTP ${response.status}`);
+  }
+  return response.text();
+}
+
+export async function importTemplateFile(content, name = null) {
+  const response = await fetch(`${API_ROOT}/api/templates/import`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ content, name }),
+  });
+  return readJson(response);
+}
