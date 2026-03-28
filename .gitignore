@@ -215,3 +215,6 @@ casedd.yaml
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# exclude logs
+logs/*.log*

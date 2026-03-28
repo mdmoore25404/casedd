@@ -1,0 +1,45 @@
+# CASEDD sample YAML configuration.
+#
+# This demonstrates template rotation, schedule windows, and data-driven
+# trigger overrides. Environment variables still override any values here.
+
+log_level: INFO
+template: system_stats
+refresh_rate: 2.0
+
+# Rotation applies when no trigger or schedule rule is active.
+template_rotation:
+  - fans
+  - slideshow
+template_rotation_interval: 45
+
+# Local-time schedule windows (0=Mon ... 6=Sun).
+template_schedule:
+  - template: slideshow
+    start: "22:30"
+    end: "06:30"
+    days: [0, 1, 2, 3, 4, 5, 6]
+
+# Trigger rules have highest priority.
+template_triggers:
+  - source: cpu.percent
+    operator: gte
+    value: 90
+    template: system_stats
+    duration: 10
+    hold_for: 20
+    clear_operator: lte
+    clear_value: 70
+    cooldown: 30
+    priority: 10
+
+  - source: fans.cpu.max_rpm
+    operator: gte
+    value: 1800
+    template: fans
+    duration: 5
+    hold_for: 15
+    clear_operator: lte
+    clear_value: 1400
+    cooldown: 30
+    priority: 20

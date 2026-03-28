@@ -1,0 +1,127 @@
+# fans.casedd — Fan telemetry dashboard
+#
+# Example template for issue #16 fan getters.
+
+name: fans
+description: Fan telemetry for CPU, system/chassis, and GPU fans.
+width: 800
+height: 480
+refresh_rate: 2.0
+
+grid:
+  template_areas: |
+    cpu_count    cpu_avg      cpu_max      gpu_count
+    sys_count    sys_avg      sys_max      gpu_avg
+    total_count  gpu_max      cpu_main     notes
+  columns: 1fr 1fr 1fr 1fr
+  rows: 1fr 1fr 1fr
+
+background: "#101418"
+
+widgets:
+  cpu_count:
+    type: value
+    label: CPU Fans
+    source: fans.cpu.count
+    precision: 0
+    color: "#7fd3ff"
+    font_size: 42
+    padding: [4, 8]
+
+  cpu_avg:
+    type: value
+    label: CPU Avg RPM
+    source: fans.cpu.avg_rpm
+    precision: 0
+    color: "#22cc88"
+    font_size: 40
+    padding: [4, 8]
+
+  cpu_max:
+    type: value
+    label: CPU Max RPM
+    source: fans.cpu.max_rpm
+    precision: 0
+    color: "#22cc88"
+    font_size: 40
+    padding: [4, 8]
+
+  gpu_count:
+    type: value
+    label: GPU Fans
+    source: fans.gpu.count
+    precision: 0
+    color: "#ffcf66"
+    font_size: 42
+    padding: [4, 8]
+
+  sys_count:
+    type: value
+    label: System Fans
+    source: fans.system.count
+    precision: 0
+    color: "#f6b0ff"
+    font_size: 42
+    padding: [4, 8]
+
+  sys_avg:
+    type: value
+    label: System Avg RPM
+    source: fans.system.avg_rpm
+    precision: 0
+    color: "#f6b0ff"
+    font_size: 40
+    padding: [4, 8]
+
+  sys_max:
+    type: value
+    label: System Max RPM
+    source: fans.system.max_rpm
+    precision: 0
+    color: "#f6b0ff"
+    font_size: 40
+    padding: [4, 8]
+
+  gpu_avg:
+    type: value
+    label: GPU Avg %
+    source: fans.gpu.avg_rpm
+    precision: 0
+    color: "#ffcf66"
+    font_size: 40
+    padding: [4, 8]
+
+  total_count:
+    type: value
+    label: Total Fans
+    source: fans.total.count
+    precision: 0
+    color: "#ffffff"
+    font_size: 40
+    padding: [4, 8]
+
+  gpu_max:
+    type: value
+    label: GPU Max %
+    source: fans.gpu.max_rpm
+    precision: 0
+    color: "#ffcf66"
+    font_size: 40
+    padding: [4, 8]
+
+  cpu_main:
+    type: value
+    label: Compat cpu.fan_rpm
+    source: cpu.fan_rpm
+    precision: 0
+    color: "#7fd3ff"
+    font_size: 34
+    padding: [4, 8]
+
+  notes:
+    type: text
+    label: Notes
+    content: "GPU fan values are percentages when sourced from nvidia-smi."
+    color: "#aeb7c3"
+    font_size: 22
+    padding: [4, 8]

@@ -18,6 +18,35 @@ Emits:
 
 Notes:
 - Temperature keys depend on host sensors (coretemp/k10temp/acpitz/cpu_thermal).
+- cpu.fan_rpm remains for compatibility; richer fan telemetry is emitted by fan getter.
+
+## Fan getter
+
+Module: casedd/getters/fans.py
+
+Emits aggregate keys:
+- fans.total.count
+- fans.cpu.count
+- fans.cpu.avg_rpm
+- fans.cpu.max_rpm
+- fans.system.count
+- fans.system.avg_rpm
+- fans.system.max_rpm
+- fans.gpu.count
+- fans.gpu.avg_rpm
+- fans.gpu.max_rpm
+
+Emits per-fan keys:
+- fans.cpu.0.rpm, fans.cpu.1.rpm, ...
+- fans.system.0.rpm, fans.system.1.rpm, ...
+- fans.gpu.0.rpm, fans.gpu.1.rpm, ...
+
+Compatibility:
+- cpu.fan_rpm is mirrored from fans.cpu.max_rpm when fan getter runs.
+
+Notes:
+- CPU/system fans come from psutil.sensors_fans where available.
+- GPU fans use psutil when exposed, plus nvidia-smi fan.speed percentages when available.
 
 ## GPU getter (NVIDIA via nvidia-smi)
 

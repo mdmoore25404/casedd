@@ -137,6 +137,9 @@ README.md
   Types: `feat`, `fix`, `refactor`, `docs`, `chore`, `test`.
 - One logical change per commit. Do not batch unrelated changes.
 - Open a PR to `main` when the issue's acceptance criteria are all met.
+- For interactive human requests, once implementation is complete and validation
+  passes (`ruff check .` and `mypy --strict casedd/`, plus tests when present),
+  the agent should create a commit before concluding the request.
 
 ---
 
