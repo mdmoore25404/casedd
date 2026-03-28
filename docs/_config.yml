@@ -51,6 +51,12 @@ callouts:
     title: Warning
     color: yellow
 
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
 plugins:
   - jekyll-remote-theme
   - jekyll-seo-tag
