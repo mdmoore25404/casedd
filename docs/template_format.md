@@ -1,3 +1,8 @@
+---
+title: CASEDD Template Format
+layout: default
+---
+
 # CASEDD Template Format Specification
 
 Welcome to the CASEDD template docs. This page explains how to define screen layouts and widgets in `.casedd` YAML templates.

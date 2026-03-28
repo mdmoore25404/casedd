@@ -1,4 +1,9 @@
-# Built-In Getters and Keys
+---
+title: Built-in Getters and Keys
+layout: default
+---
+
+# Built-in Getters and Keys
 
 Welcome to the CASEDD getter docs. This page describes all built-in system collectors and the consistent dotted key namespace they expose to the renderer engine.
 

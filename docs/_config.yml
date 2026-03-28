@@ -1,5 +1,5 @@
 title: CASEDD Documentation
 description: Documentation for the CASEDD project
-theme: jekyll-theme-cayman
+theme: jekyll-theme-leap-day
 markdown: kramdown
 permalink: /:path/

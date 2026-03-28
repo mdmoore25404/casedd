@@ -5,9 +5,21 @@ layout: home
 
 # CASEDD Documentation
 
-Welcome! This is the landing page for the CASEDD GitHub Pages docs. We now render with the `jekyll-theme-cayman` theme for readable, clean styling.
+Welcome to the official CASEDD docs site. The `jekyll-theme-leap-day` theme is now active for modern typography, spacing, and readability.
 
-This site is served from the `docs/` folder on the `main` branch.
+This site uses GitHub Pages from the `docs/` folder on the `main` branch.
+
+## Quick links
+
+- [Project README](README.md)
+- [Getter docs](getters.md)
+- [Template format](template_format.md)
+- [REST API descriptor](api.json)
+
+## Tips
+
+1. Ensure `docs/.nojekyll` is removed in the branch (Jekyll mode).
+2. Ensure repository Pages source is set to `main`/`docs`.
 
 - README content is available from `docs/README.md` (synced from `/README.md`).
 - User documentation is in `docs/getters.md` and `docs/template_format.md`.
