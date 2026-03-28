@@ -4,10 +4,10 @@
 # Usage: ./dev.sh <command>
 #
 # Commands:
-#   start     Start the daemon in the background (venv + .env loaded)
-#   stop      Stop the running daemon cleanly
+#   start     Start daemon + advanced app dev server in the background
+#   stop      Stop daemon + advanced app dev server cleanly
 #   restart   Stop then start
-#   status    Show daemon health + last 20 log lines
+#   status    Show daemon/web health + last 20 log lines
 #   logs      Tail the log file (Ctrl-C to exit)
 #   lint      Run ruff + mypy (must be zero errors before committing)
 #   docs      Generate API docs to docs/api.json (local only)
@@ -22,6 +22,9 @@ VENV="$REPO_ROOT/.venv"
 ENV_FILE="$REPO_ROOT/.env"
 PID_FILE="$REPO_ROOT/run/casedd.pid"
 LOG_FILE="$REPO_ROOT/logs/casedd.log"
+WEB_DIR="$REPO_ROOT/web"
+WEB_PID_FILE="$REPO_ROOT/run/casedd-web.pid"
+WEB_LOG_FILE="$REPO_ROOT/logs/casedd-web.log"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -83,6 +86,90 @@ _is_running() {
     [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
 }
 
+_is_web_running() {
+    [[ -f "$WEB_PID_FILE" ]] && kill -0 "$(cat "$WEB_PID_FILE")" 2>/dev/null
+}
+
+_start_web() {
+    if _is_web_running; then
+        echo "advanced app dev server is already running (PID $(cat "$WEB_PID_FILE"))"
+        return 0
+    fi
+
+    if [[ ! -d "$WEB_DIR" ]]; then
+        echo "WARNING: web/ directory not found; skipping advanced app dev server." >&2
+        return 0
+    fi
+
+    if ! command -v npm >/dev/null 2>&1; then
+        echo "WARNING: npm is not installed; skipping advanced app dev server startup." >&2
+        return 0
+    fi
+
+    if [[ ! -d "$WEB_DIR/node_modules" ]]; then
+        echo "Installing web dependencies..."
+        if ! (cd "$WEB_DIR" && npm install); then
+            echo "WARNING: npm install failed; advanced app dev server not started." >&2
+            return 0
+        fi
+    fi
+
+    local app_port
+    app_port="${CASEDD_APP_PORT:-5173}"
+
+    echo "Starting advanced app dev server (Vite)..."
+    (
+        cd "$WEB_DIR"
+        nohup npm run dev -- --host 0.0.0.0 --port "$app_port" >> "$WEB_LOG_FILE" 2>&1 &
+        echo $! > "$WEB_PID_FILE"
+    )
+
+    local waited=0
+    while (( waited < 20 )); do
+        if _is_web_running; then
+            break
+        fi
+        sleep 0.2
+        (( waited++ )) || true
+    done
+
+    if _is_web_running; then
+        echo "advanced app dev server started (PID $(cat "$WEB_PID_FILE"))"
+        echo "Advanced app: http://localhost:${app_port} (proxied by /app)"
+    else
+        echo "WARNING: advanced app dev server failed to start — check $WEB_LOG_FILE" >&2
+        rm -f "$WEB_PID_FILE"
+        return 0
+    fi
+}
+
+_stop_web() {
+    if ! _is_web_running; then
+        rm -f "$WEB_PID_FILE"
+        echo "advanced app dev server is not running"
+        return 0
+    fi
+
+    local pid
+    pid=$(cat "$WEB_PID_FILE")
+    echo "Stopping advanced app dev server (PID $pid)..."
+    kill "$pid"
+
+    local waited=0
+    while kill -0 "$pid" 2>/dev/null && (( waited < 10 )); do
+        sleep 1
+        (( waited++ )) || true
+    done
+
+    if kill -0 "$pid" 2>/dev/null; then
+        echo "WARNING: app dev server did not stop in 10s — sending SIGKILL" >&2
+        kill -9 "$pid" 2>/dev/null || true
+    fi
+
+    rm -f "$WEB_PID_FILE"
+    echo "advanced app dev server stopped"
+}
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -126,6 +213,7 @@ cmd_start() {
         echo "casedd started (PID $(cat "$PID_FILE"))"
         echo "Log: $LOG_FILE"
         echo "Web viewer: http://localhost:${CASEDD_HTTP_PORT:-8080}"
+        _start_web
     else
         echo "ERROR: casedd failed to start — check $LOG_FILE" >&2
         rm -f "$PID_FILE"
@@ -134,6 +222,9 @@ cmd_start() {
 }
 
 cmd_stop() {
+    _load_env
+    _stop_web
+
     if ! _is_running; then
         echo "casedd is not running"
         rm -f "$PID_FILE"
@@ -173,12 +264,27 @@ cmd_status() {
     else
         echo "casedd is STOPPED"
     fi
+
+    if _is_web_running; then
+        echo "advanced app dev server is RUNNING (PID $(cat "$WEB_PID_FILE"))"
+    else
+        echo "advanced app dev server is STOPPED"
+    fi
+
     echo ""
     if [[ -f "$LOG_FILE" ]]; then
         echo "--- Last 20 log lines ---"
         tail -n 20 "$LOG_FILE"
     else
         echo "(no log file yet)"
+    fi
+
+    echo ""
+    if [[ -f "$WEB_LOG_FILE" ]]; then
+        echo "--- Last 20 advanced app log lines ---"
+        tail -n 20 "$WEB_LOG_FILE"
+    else
+        echo "(no advanced app log file yet)"
     fi
 }
 

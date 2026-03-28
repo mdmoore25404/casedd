@@ -19,14 +19,16 @@ from collections.abc import Callable
 import contextlib
 import io
 import logging
+import os
 from pathlib import Path
 import random
+import socket
 import threading
 import time
 from typing import Annotated
 
-from fastapi import FastAPI, HTTPException, Query, Response
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import HTMLResponse, RedirectResponse
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 import uvicorn
@@ -352,46 +354,66 @@ _LIGHT_VIEWER_HTML = """\
 """
 
 
-_ADVANCED_APP_HTML = """\
+_ADVANCED_APP_PORT = int(os.environ.get("CASEDD_APP_PORT", "5173"))
+
+
+def _advanced_app_unavailable_html(port: int) -> str:
+        """Build fallback HTML when Vite dev server is unavailable.
+
+        Args:
+                port: Expected Vite development server port.
+
+        Returns:
+                Minimal user-facing HTML page.
+        """
+        return f"""\
 <!DOCTYPE html>
 <html lang=\"en\">
 <head>
-  <meta charset=\"utf-8\" />
-  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
-  <title>CASEDD Advanced App</title>
-  <style>
-    body {
-      margin: 0;
-      padding: 18px;
-      background: #0d1117;
-      color: #d0d7de;
-      font-family: ui-sans-serif, system-ui, sans-serif;
-    }
-    code { color: #8b949e; }
-    a { color: #58a6ff; }
-  </style>
+    <meta charset=\"utf-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+    <title>CASEDD Advanced App</title>
+    <style>
+        body {{
+            margin: 0;
+            padding: 20px;
+            background: #0d1117;
+            color: #d0d7de;
+            font-family: ui-sans-serif, system-ui, sans-serif;
+        }}
+        code {{ color: #8b949e; }}
+    </style>
 </head>
 <body>
-  <h2>CASEDD Advanced App</h2>
-  <p>Build and run the React app in <code>web/</code>, then open it on Vite dev server.</p>
-  <ul>
-    <li><code>cd web && npm install && npm run dev</code></li>
-    <li>Viewer API endpoints are available on this daemon.</li>
-  </ul>
-  <ul>
-    <li><code>GET /api/panels</code></li>
-    <li><code>POST /api/template/override</code></li>
-    <li><code>POST /api/update</code></li>
-    <li><code>POST /api/sim/replay</code></li>
-    <li><code>POST /api/sim/random</code></li>
-    <li><code>POST /api/sim/stop</code></li>
-    <li><code>GET /api/sim/status</code></li>
-    <li><code>GET /api/debug/render-state</code></li>
-  </ul>
-  <p><a href=\"/\">Back to lightweight viewer</a></p>
+    <h2>Advanced App Is Not Running</h2>
+    <p>
+        CASEDD expected the Vite dev server on port <code>{port}</code>, but it was not reachable.
+    </p>
+    <p>
+        Start it with <code>./dev.sh restart</code> or manually run
+        <code>cd web && npm install && npm run dev -- --host 0.0.0.0 --port {port}</code>.
+    </p>
+    <p><a href=\"/\">Back to lightweight viewer</a></p>
 </body>
 </html>
 """
+
+
+def _is_local_port_open(host: str, port: int) -> bool:
+        """Check whether a TCP host/port is reachable.
+
+        Args:
+                host: Host name or IP.
+                port: TCP port.
+
+        Returns:
+                ``True`` when a connection succeeds.
+        """
+        try:
+                with socket.create_connection((host, port), timeout=0.25):
+                        return True
+        except OSError:
+                return False
 
 
 def _build_app(  # noqa: PLR0913 -- runtime wiring dependencies are explicit
@@ -421,9 +443,16 @@ def _build_app(  # noqa: PLR0913 -- runtime wiring dependencies are explicit
             str(ws_port),
         )
 
-    @app.get("/app", response_class=HTMLResponse, summary="Advanced app launch page")
-    async def app_page() -> str:
-        return _ADVANCED_APP_HTML
+    @app.get("/app", response_class=HTMLResponse, summary="Advanced app entrypoint")
+    async def app_page(request: Request) -> Response:
+        host = request.url.hostname or "localhost"
+        if not _is_local_port_open(host, _ADVANCED_APP_PORT):
+            return HTMLResponse(
+                content=_advanced_app_unavailable_html(_ADVANCED_APP_PORT),
+                status_code=503,
+            )
+        app_url = f"{request.url.scheme}://{host}:{_ADVANCED_APP_PORT}/"
+        return RedirectResponse(url=app_url, status_code=307)
 
     @app.get("/image", summary="Latest rendered PNG")
     async def image(

@@ -60,7 +60,7 @@ cp .env.example .env
 ```bash
 ./dev.sh start
 # Open http://localhost:8080 for the lightweight live viewer
-# Open http://localhost:8080/app for advanced app instructions
+# Open http://localhost:8080/app for the advanced app (Vite dev mode)
 ./dev.sh logs      # tail the log
 ./dev.sh status    # check daemon health
 ./dev.sh stop
@@ -71,16 +71,19 @@ cp .env.example .env
 ## Development workflow
 
 ```bash
-./dev.sh start      # start daemon in background (venv + .env loaded automatically)
-./dev.sh stop       # stop daemon cleanly
+./dev.sh start      # start daemon + advanced app (Vite hot-reload) in background
+./dev.sh stop       # stop daemon + advanced app cleanly
 ./dev.sh restart    # stop + start
-./dev.sh status     # check PID + last log lines
+./dev.sh status     # check daemon/app PIDs + last log lines
 ./dev.sh logs       # tail -f the log file
 ./dev.sh lint       # ruff check + mypy --strict (must be zero errors)
 ./dev.sh docs       # generate API docs to docs/api.json (local only)
 ```
 
 ### Advanced React app (Vite)
+
+`./dev.sh start` already launches the advanced app in Vite development mode for
+hot-reload editing. You can still run it manually when needed:
 
 ```bash
 cd web
