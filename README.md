@@ -265,6 +265,15 @@ Compose starts two services:
 - `casedd` backend (HTTP/WS)
 - `casedd-web` advanced app (Vite dev mode with hot reload)
 
+For host metric visibility, the `casedd` container bind-mounts host Linux
+runtime filesystems read-only:
+- `/proc` -> `/host/proc`
+- `/sys` -> `/host/sys`
+- `/run` -> `/host/run`
+
+`CASEDD_PROCFS_PATH` is set to `/host/proc` in Compose so psutil-based getters
+read host process/system views instead of container-local procfs.
+
 Default Docker URLs:
 - lightweight viewer: `http://localhost:18080/`
 - advanced app redirect entry: `http://localhost:18080/app`

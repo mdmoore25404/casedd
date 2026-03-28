@@ -178,6 +178,7 @@ class Config:
         height: Canvas height in pixels.
         templates_dir: Directory containing ``.casedd`` template files.
         assets_dir: Directory containing static assets.
+        procfs_path: Linux procfs root path used by psutil.
         disk_mount: Filesystem mount point to monitor for disk metrics.
         viewer_bg: Default browser viewer page background color.
         speedtest_interval: Interval between speed tests in seconds.
@@ -220,6 +221,7 @@ class Config:
     height: int = Field(default=480)
     templates_dir: Path = Field(default=Path("templates"))
     assets_dir: Path = Field(default=Path("assets"))
+    procfs_path: str = Field(default="/proc")
     disk_mount: str = Field(default="/")
     viewer_bg: str = Field(default="#0d0f12")
     speedtest_interval: float = Field(default=1800.0)
@@ -557,6 +559,7 @@ def load_config() -> Config:
         height=int(str(_get("CASEDD_HEIGHT", "height", 480))),
         templates_dir=Path(str(_get("CASEDD_TEMPLATES_DIR", "templates_dir", "templates"))),
         assets_dir=Path(str(_get("CASEDD_ASSETS_DIR", "assets_dir", "assets"))),
+        procfs_path=str(_get("CASEDD_PROCFS_PATH", "procfs_path", "/proc")),
         disk_mount=str(_get("CASEDD_DISK_MOUNT", "disk_mount", "/")),
         viewer_bg=str(_get("CASEDD_VIEWER_BG", "viewer_bg", "#0d0f12")),
         speedtest_interval=float(

@@ -22,6 +22,7 @@ from pathlib import Path
 import signal
 
 from PIL import Image
+import psutil
 
 from casedd.config import Config, PanelConfig, TemplateScheduleRule, TemplateTriggerRule
 from casedd.data_store import DataStore, StoreValue
@@ -325,6 +326,9 @@ class Daemon:
 
     def _create_getters(self) -> list[BaseGetter]:
         """Instantiate all getter objects with shared data store."""
+        if hasattr(psutil, "PROCFS_PATH"):
+            psutil.PROCFS_PATH = self._cfg.procfs_path
+
         return [
             CpuGetter(self._store),
             GpuGetter(self._store),
