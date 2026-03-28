@@ -405,7 +405,7 @@ def _build_nws_forecast_table(periods: list[object]) -> str:
         if day_key is None:
             continue
         if day_key not in by_day:
-            by_day[day_key] = {"hi": None, "lo": None, "pop": None, "wind": "--"}
+            by_day[day_key] = {"hi": None, "lo": None, "pop": None, "wind": "--", "condition": ""}
             day_order.append(day_key)
 
         _merge_nws_period(by_day[day_key], period_obj)
@@ -413,16 +413,18 @@ def _build_nws_forecast_table(periods: list[object]) -> str:
     if not day_order:
         return ""
 
-    rows = ["DAY LO/HI PCP WIND"]
+    rows: list[str] = []
     for day_key in day_order[:5]:
         bucket = by_day[day_key]
         hi = bucket["hi"]
         lo = bucket["lo"]
         pop = bucket["pop"]
         wind = str(bucket["wind"] or "--")
-        lo_hi = f"{_fmt_temp(lo)}/{_fmt_temp(hi)}"
-        pop_text = f"{round(pop):>3}%" if isinstance(pop, float) else " --%"
-        rows.append(f"{day_key:>3} {lo_hi:>5} {pop_text} {wind[:10]}")
+        condition = str(bucket.get("condition") or "")
+        lo_raw = round(lo) if isinstance(lo, float) else ""
+        hi_raw = round(hi) if isinstance(hi, float) else ""
+        pop_raw = round(pop) if isinstance(pop, float) else ""
+        rows.append(f"{day_key}|{lo_raw}|{hi_raw}|{pop_raw}|{wind}|{condition}")
 
     return "\n".join(rows)
 
@@ -442,7 +444,7 @@ def _build_open_meteo_forecast_table(payload: dict[str, object]) -> str:
     if not isinstance(times, list):
         return ""
 
-    rows = ["DAY LO/HI PCP WIND"]
+    rows: list[str] = []
     count = min(5, len(times))
     for idx in range(count):
         day = _short_day(str(times[idx]))
@@ -450,10 +452,11 @@ def _build_open_meteo_forecast_table(payload: dict[str, object]) -> str:
         lo = _to_float_at(lo_vals, idx)
         pop = _to_float_at(pop_vals, idx)
         wind = _to_float_at(wind_vals, idx)
-        lo_hi = f"{_fmt_temp(lo)}/{_fmt_temp(hi)}"
-        pop_text = f"{round(pop):>3}%" if pop is not None else " --%"
+        lo_raw = round(lo) if lo is not None else ""
+        hi_raw = round(hi) if hi is not None else ""
+        pop_raw = round(pop) if pop is not None else ""
         wind_text = f"{round(wind)}mph" if wind is not None else "--"
-        rows.append(f"{day:>3} {lo_hi:>5} {pop_text} {wind_text}")
+        rows.append(f"{day}|{lo_raw}|{hi_raw}|{pop_raw}|{wind_text}|")
 
     return "\n".join(rows)
 
@@ -521,6 +524,10 @@ def _merge_nws_period(
     if wind_speed is not None:
         speed_text = f"{round(wind_speed)}mph"
         bucket["wind"] = f"{speed_text} {wind_dir}".strip()
+
+    short_forecast = str(period_obj.get("shortForecast") or "")
+    if short_forecast and not bucket.get("condition"):
+        bucket["condition"] = short_forecast
 
 
 def _parse_iso_datetime(raw: str) -> datetime | None:

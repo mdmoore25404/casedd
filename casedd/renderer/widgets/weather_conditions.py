@@ -116,7 +116,6 @@ class WeatherConditionsWidget(BaseWidget):
 
         conditions = str(data.get(f"{root}.conditions") or "Unknown")
         location = str(data.get(f"{root}.location") or "Unknown location")
-        provider = str(data.get(f"{root}.provider") or "")
         temp_f = _to_float(data.get(f"{root}.temp_f"))
         wind = _to_float(data.get(f"{root}.wind_mph"))
         humidity = _to_float(data.get(f"{root}.humidity_percent"))
@@ -150,12 +149,4 @@ class WeatherConditionsWidget(BaseWidget):
                 f"Next: {forecast_short[:54]}",
                 fill=(164, 176, 188),
                 font=body_font,
-            )
-
-        if provider:
-            draw.text(
-                (inner.x + inner.w - 140, inner.y + inner.h - 14),
-                provider,
-                fill=(120, 132, 142),
-                font=get_font(max(10, inner.h // 20)),
             )

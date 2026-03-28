@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 from PIL import Image, ImageDraw
 
 from casedd.data_store import DataStore
-from casedd.renderer.fonts import fit_font, get_font
+from casedd.renderer.fonts import fit_font
 from casedd.renderer.widgets.base import BaseWidget, content_rect, draw_label, fill_background
 from casedd.template.grid import Rect
 from casedd.template.models import WidgetConfig
@@ -51,9 +51,9 @@ class WeatherRadarWidget(BaseWidget):
         zoom = cfg.zoom if cfg.zoom >= 1.0 else 1.0
 
         image_rect = Rect(inner.x + 2, inner.y + label_h + 2, inner.w - 4, inner.h - label_h - 6)
-        image = self._get_cached_image(state, radar_image_url)
+        image = self._get_cached_image(state, radar_image_url, zoom)
         if image is not None and image_rect.w > 10 and image_rect.h > 10:
-            fitted = self._apply_zoom(image, zoom)
+            fitted = image.copy()
             fitted.thumbnail((image_rect.w, image_rect.h), Image.Resampling.LANCZOS)
             x = image_rect.x + (image_rect.w - fitted.width) // 2
             y = image_rect.y + (image_rect.h - fitted.height) // 2
@@ -68,32 +68,45 @@ class WeatherRadarWidget(BaseWidget):
             ty = image_rect.y + max(2, (image_rect.h - th) // 2)
             draw.text((tx, ty), fallback, fill=(195, 205, 215), font=font)
 
-        if zoom > 1.01:
-            zoom_text = f"{zoom:.1f}x"
-            draw.text(
-                (inner.x + inner.w - 44, inner.y + 2),
-                zoom_text,
-                fill=(125, 175, 205),
-                font=get_font(max(10, inner.h // 24)),
-            )
-
-    def _apply_zoom(self, image: Image.Image, zoom: float) -> Image.Image:
-        """Crop the radar image around center to emulate camera zoom."""
-        if zoom <= 1.01:
-            return image.copy()
-
-        crop_w = max(8, int(image.width / zoom))
-        crop_h = max(8, int(image.height / zoom))
-        left = max(0, (image.width - crop_w) // 2)
-        top = max(0, (image.height - crop_h) // 2)
-        right = left + crop_w
-        bottom = top + crop_h
-        return image.crop((left, top, right, bottom))
-
-    def _get_cached_image(self, state: dict[str, object], url: str) -> Image.Image | None:
-        """Fetch radar image with simple URL cache."""
+    def _get_cached_image(
+        self,
+        state: dict[str, object],
+        url: str,
+        zoom: float,
+    ) -> Image.Image | None:
+        """Fetch radar image with simple URL cache and zoom-aware URL candidates."""
         if not url:
             return None
+
+        for candidate in self._zoom_candidates(url, zoom):
+            image = self._fetch_cached_by_url(state, candidate)
+            if image is not None:
+                return image
+        return None
+
+    def _zoom_candidates(self, url: str, zoom: float) -> list[str]:
+        """Generate likely NWS radar image variants for requested zoom levels."""
+        candidates = [url]
+        if "/ridge/standard/" not in url:
+            return candidates
+
+        if zoom >= 2.5:
+            candidates.append(url.replace("/ridge/standard/", "/ridge/lite/"))
+            candidates.append(url.replace("/ridge/standard/", "/ridge/small/"))
+        elif zoom >= 1.5:
+            candidates.append(url.replace("/ridge/standard/", "/ridge/lite/"))
+        return candidates
+
+    def _fetch_cached_by_url(self, state: dict[str, object], url: str) -> Image.Image | None:
+        """Fetch and cache one URL.
+
+        Args:
+            state: Widget-local state map.
+            url: Candidate image URL.
+
+        Returns:
+            Loaded image when successful, otherwise None.
+        """
 
         cached_url = state.get("radar_image_url")
         cached_image = state.get("radar_image")
