@@ -1,6 +1,7 @@
 ---
-title: CASEDD Template Format
-layout: default
+title: Template Format
+nav_order: 2
+permalink: /template_format/
 ---
 
 # CASEDD Template Format Specification

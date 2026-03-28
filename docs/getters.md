@@ -1,6 +1,7 @@
 ---
-title: Built-in Getters and Keys
-layout: default
+title: Getter Reference
+nav_order: 3
+permalink: /getters/
 ---
 
 # Built-in Getters and Keys

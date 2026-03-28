@@ -1,0 +1,14 @@
+// CASEDD brand overrides for just-the-docs dark color scheme.
+// This file is imported before JTD defines its own defaults,
+// so assignments here take precedence over !default declarations.
+
+// Brand green replaces the default purple link color.
+$link-color: #3fb950;
+
+// Slightly warmer dark background to match the product aesthetic.
+$body-background-color: #0d1117;
+$sidebar-color: #090c10;
+$nav-width: 240px;
+
+// Code block surface
+$code-background-color: #161b22;
