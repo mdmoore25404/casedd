@@ -93,3 +93,14 @@ body {
   border-color: #40a9ff;
   box-shadow: 0 0 0 1px rgba(64, 169, 255, 0.35);
 }
+
+.grid-syntax-help {
+  border: 1px solid #2d333b;
+  background: #0d141d;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.app-shell .invalid-feedback {
+  color: #ff8f8f;
+}

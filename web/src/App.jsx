@@ -106,6 +106,104 @@ function stringifyTemplateAreas(areaRows) {
   return areaRows.map((row) => `"${row.join(" ")}"`).join("\n");
 }
 
+const WIDGET_TYPES = [
+  "panel",
+  "value",
+  "text",
+  "bar",
+  "gauge",
+  "histogram",
+  "sparkline",
+  "image",
+  "slideshow",
+  "clock",
+  "ups",
+];
+
+const DEFAULT_UPDATE_PAYLOAD = {
+  "cpu.percent": 36.2,
+  "cpu.temperature": 58.4,
+  "nvidia.percent": 42.0,
+  "nvidia.temperature": 63.1,
+  "memory.percent": 54.5,
+  "nvidia.memory_percent": 47.2,
+  "disk.percent": 62.4,
+  "net.recv_mbps": 28.3,
+  "net.sent_mbps": 6.8,
+  "disk.read_mbps": 124.2,
+  "disk.write_mbps": 17.4,
+  "speedtest.download_pct_ref": 69.4,
+  "speedtest.upload_pct_ref": 58.8,
+  "speedtest.simple_summary": "Down 925 Mb/s | Up 296 Mb/s | Ping 18 ms",
+  "ollama.active_compact": "llama3: 6 req/s",
+  "outside_temp_f": 72.3,
+  "fans.cpu.max_rpm": 1320,
+  "fans.system.max_rpm": 990,
+};
+
+const DEFAULT_RANDOM_SIMULATION = {
+  interval: 1.0,
+  fields: [
+    { key: "cpu.percent", min: 0, max: 100, step: 5 },
+    { key: "cpu.temperature", min: 45, max: 85, step: 1 },
+    { key: "nvidia.percent", min: 0, max: 100, step: 7 },
+    { key: "nvidia.temperature", min: 40, max: 90, step: 1 },
+    { key: "net.recv_mbps", min: 0, max: 200, step: 9 },
+    { key: "net.sent_mbps", min: 0, max: 80, step: 5 },
+    { key: "disk.read_mbps", min: 0, max: 250, step: 10 },
+    { key: "disk.write_mbps", min: 0, max: 120, step: 8 },
+  ],
+};
+
+const DEFAULT_REPLAY_RECORDS = [
+  {
+    at_ms: 0,
+    update: {
+      "cpu.percent": 18,
+      "cpu.temperature": 49,
+      "nvidia.percent": 15,
+      "nvidia.temperature": 52,
+      "net.recv_mbps": 8,
+      "net.sent_mbps": 2,
+    },
+  },
+  {
+    at_ms: 1200,
+    update: {
+      "cpu.percent": 56,
+      "cpu.temperature": 66,
+      "nvidia.percent": 52,
+      "nvidia.temperature": 71,
+      "net.recv_mbps": 44,
+      "net.sent_mbps": 11,
+    },
+  },
+  {
+    at_ms: 2400,
+    update: {
+      "cpu.percent": 34,
+      "cpu.temperature": 58,
+      "nvidia.percent": 31,
+      "nvidia.temperature": 64,
+      "net.recv_mbps": 22,
+      "net.sent_mbps": 7,
+    },
+  },
+];
+
+function prettyJson(value) {
+  return JSON.stringify(value, null, 2);
+}
+
+function parseJson(rawText, label) {
+  try {
+    return { value: JSON.parse(rawText), error: "" };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : `Invalid ${label} JSON`;
+    return { value: null, error: message };
+  }
+}
+
 export function App() {
   const [panelsData, setPanelsData] = useState({ panels: [], default_panel: "", test_mode: false });
   const [templates, setTemplates] = useState([]);
@@ -117,10 +215,11 @@ export function App() {
   const [selectedPanel, setSelectedPanel] = useState("");
   const [templateName, setTemplateName] = useState("");
   const [previewNonce, setPreviewNonce] = useState(() => Date.now());
-  const [updateJson, setUpdateJson] = useState('{"fans.cpu.max_rpm": 1200}');
+  const [updateJson, setUpdateJson] = useState(() => prettyJson(DEFAULT_UPDATE_PAYLOAD));
   const [testModeEnabled, setTestModeEnabled] = useState(false);
   const [simStatus, setSimStatus] = useState({ running: false, mode: "idle" });
-  const [replayJson, setReplayJson] = useState('[{"at_ms":0,"update":{"fans.cpu.max_rpm":900}},{"at_ms":1000,"update":{"fans.cpu.max_rpm":1400}}]');
+  const [randomJson, setRandomJson] = useState(() => prettyJson(DEFAULT_RANDOM_SIMULATION));
+  const [replayJson, setReplayJson] = useState(() => prettyJson(DEFAULT_REPLAY_RECORDS));
 
   const refreshPanels = useCallback(async () => {
     const payload = await fetchPanels();
@@ -191,6 +290,17 @@ export function App() {
     const panel = encodeURIComponent(selectedPanel);
     return `/image?panel=${panel}&t=${previewNonce}`;
   }, [selectedPanel, previewNonce]);
+
+  const updateJsonState = useMemo(() => parseJson(updateJson, "update"), [updateJson]);
+  const randomJsonState = useMemo(() => parseJson(randomJson, "random simulation"), [randomJson]);
+  const replayJsonState = useMemo(() => parseJson(replayJson, "replay"), [replayJson]);
+
+  const sourceListValue = useMemo(() => {
+    if (!selectedWidgetConfig?.sources || !Array.isArray(selectedWidgetConfig.sources)) {
+      return "";
+    }
+    return selectedWidgetConfig.sources.join("\n");
+  }, [selectedWidgetConfig]);
 
   useEffect(() => {
     if (!selectedWidget && widgetNames.length > 0) {
@@ -267,6 +377,14 @@ export function App() {
     updateWidgetField(field, parsed);
   }
 
+  function updateWidgetSources(rawValue) {
+    const parsed = rawValue
+      .split("\n")
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+    updateWidgetField("sources", parsed);
+  }
+
   async function handleLoadTemplate() {
     if (!selectedTemplate) {
       setStatus("select a template first");
@@ -302,8 +420,11 @@ export function App() {
   }
 
   async function handlePushUpdate() {
-    const parsed = JSON.parse(updateJson);
-    await postDataUpdate(parsed);
+    if (updateJsonState.error || typeof updateJsonState.value !== "object" || !updateJsonState.value) {
+      setStatus("fix update JSON before pushing");
+      return;
+    }
+    await postDataUpdate(updateJsonState.value);
     setStatus("update pushed");
   }
 
@@ -315,20 +436,21 @@ export function App() {
   }
 
   async function handleStartRandom() {
-    await startRandomSimulation({
-      interval: 1.0,
-      fields: [
-        { key: "fans.cpu.max_rpm", min: 700, max: 1800, step: 80 },
-        { key: "fans.system.max_rpm", min: 500, max: 1500, step: 50 },
-        { key: "cpu.percent", min: 0, max: 100, step: 8 },
-      ],
-    });
+    if (randomJsonState.error || typeof randomJsonState.value !== "object" || !randomJsonState.value) {
+      setStatus("fix random simulation JSON before starting");
+      return;
+    }
+    await startRandomSimulation(randomJsonState.value);
     setStatus("random simulation started");
     await refreshStatus();
   }
 
   async function handleStartReplay() {
-    const records = JSON.parse(replayJson);
+    if (!Array.isArray(replayJsonState.value)) {
+      setStatus("replay JSON must be an array of records");
+      return;
+    }
+    const records = replayJsonState.value;
     await startReplaySimulation({ records, loop: true, speed: 1.0 });
     setStatus("replay simulation started");
     await refreshStatus();
@@ -512,6 +634,12 @@ export function App() {
                           }))
                         }
                       />
+                      <div className="grid-syntax-help small text-body-secondary">
+                        <div>Syntax: whitespace-separated track sizes per axis.</div>
+                        <div>Use `fr`, `px`, or `%` units. Example: `1fr 2fr 160px`.</div>
+                        <div>Grid columns count should match each `template_areas` row token count.</div>
+                        <div>Grid rows count should match the number of `template_areas` lines.</div>
+                      </div>
                     </>
                   ) : null}
                 </div>
@@ -599,11 +727,17 @@ export function App() {
                   </div>
                   <div className="col-12 col-md-4">
                     <label className="form-label small">Type</label>
-                    <input
-                      className="form-control form-control-sm"
+                    <select
+                      className="form-select form-select-sm"
                       value={selectedWidgetConfig?.type || ""}
                       onChange={(event) => updateWidgetField("type", event.target.value)}
-                    />
+                    >
+                      {WIDGET_TYPES.map((widgetType) => (
+                        <option key={widgetType} value={widgetType}>
+                          {widgetType}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div className="col-12 col-md-4">
                     <label className="form-label small">Label</label>
@@ -613,12 +747,21 @@ export function App() {
                       onChange={(event) => updateWidgetField("label", event.target.value)}
                     />
                   </div>
-                  <div className="col-12 col-md-6">
-                    <label className="form-label small">Source</label>
+                  <div className="col-12 col-md-4">
+                    <label className="form-label small">Source (single)</label>
                     <input
                       className="form-control form-control-sm"
                       value={selectedWidgetConfig?.source || ""}
                       onChange={(event) => updateWidgetField("source", event.target.value)}
+                    />
+                  </div>
+                  <div className="col-12 col-md-4">
+                    <label className="form-label small">Sources (one per line)</label>
+                    <textarea
+                      className="form-control form-control-sm font-monospace"
+                      rows={3}
+                      value={sourceListValue}
+                      onChange={(event) => updateWidgetSources(event.target.value)}
                     />
                   </div>
                   <div className="col-12 col-md-6">
@@ -700,11 +843,28 @@ export function App() {
                 <FontAwesomeIcon icon={faUpload} /> Push Test Data
               </h5>
               <textarea
-                className="form-control form-control-sm font-monospace"
+                className={`form-control form-control-sm font-monospace ${updateJsonState.error ? "is-invalid" : ""}`}
                 rows={5}
                 value={updateJson}
                 onChange={(event) => setUpdateJson(event.target.value)}
               />
+              {updateJsonState.error ? (
+                <div className="invalid-feedback d-block">{updateJsonState.error}</div>
+              ) : (
+                <div className="small text-body-secondary mt-1">Valid JSON</div>
+              )}
+              <button
+                className="btn btn-outline-light btn-sm mt-2 me-2"
+                onClick={() => {
+                  if (updateJsonState.error) {
+                    setStatus("fix update JSON before formatting");
+                    return;
+                  }
+                  setUpdateJson(prettyJson(updateJsonState.value));
+                }}
+              >
+                Format JSON
+              </button>
               <button className="btn btn-success btn-sm mt-2" onClick={() => void handlePushUpdate()}>
                 Push /api/update
               </button>
@@ -720,23 +880,72 @@ export function App() {
                 Running: {simStatus.running ? "yes" : "no"} | mode: {simStatus.mode}
               </div>
               <div className="d-flex flex-wrap gap-2 mb-3">
-                <button className="btn btn-outline-primary btn-sm" onClick={() => void handleStartRandom()}>
+                <button
+                  className="btn btn-outline-primary btn-sm"
+                  onClick={() => void handleStartRandom()}
+                  disabled={Boolean(randomJsonState.error)}
+                >
                   <FontAwesomeIcon icon={faCirclePlay} className="me-1" /> Start Random
                 </button>
-                <button className="btn btn-outline-primary btn-sm" onClick={() => void handleStartReplay()}>
+                <button
+                  className="btn btn-outline-primary btn-sm"
+                  onClick={() => void handleStartReplay()}
+                  disabled={Boolean(replayJsonState.error)}
+                >
                   <FontAwesomeIcon icon={faCirclePlay} className="me-1" /> Start Replay
                 </button>
                 <button className="btn btn-outline-danger btn-sm" onClick={() => void handleStopSimulation()}>
                   Stop
                 </button>
               </div>
+              <label className="form-label small">Random simulation config JSON</label>
+              <textarea
+                className={`form-control form-control-sm font-monospace ${randomJsonState.error ? "is-invalid" : ""}`}
+                rows={7}
+                value={randomJson}
+                onChange={(event) => setRandomJson(event.target.value)}
+              />
+              {randomJsonState.error ? (
+                <div className="invalid-feedback d-block">{randomJsonState.error}</div>
+              ) : (
+                <div className="small text-body-secondary mt-1">Valid JSON</div>
+              )}
+              <button
+                className="btn btn-outline-light btn-sm mt-2 mb-3"
+                onClick={() => {
+                  if (randomJsonState.error) {
+                    setStatus("fix random simulation JSON before formatting");
+                    return;
+                  }
+                  setRandomJson(prettyJson(randomJsonState.value));
+                }}
+              >
+                Format JSON
+              </button>
               <label className="form-label small">Replay JSON records</label>
               <textarea
-                className="form-control form-control-sm font-monospace"
-                rows={5}
+                className={`form-control form-control-sm font-monospace ${replayJsonState.error ? "is-invalid" : ""}`}
+                rows={7}
                 value={replayJson}
                 onChange={(event) => setReplayJson(event.target.value)}
               />
+              {replayJsonState.error ? (
+                <div className="invalid-feedback d-block">{replayJsonState.error}</div>
+              ) : (
+                <div className="small text-body-secondary mt-1">Valid JSON</div>
+              )}
+              <button
+                className="btn btn-outline-light btn-sm mt-2"
+                onClick={() => {
+                  if (replayJsonState.error) {
+                    setStatus("fix replay JSON before formatting");
+                    return;
+                  }
+                  setReplayJson(prettyJson(replayJsonState.value));
+                }}
+              >
+                Format JSON
+              </button>
             </div>
           </div>
 
