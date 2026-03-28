@@ -38,7 +38,7 @@ from casedd.data_store import DataStore
 from casedd.renderer.color import parse_color
 from casedd.renderer.fonts import get_font
 from casedd.renderer.widgets.base import BaseWidget, content_rect, fill_background
-from casedd.renderer.widgets.image import (  # noqa: PLC2701 -- reuse private helpers
+from casedd.renderer.widgets.image import (
     _load_image,
     _scale_image,
 )

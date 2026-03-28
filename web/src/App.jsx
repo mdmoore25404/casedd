@@ -409,7 +409,7 @@ export function App() {
   const [simStatus, setSimStatus] = useState({ running: false, mode: "idle" });
   const [randomJson, setRandomJson] = useState(() => prettyJson({ interval: 1.0, fields: [] }));
   const [replayJson, setReplayJson] = useState(() => prettyJson([]));
-  const [rotationTemplates, setRotationTemplates] = useState([]);
+  const [rotationText, setRotationText] = useState("");
   const [rotationInterval, setRotationInterval] = useState(30);
   const [rotationDirty, setRotationDirty] = useState(false);
   const importInputRef = useRef(null);
@@ -599,13 +599,14 @@ export function App() {
           : "auto",
       );
     }
-    // Sync rotation state when panel changes (and not dirty).
-    if ((panelChanged || !rotationDirty) && Array.isArray(selectedPanelData.rotation_templates)) {
-      setRotationTemplates(selectedPanelData.rotation_templates.map(String));
+    // Sync rotation state only when the selected panel changes.
+    if (panelChanged && Array.isArray(selectedPanelData.rotation_templates)) {
+      setRotationText(selectedPanelData.rotation_templates.map(String).join("\n"));
       const iv = Number(selectedPanelData.rotation_interval);
       setRotationInterval(Number.isFinite(iv) && iv > 0 ? iv : 30);
+      setRotationDirty(false);
     }
-  }, [overrideDraftDirty, rotationDirty, selectedPanelData, selectedTemplate]);
+  }, [overrideDraftDirty, selectedPanelData, selectedTemplate]);
 
   useEffect(() => {
     if (!selectedTemplate) {
@@ -749,6 +750,10 @@ export function App() {
       setStatus("rotation interval must be a positive number");
       return;
     }
+    const rotationTemplates = rotationText
+      .split("\n")
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
     await updateRotation(selectedPanel, rotationTemplates, interval);
     setRotationDirty(false);
     setStatus(`rotation saved for ${selectedPanel}: [${rotationTemplates.join(", ") || "none"}] every ${interval}s`);
@@ -932,13 +937,9 @@ export function App() {
               <textarea
                 className="form-control form-control-sm font-monospace mb-2"
                 rows={4}
-                value={rotationTemplates.join("\n")}
+                value={rotationText}
                 onChange={(event) => {
-                  const parsed = event.target.value
-                    .split("\n")
-                    .map((t) => t.trim())
-                    .filter((t) => t.length > 0);
-                  setRotationTemplates(parsed);
+                  setRotationText(event.target.value);
                   setRotationDirty(true);
                 }}
                 placeholder={"htop\nsysinfo"}

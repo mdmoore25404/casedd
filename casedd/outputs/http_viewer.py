@@ -540,6 +540,8 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
             "panels": [
                 {
                     **panel,
+                    # Merge live rotation state so the UI always sees current values.
+                    **rotation_provider(str(panel["name"])),
                     "current_template": store.get(
                         f"{_TEMPLATE_CURRENT_PREFIX}{panel['name']}",
                         "",
