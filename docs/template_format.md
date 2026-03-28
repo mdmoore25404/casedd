@@ -1,11 +1,13 @@
 # CASEDD Template Format Specification
 
+Welcome to the CASEDD template docs. This page explains how to define screen layouts and widgets in `.casedd` YAML templates.
+
 Version: 1.0  
 File extension: `.casedd`  
 Format: YAML
 
 Templates live in the `templates/` directory. The active template is selected via
-`CASEDD_TEMPLATE` (env var or `casedd.yaml` config key).
+`CASEDD_TEMPLATE` (environment variable or `casedd.yaml` config key).
 
 ---
 

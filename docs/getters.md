@@ -1,6 +1,6 @@
 # Built-In Getters and Keys
 
-This document lists what CASEDD gathers out of the box and which data-store keys are emitted.
+Welcome to the CASEDD getter docs. This page describes all built-in system collectors and the consistent dotted key namespace they expose to the renderer engine.
 
 ## Key naming conventions
 
