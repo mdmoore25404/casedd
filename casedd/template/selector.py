@@ -41,13 +41,14 @@ class TemplateSelector:
         trigger_rules: Data-value trigger rules.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- explicit policy args improve readability
         self,
         base_template: str,
         rotation_templates: list[str],
         rotation_interval: float,
         schedule_rules: list[TemplateScheduleRule],
         trigger_rules: list[TemplateTriggerRule],
+        force_store_key: str | None = None,
     ) -> None:
         """Initialise the selector and state used across render ticks.
 
@@ -57,6 +58,7 @@ class TemplateSelector:
             rotation_interval: Seconds between rotation steps.
             schedule_rules: Time-window rules.
             trigger_rules: Data-value trigger rules.
+            force_store_key: Optional data-store key that overrides selection.
         """
         self._base_template = base_template
         self._rotation_templates = self._build_rotation_list(base_template, rotation_templates)
@@ -75,6 +77,7 @@ class TemplateSelector:
         self._trigger_true_since: dict[int, float] = {}
         self._trigger_active_since: dict[int, float] = {}
         self._trigger_cooldown_until: dict[int, float] = {}
+        self._force_store_key = force_store_key
 
     def select_template(self, snapshot: dict[str, StoreValue]) -> str:
         """Return the active template name for the current tick.
@@ -85,6 +88,13 @@ class TemplateSelector:
         Returns:
             Selected template name.
         """
+        if self._force_store_key is not None:
+            forced_value = snapshot.get(self._force_store_key)
+            if isinstance(forced_value, str):
+                forced_name = forced_value.strip()
+                if forced_name and forced_name.lower() != "auto":
+                    return forced_name
+
         now_ts = monotonic_time.monotonic()
         now_dt = datetime.now(tz=UTC).astimezone()
 

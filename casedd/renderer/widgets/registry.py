@@ -22,6 +22,7 @@ from casedd.renderer.widgets.image import ImageWidget
 from casedd.renderer.widgets.slideshow import SlideshowWidget
 from casedd.renderer.widgets.sparkline import SparklineWidget
 from casedd.renderer.widgets.text import TextWidget
+from casedd.renderer.widgets.ups import UpsWidget
 from casedd.renderer.widgets.value import ValueWidget
 from casedd.template.models import WidgetType
 
@@ -39,6 +40,7 @@ _REGISTRY: dict[WidgetType, BaseWidget] = {
     WidgetType.IMAGE: ImageWidget(),
     WidgetType.SLIDESHOW: SlideshowWidget(),
     WidgetType.CLOCK: ClockWidget(),
+    WidgetType.UPS: UpsWidget(),
 }
 
 

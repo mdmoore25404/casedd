@@ -159,7 +159,7 @@ class WebSocketOutput:
                 await self._task
         _log.info("WebSocket server stopped.")
 
-    async def broadcast(self, image: Image.Image) -> None:
+    async def broadcast(self, image: Image.Image, panel: str | None = None) -> None:
         """Encode a PIL image as PNG and broadcast it to all WS clients.
 
         Skips the encode/broadcast step when no clients are connected to avoid
@@ -167,6 +167,7 @@ class WebSocketOutput:
 
         Args:
             image: The rendered frame to broadcast.
+            panel: Optional panel identifier associated with this frame.
         """
         if self._manager.client_count == 0:
             return
@@ -174,5 +175,8 @@ class WebSocketOutput:
         buf = io.BytesIO()
         image.save(buf, format="PNG", optimize=False)
         encoded = base64.b64encode(buf.getvalue()).decode("ascii")
-        payload = f'{{"type":"frame","data":"{encoded}"}}'
+        if panel is None:
+            payload = f'{{"type":"frame","data":"{encoded}"}}'
+        else:
+            payload = f'{{"type":"frame","panel":"{panel}","data":"{encoded}"}}'
         await self._manager.broadcast(payload)

@@ -123,6 +123,34 @@ Emits:
 - system.load_5
 - system.load_15
 
+## UPS getter
+
+Module: casedd/getters/ups.py
+
+Emits:
+- ups.status
+- ups.battery_percent
+- ups.load_percent
+- ups.load_watts
+- ups.runtime_minutes
+- ups.input_voltage
+- ups.input_frequency
+- ups.last_change_ts
+- ups.online
+- ups.on_battery
+- ups.low_battery
+- ups.charging
+- ups.present
+
+Backend preference:
+- CASEDD_UPS_COMMAND (custom command)
+- apcaccess -u
+- upsc <target>
+
+Notes:
+- If no backend is available, getter remains alive and publishes `ups.status=unavailable` with `ups.present=0`.
+- External pushes can write nested UPS payloads (for example `{\"update\": {\"ups\": {\"battery_percent\": 64}}}`) and they are flattened to dotted keys.
+
 ## Speedtest getter (Ookla CLI)
 
 Module: casedd/getters/speedtest.py
@@ -185,4 +213,11 @@ Notes:
 
 ## Template-aware polling
 
-CASEDD only runs getters that are needed by the active template sources. If a template does not reference a getter namespace (for example disk.*), that getter is not polled.
+CASEDD runs getters required by templates that can become active under policy
+(current/rotated/scheduled/triggered templates across panels).
+
+You can force specific namespaces to always collect via
+`CASEDD_ALWAYS_COLLECT_PREFIXES` (for example `cpu,memory,system`).
+
+When `casedd.test_mode` is enabled (or `CASEDD_TEST_MODE=1` on startup),
+all getters are disabled globally and only pushed/simulated values are used.

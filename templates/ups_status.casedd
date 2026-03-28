@@ -1,0 +1,24 @@
+# ups_status.casedd — Single-widget UPS status template
+
+name: ups_status
+description: UPS status card using the built-in UPS widget.
+width: 800
+height: 480
+refresh_rate: 2.0
+
+grid:
+  template_areas: |
+    ups
+  columns: 1fr
+  rows: 1fr
+
+background: "#0f1318"
+
+widgets:
+  ups:
+    type: ups
+    label: "UPS"
+    source: ups
+    padding: 10
+    color: "#e6edf3"
+    background: "#151b23"

@@ -218,3 +218,7 @@ __marimo__/
 
 # exclude logs
 logs/*.log*
+
+# Vite/React frontend artifacts
+web/node_modules/
+web/dist/

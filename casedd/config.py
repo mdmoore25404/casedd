@@ -129,6 +129,38 @@ class TemplateTriggerRule(BaseModel):
         return self
 
 
+class PanelConfig(BaseModel):
+    """Configuration for one output panel/framebuffer.
+
+    Attributes:
+        name: Stable panel identifier.
+        display_name: Human-friendly panel name for UI selectors.
+        fb_device: Optional framebuffer path for this panel.
+        no_fb: Optional per-panel framebuffer disable flag.
+        width: Optional panel width override in pixels.
+        height: Optional panel height override in pixels.
+        template: Optional per-panel base template name.
+        template_rotation: Optional per-panel rotation templates.
+        template_rotation_interval: Optional per-panel rotation interval seconds.
+        template_schedule: Optional per-panel schedule rules.
+        template_triggers: Optional per-panel trigger rules.
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
+
+    name: str
+    display_name: str | None = None
+    fb_device: Path | None = None
+    no_fb: bool | None = None
+    width: int | None = Field(default=None, gt=0)
+    height: int | None = Field(default=None, gt=0)
+    template: str | None = None
+    template_rotation: list[str] = Field(default_factory=list)
+    template_rotation_interval: float | None = Field(default=None, gt=0)
+    template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
+    template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
+
+
 @dataclass(config=ConfigDict(frozen=True))
 class Config:
     """Daemon-wide configuration.
@@ -160,6 +192,9 @@ class Config:
         ollama_api_base: Base URL for Ollama HTTP API.
         ollama_interval: Ollama polling interval in seconds.
         ollama_timeout: Ollama request timeout in seconds.
+        ups_interval: UPS polling interval in seconds.
+        ups_command: Optional custom UPS command override.
+        ups_upsc_target: Target argument for ``upsc`` fallback mode.
         net_interfaces: Explicit network interface names to monitor (e.g.
             ``["enp8s0"]``). Traffic from all other interfaces (Docker bridges,
             veth pairs, loopback) is excluded. Empty list falls back to the
@@ -168,6 +203,9 @@ class Config:
         template_rotation_interval: Seconds spent on each rotated template.
         template_schedule: Local-time schedule rules overriding rotation.
         template_triggers: Data-value trigger rules overriding schedule/rotation.
+        panels: Optional per-panel output/runtime definitions.
+        always_collect_prefixes: Namespaces that are always sampled.
+        test_mode: Disable all getters globally when true.
     """
 
     log_level: str = Field(default="INFO")
@@ -196,11 +234,17 @@ class Config:
     ollama_api_base: str = Field(default="http://localhost:11434")
     ollama_interval: float = Field(default=10.0)
     ollama_timeout: float = Field(default=3.0)
+    ups_interval: float = Field(default=5.0)
+    ups_command: str | None = Field(default=None)
+    ups_upsc_target: str = Field(default="ups@localhost")
     net_interfaces: list[str] = Field(default_factory=list)
     template_rotation: list[str] = Field(default_factory=list)
     template_rotation_interval: float = Field(default=30.0)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
+    panels: list[PanelConfig] = Field(default_factory=list)
+    always_collect_prefixes: list[str] = Field(default_factory=list)
+    test_mode: bool = Field(default=False)
 
     @field_validator("log_level")
     @classmethod
@@ -356,6 +400,25 @@ class Config:
             raise ValueError(msg)
         return v
 
+    @field_validator("ups_interval")
+    @classmethod
+    def _validate_ups_interval(cls, v: float) -> float:
+        """Ensure UPS polling interval is positive and practical.
+
+        Args:
+            v: Poll interval seconds.
+
+        Returns:
+            Validated interval value.
+
+        Raises:
+            ValueError: If interval is outside accepted bounds.
+        """
+        if not (1.0 <= v <= 3600.0):
+            msg = f"ups_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
     @field_validator("template_rotation_interval")
     @classmethod
     def _validate_template_rotation_interval(cls, v: float) -> float:
@@ -374,6 +437,27 @@ class Config:
             msg = f"template_rotation_interval must be between 1 and 86400, got {v}"
             raise ValueError(msg)
         return v
+
+    @field_validator("always_collect_prefixes")
+    @classmethod
+    def _validate_always_collect_prefixes(cls, value: list[str]) -> list[str]:
+        """Normalize always-on source namespace prefixes.
+
+        Args:
+            value: Raw prefix list from env/yaml.
+
+        Returns:
+            Normalized and deduplicated prefix list.
+        """
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            name = item.strip().lower().rstrip(".")
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            normalized.append(name)
+        return normalized
 
 
 def _read_yaml(path: Path) -> dict[str, object]:
@@ -446,6 +530,18 @@ def load_config() -> Config:
             return raw
         return []
 
+    def _get_always_collect_prefixes() -> list[str]:
+        """Parse always-on getter categories from env/yaml.
+
+        Returns:
+            Namespace prefix list.
+        """
+        raw = _get("CASEDD_ALWAYS_COLLECT_PREFIXES", "always_collect_prefixes", [])
+        if isinstance(raw, list):
+            return [str(item).strip() for item in raw if str(item).strip()]
+        text = str(raw)
+        return [item.strip() for item in text.split(",") if item.strip()]
+
     return Config(
         log_level=str(_get("CASEDD_LOG_LEVEL", "log_level", "INFO")),
         no_fb=str(_get("CASEDD_NO_FB", "no_fb", "0")) not in {"0", "false", "False", ""},
@@ -506,6 +602,9 @@ def load_config() -> Config:
         ollama_api_base=str(_get("CASEDD_OLLAMA_API_BASE", "ollama_api_base", "http://localhost:11434")),
         ollama_interval=float(str(_get("CASEDD_OLLAMA_INTERVAL", "ollama_interval", 10.0))),
         ollama_timeout=float(str(_get("CASEDD_OLLAMA_TIMEOUT", "ollama_timeout", 3.0))),
+        ups_interval=float(str(_get("CASEDD_UPS_INTERVAL", "ups_interval", 5.0))),
+        ups_command=str(_get("CASEDD_UPS_COMMAND", "ups_command", "")).strip() or None,
+        ups_upsc_target=str(_get("CASEDD_UPS_UPSC_TARGET", "ups_upsc_target", "ups@localhost")),
         net_interfaces=[
             iface.strip()
             for iface in str(_get("CASEDD_NET_INTERFACES", "net_interfaces", "")).split(",")
@@ -523,4 +622,8 @@ def load_config() -> Config:
             "list[TemplateTriggerRule]",
             _get_yaml_list("template_triggers"),
         ),
+        panels=cast("list[PanelConfig]", _get_yaml_list("panels")),
+        always_collect_prefixes=_get_always_collect_prefixes(),
+        test_mode=str(_get("CASEDD_TEST_MODE", "test_mode", "0"))
+        not in {"0", "false", "False", ""},
     )

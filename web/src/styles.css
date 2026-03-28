@@ -1,0 +1,24 @@
+body {
+  background: #0d1117;
+  color: #e6edf3;
+}
+
+.app-shell .card {
+  background: #11161d !important;
+  color: #e6edf3;
+}
+
+.app-shell .text-body-secondary {
+  color: #a0acb9 !important;
+}
+
+.app-shell .form-control,
+.app-shell .form-select {
+  background: #0f141b;
+  color: #e6edf3;
+  border-color: #2d333b;
+}
+
+.app-shell textarea {
+  min-height: 110px;
+}

@@ -36,6 +36,7 @@ class WidgetType(StrEnum):
     IMAGE = "image"
     SLIDESHOW = "slideshow"
     CLOCK = "clock"
+    UPS = "ups"
 
 
 class ScaleMode(StrEnum):
@@ -210,6 +211,21 @@ class WidgetConfig(BaseModel):
     border_style: BorderStyle = BorderStyle.NONE
     border_color: str | None = None
     border_width: int = Field(default=1, ge=1, le=16)
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalize_widget_type_alias(cls, value: object) -> object:
+        """Normalize legacy/alias widget type names before enum parsing.
+
+        Args:
+            value: Raw type field value.
+
+        Returns:
+            Normalized widget type token.
+        """
+        if isinstance(value, str) and value.strip().lower() == "power.ups":
+            return "ups"
+        return value
 
     @field_validator("border_style", mode="before")
     @classmethod
