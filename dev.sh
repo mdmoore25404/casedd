@@ -346,7 +346,7 @@ cmd_pages() {
         --workdir /srv/jekyll \
         ruby:3.3 \
         bash -c "bundle install --quiet && bundle exec jekyll serve \
-            --livereload --port 4000 --host 0.0.0.0" 2>&1
+            --port 4000 --host 0.0.0.0" 2>&1
 }
 
 cmd_help() {
