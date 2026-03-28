@@ -2,11 +2,15 @@
 
 Renders structured process rows emitted by
 :class:`~casedd.getters.htop.HtopGetter` as a properly aligned table with
-right-justified numeric columns and an active-sort indicator (▲).
+right-justified numeric columns and an active-sort indicator (▼).
 
 The renderer reads ``cfg.sort_key`` ("cpu" or "mem") to determine the sort
-column and draws a yellow ▲ next to that column header.  Column widths and
-font sizes scale to the widget's allocated bounding rectangle.
+column and draws a yellow ▼ next to that column header to signal descending
+order (highest value first).  Column widths and font sizes scale to the
+widget's allocated bounding rectangle.
+
+Optionally, ``cfg.filter_regex`` (a Python regex pattern) can be set to
+hide processes whose name matches — useful for privacy or reducing clutter.
 
 Data source keys consumed:
     - ``{prefix}.rows``    (str) -- pipe-delimited: ``PID|CPU|MEM|NAME``
@@ -16,6 +20,7 @@ Data source keys consumed:
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 
 from PIL import Image, ImageDraw
 from PIL.ImageFont import FreeTypeFont, ImageFont
@@ -111,6 +116,14 @@ class HtopWidget(BaseWidget):
         rows_raw = data.get(f"{prefix}.rows")
         entries = _parse_rows(str(rows_raw) if rows_raw is not None else "")
 
+        # Apply optional regex filter to hide matching process names.
+        if cfg.filter_regex:
+            try:
+                rx = re.compile(cfg.filter_regex)
+                entries = [e for e in entries if not rx.search(e.name)]
+            except re.error:
+                pass  # invalid pattern — render unfiltered rather than crashing
+
         sort_by = cfg.sort_key.lower() if cfg.sort_key else "cpu"
         if sort_by == "mem":
             entries.sort(key=lambda e: (e.mem, e.cpu), reverse=True)
@@ -184,8 +197,9 @@ def _paint_header(
     hdr_color: tuple[int, int, int] = (185, 195, 205)
     sort_color: tuple[int, int, int] = (255, 220, 100)
 
-    cpu_label = "CPU% \u25b2" if sort_by == "cpu" else "CPU%"
-    mem_label = "MEM% \u25b2" if sort_by == "mem" else "MEM%"
+    # ▼ (U+25BC) — wide side at top — signals descending order (highest first).
+    cpu_label = "CPU% \u25bc" if sort_by == "cpu" else "CPU%"
+    mem_label = "MEM% \u25bc" if sort_by == "mem" else "MEM%"
 
     rd = _RightDraw(draw=ctx.draw, font=ctx.font, y=y)
     rd.emit(col.pid_right, "PID", hdr_color)

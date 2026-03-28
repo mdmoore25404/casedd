@@ -151,6 +151,7 @@ class WidgetConfig(BaseModel):
         arc_end: Gauge arc end angle in degrees.
         gauge_ticks: Number of tick marks to draw along a gauge arc.
         sort_key: Sort column for htop widget ("cpu" or "mem").
+        filter_regex: Optional Python regex; htop rows whose process name matches are hidden.
         border_style: Widget border style (none/solid/dashed/dotted/inset/outset).
         border_color: Border color string.
         border_width: Border line width in pixels.
@@ -218,11 +219,34 @@ class WidgetConfig(BaseModel):
 
     # Htop process table
     sort_key: str = Field(default="cpu")
+    filter_regex: str | None = Field(default=None)
 
     # Widget border
     border_style: BorderStyle = BorderStyle.NONE
     border_color: str | None = None
     border_width: int = Field(default=1, ge=1, le=16)
+
+    @field_validator("filter_regex")
+    @classmethod
+    def _validate_filter_regex(cls, value: str | None) -> str | None:
+        """Compile-check filter_regex to catch broken patterns at template load time.
+
+        Args:
+            value: Raw regex string or None.
+
+        Returns:
+            The validated regex string or None.
+
+        Raises:
+            ValueError: If the pattern is not a valid Python regex.
+        """
+        if value is not None:
+            try:
+                re.compile(value)
+            except re.error as exc:
+                msg = f"filter_regex is not a valid regex: {exc}"
+                raise ValueError(msg) from exc
+        return value
 
     @field_validator("type", mode="before")
     @classmethod
