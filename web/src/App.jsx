@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBolt,
@@ -30,18 +30,30 @@ import {
 } from "./api";
 
 function usePolling(callback, intervalMs) {
+  const callbackRef = useRef(callback);
+
+  useEffect(() => {
+    callbackRef.current = callback;
+  }, [callback]);
+
   useEffect(() => {
     let mounted = true;
+    let inFlight = false;
+
     const tick = async () => {
-      if (!mounted) {
+      if (!mounted || inFlight) {
         return;
       }
+      inFlight = true;
       try {
-        await callback();
+        await callbackRef.current();
       } catch (_err) {
         // polling errors are surfaced in UI actions
+      } finally {
+        inFlight = false;
       }
     };
+
     void tick();
     const timer = window.setInterval(() => {
       void tick();
@@ -50,7 +62,7 @@ function usePolling(callback, intervalMs) {
       mounted = false;
       window.clearInterval(timer);
     };
-  }, [callback, intervalMs]);
+  }, [intervalMs]);
 }
 
 function parseTemplateAreas(templateAreas) {
@@ -110,28 +122,28 @@ export function App() {
   const [simStatus, setSimStatus] = useState({ running: false, mode: "idle" });
   const [replayJson, setReplayJson] = useState('[{"at_ms":0,"update":{"fans.cpu.max_rpm":900}},{"at_ms":1000,"update":{"fans.cpu.max_rpm":1400}}]');
 
-  const refreshPanels = async () => {
+  const refreshPanels = useCallback(async () => {
     const payload = await fetchPanels();
     setPanelsData(payload);
     if (!selectedPanel) {
       setSelectedPanel(payload.default_panel || "");
     }
-  };
+  }, [selectedPanel]);
 
-  const refreshStatus = async () => {
+  const refreshStatus = useCallback(async () => {
     const [tm, sim] = await Promise.all([getTestMode(), getSimulationStatus()]);
     setTestModeEnabled(Boolean(tm.enabled));
     setSimStatus(sim);
-  };
+  }, []);
 
-  const refreshTemplates = async () => {
+  const refreshTemplates = useCallback(async () => {
     const payload = await fetchTemplates();
     const names = payload.templates || [];
     setTemplates(names);
     if (!selectedTemplate && names.length > 0) {
       setSelectedTemplate(names[0]);
     }
-  };
+  }, [selectedTemplate]);
 
   usePolling(refreshPanels, 2000);
   usePolling(refreshStatus, 1500);
