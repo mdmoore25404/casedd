@@ -15,10 +15,118 @@ Public API:
 
 import os
 from pathlib import Path
+import re
+from typing import Literal, cast
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.dataclasses import dataclass
 import yaml
+
+_HHMM_PATTERN = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+
+
+class TemplateScheduleRule(BaseModel):
+    """Time-window rule for template selection.
+
+    Attributes:
+        template: Template name selected when this schedule matches.
+        start: Start time in ``HH:MM`` 24-hour local time.
+        end: End time in ``HH:MM`` 24-hour local time.
+        days: Optional weekdays where rule applies (0=Mon ... 6=Sun).
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
+
+    template: str
+    start: str
+    end: str
+    days: list[int] = Field(default_factory=list)
+
+    @field_validator("start", "end")
+    @classmethod
+    def _validate_hhmm(cls, value: str) -> str:
+        """Validate 24-hour ``HH:MM`` format.
+
+        Args:
+            value: Raw time string.
+
+        Returns:
+            Normalized time string.
+
+        Raises:
+            ValueError: If the time is not in ``HH:MM`` format.
+        """
+        if _HHMM_PATTERN.match(value) is None:
+            msg = f"time must be HH:MM (24-hour), got '{value}'"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("days")
+    @classmethod
+    def _validate_days(cls, value: list[int]) -> list[int]:
+        """Validate weekday indexes.
+
+        Args:
+            value: Weekday indexes (0=Mon ... 6=Sun).
+
+        Returns:
+            Validated weekday list.
+
+        Raises:
+            ValueError: If any day is outside 0..6.
+        """
+        invalid = [day for day in value if day < 0 or day > 6]
+        if invalid:
+            msg = f"days entries must be in range 0..6, got {invalid}"
+            raise ValueError(msg)
+        return value
+
+
+class TemplateTriggerRule(BaseModel):
+    """Data-driven trigger rule for template selection.
+
+    Attributes:
+        source: Dotted data-store key to inspect.
+        operator: Comparison operator token.
+        value: Threshold value for comparison.
+        template: Template selected when condition is satisfied.
+        duration: Seconds condition must remain true before activating.
+        hold_for: Minimum seconds to keep this template active once triggered.
+        clear_operator: Optional explicit operator used to clear an active trigger.
+        clear_value: Optional explicit threshold used with clear_operator.
+        cooldown: Seconds before the same trigger may activate again.
+        priority: Lower number = higher priority when multiple triggers match.
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
+
+    source: str
+    operator: Literal["gt", "gte", "lt", "lte", "eq", "neq"] = "gte"
+    value: float | int | str
+    template: str
+    duration: float = Field(default=0.0, ge=0.0)
+    hold_for: float = Field(default=0.0, ge=0.0)
+    clear_operator: Literal["gt", "gte", "lt", "lte", "eq", "neq"] | None = None
+    clear_value: float | int | str | None = None
+    cooldown: float = Field(default=0.0, ge=0.0)
+    priority: int = Field(default=100, ge=0, le=1000)
+
+    @model_validator(mode="after")
+    def _validate_clear_rule(self) -> "TemplateTriggerRule":
+        """Validate clear-rule pair semantics.
+
+        Returns:
+            Self after validation.
+
+        Raises:
+            ValueError: If only one clear-rule field is provided.
+        """
+        has_clear_operator = self.clear_operator is not None
+        has_clear_value = self.clear_value is not None
+        if has_clear_operator != has_clear_value:
+            msg = "clear_operator and clear_value must be set together"
+            raise ValueError(msg)
+        return self
 
 
 @dataclass(config=ConfigDict(frozen=True))
@@ -56,6 +164,10 @@ class Config:
             ``["enp8s0"]``). Traffic from all other interfaces (Docker bridges,
             veth pairs, loopback) is excluded. Empty list falls back to the
             psutil aggregate across all interfaces.
+        template_rotation: Additional template names to cycle through.
+        template_rotation_interval: Seconds spent on each rotated template.
+        template_schedule: Local-time schedule rules overriding rotation.
+        template_triggers: Data-value trigger rules overriding schedule/rotation.
     """
 
     log_level: str = Field(default="INFO")
@@ -85,6 +197,10 @@ class Config:
     ollama_interval: float = Field(default=10.0)
     ollama_timeout: float = Field(default=3.0)
     net_interfaces: list[str] = Field(default_factory=list)
+    template_rotation: list[str] = Field(default_factory=list)
+    template_rotation_interval: float = Field(default=30.0)
+    template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
+    template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
 
     @field_validator("log_level")
     @classmethod
@@ -240,6 +356,25 @@ class Config:
             raise ValueError(msg)
         return v
 
+    @field_validator("template_rotation_interval")
+    @classmethod
+    def _validate_template_rotation_interval(cls, v: float) -> float:
+        """Ensure rotation interval is positive and practical.
+
+        Args:
+            v: Rotation interval in seconds.
+
+        Returns:
+            Validated interval.
+
+        Raises:
+            ValueError: If interval is outside accepted bounds.
+        """
+        if not (1.0 <= v <= 86400.0):
+            msg = f"template_rotation_interval must be between 1 and 86400, got {v}"
+            raise ValueError(msg)
+        return v
+
 
 def _read_yaml(path: Path) -> dict[str, object]:
     """Read a YAML file and return its top-level mapping.
@@ -284,6 +419,32 @@ def load_config() -> Config:
         if not raw:
             return None
         return float(raw)
+
+    def _get_rotation_templates() -> list[str]:
+        """Parse template rotation list from env or YAML.
+
+        Returns:
+            Ordered list of template names.
+        """
+        raw = _get("CASEDD_TEMPLATE_ROTATION", "template_rotation", [])
+        if isinstance(raw, list):
+            return [str(item).strip() for item in raw if str(item).strip()]
+        text = str(raw)
+        return [item.strip() for item in text.split(",") if item.strip()]
+
+    def _get_yaml_list(key: str) -> list[object]:
+        """Read a list value from YAML with safe fallback.
+
+        Args:
+            key: Top-level YAML key.
+
+        Returns:
+            List value or empty list.
+        """
+        raw = yaml_data.get(key, [])
+        if isinstance(raw, list):
+            return raw
+        return []
 
     return Config(
         log_level=str(_get("CASEDD_LOG_LEVEL", "log_level", "INFO")),
@@ -350,4 +511,16 @@ def load_config() -> Config:
             for iface in str(_get("CASEDD_NET_INTERFACES", "net_interfaces", "")).split(",")
             if iface.strip()
         ],
+        template_rotation=_get_rotation_templates(),
+        template_rotation_interval=float(
+            str(_get("CASEDD_TEMPLATE_ROTATION_INTERVAL", "template_rotation_interval", 30.0))
+        ),
+        template_schedule=cast(
+            "list[TemplateScheduleRule]",
+            _get_yaml_list("template_schedule"),
+        ),
+        template_triggers=cast(
+            "list[TemplateTriggerRule]",
+            _get_yaml_list("template_triggers"),
+        ),
     )

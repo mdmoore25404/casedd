@@ -26,7 +26,8 @@ Interested in commercial use or white-label rights? Feel free to reach out.
 - **Dual output** — push rendered images to `/dev/fb1` (framebuffer) AND a browser via WebSocket simultaneously
 - **Custom layout engine** — declare layouts in `.casedd` YAML files using CSS Grid Template Areas syntax; widget tree supports unlimited nesting via `type: panel`
 - **10 widget types** — `value`, `text`, `bar`, `gauge`, `histogram`, `sparkline`, `image`, `slideshow`, `clock`, `panel`
-- **Live data getters** — CPU, NVIDIA GPU (including multi-GPU keys), RAM, disk, network, system uptime/host, speedtest, Ollama API runtime state
+- **Live data getters** — CPU, fan telemetry (CPU/system/GPU), NVIDIA GPU (including multi-GPU keys), RAM, disk, network, system uptime/host, speedtest, Ollama API runtime state
+- **Template policy engine** — rotate templates, schedule templates by time/day, and trigger template overrides from data-store conditions
 - **Speedtest integration** — optional Ookla CLI getter (default every 30 min) with plan-relative metrics and status keys
 - **External data push** — accept JSON updates via Unix domain socket or REST POST; values cached in RAM and used on next render
 - **Template-aware polling** — getters run only when their key namespaces are referenced by the active template
@@ -206,6 +207,22 @@ export CASEDD_TEMPLATE=push_demo
 ./scripts/push_demo.sh 72.0 "Patio sensor online"
 ```
 
+### Fan telemetry template
+
+An example fan dashboard is provided at [templates/fans.casedd](templates/fans.casedd).
+
+To try it:
+
+```bash
+export CASEDD_TEMPLATE=fans
+./dev.sh restart
+```
+
+This template visualizes:
+- CPU fan count / avg / max
+- system fan count / avg / max
+- GPU fan count / avg / max (percent when sourced from nvidia-smi)
+
 ### Immediate speedtest push helper
 
 Run an on-demand Ookla speedtest and push the result into CASEDD via REST:
@@ -273,6 +290,45 @@ CASEDD_OLLAMA_API_BASE=http://localhost:11434
 CASEDD_OLLAMA_INTERVAL=10
 CASEDD_OLLAMA_TIMEOUT=3
 ```
+
+## Template rotation, schedule, and triggers
+
+Rotation can be configured from environment variables:
+
+```bash
+CASEDD_TEMPLATE=system_stats
+CASEDD_TEMPLATE_ROTATION=fans,slideshow
+CASEDD_TEMPLATE_ROTATION_INTERVAL=30
+```
+
+Schedules and triggers are configured in `casedd.yaml`.
+See [casedd.yaml.example](casedd.yaml.example) for a complete sample:
+
+```yaml
+template_schedule:
+  - template: slideshow
+    start: "23:00"
+    end: "06:00"
+    days: [0, 1, 2, 3, 4, 5, 6]
+
+template_triggers:
+  - source: cpu.percent
+    operator: gte
+    value: 90
+    template: system_stats
+    duration: 10
+    hold_for: 20
+    clear_operator: lte
+    clear_value: 70
+    cooldown: 30
+    priority: 10
+```
+
+Selection priority is:
+1. Trigger rules
+2. Schedule rules
+3. Rotation list
+4. Base `CASEDD_TEMPLATE`
 
 ---
 

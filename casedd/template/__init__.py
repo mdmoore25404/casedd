@@ -9,4 +9,5 @@ Sub-modules:
     - :mod:`casedd.template.loader` — YAML → :class:`~casedd.template.models.Template`
     - :mod:`casedd.template.grid` — CSS grid area → pixel rect solver
     - :mod:`casedd.template.registry` — template name → loaded template, hot-reload
+    - :mod:`casedd.template.selector` — runtime policy-based template selection
 """

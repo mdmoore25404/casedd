@@ -6,6 +6,7 @@ into the shared :class:`~casedd.data_store.DataStore`.
 
 Available getters:
     - :mod:`casedd.getters.cpu` — CPU usage, temperature, fan RPM
+    - :mod:`casedd.getters.fans` — system/CPU/GPU fan telemetry
     - :mod:`casedd.getters.gpu` — NVIDIA GPU stats via ``nvidia-smi``
     - :mod:`casedd.getters.memory` — RAM usage
     - :mod:`casedd.getters.disk` — Disk usage

@@ -3,6 +3,7 @@
 The :class:`Daemon` class is the central coordinator.  It owns and manages:
 
 - All data getters (CPU, GPU, memory, disk, network, system)
+- All data getters (CPU, fan telemetry, GPU, memory, disk, network, system)
 - The template registry (with hot-reload)
 - The render engine
 - All output sinks (framebuffer, WebSocket, HTTP viewer)
@@ -30,6 +31,7 @@ from casedd.data_store import DataStore
 from casedd.getters.base import BaseGetter
 from casedd.getters.cpu import CpuGetter
 from casedd.getters.disk import DiskGetter
+from casedd.getters.fans import FanGetter
 from casedd.getters.gpu import GpuGetter
 from casedd.getters.memory import MemoryGetter
 from casedd.getters.network import NetworkGetter
@@ -43,6 +45,7 @@ from casedd.outputs.websocket import WebSocketOutput
 from casedd.renderer.engine import RenderEngine
 from casedd.template.models import Template, WidgetConfig
 from casedd.template.registry import TemplateRegistry
+from casedd.template.selector import TemplateSelector
 
 _log = logging.getLogger(__name__)
 
@@ -87,6 +90,15 @@ class Daemon:
         getter_tasks: dict[str, asyncio.Task[None]] = {}
         registry = TemplateRegistry(Path(self._cfg.templates_dir))
         engine = RenderEngine(self._cfg.width, self._cfg.height)
+        selector = TemplateSelector(
+            base_template=self._cfg.template,
+            rotation_templates=self._cfg.template_rotation,
+            rotation_interval=self._cfg.template_rotation_interval,
+            schedule_rules=self._cfg.template_schedule,
+            trigger_rules=self._cfg.template_triggers,
+        )
+
+        initial_template = selector.select_template(self._store.snapshot())
 
         fb_output = FramebufferOutput(
             Path(self._cfg.fb_device),
@@ -99,7 +111,7 @@ class Daemon:
             self._cfg.http_port,
             self._cfg.ws_port,
             self._cfg.refresh_rate,
-            self._cfg.template,
+            initial_template,
             self._cfg.viewer_bg,
         )
         unix_ingestion = UnixSocketIngestion(
@@ -114,7 +126,12 @@ class Daemon:
         await unix_ingestion.start()
 
         # --- Start only getters required by the active template ---
-        await self._sync_getter_tasks(registry, getters_by_name, getter_tasks)
+        await self._sync_getter_tasks(
+            registry,
+            initial_template,
+            getters_by_name,
+            getter_tasks,
+        )
 
         _log.info(
             "CASEDD daemon started. Template: %s | Refresh: %.1f Hz",
@@ -129,6 +146,7 @@ class Daemon:
                 fb_output,
                 ws_output,
                 http_output,
+                selector,
                 getters_by_name,
                 getter_tasks,
             )
@@ -152,6 +170,7 @@ class Daemon:
         fb_output: FramebufferOutput,
         ws_output: WebSocketOutput,
         http_output: HttpViewerOutput,
+        selector: TemplateSelector,
         getters_by_name: dict[str, BaseGetter],
         getter_tasks: dict[str, asyncio.Task[None]],
     ) -> None:
@@ -163,20 +182,32 @@ class Daemon:
             fb_output: Framebuffer output sink.
             ws_output: WebSocket broadcast output.
             http_output: HTTP viewer image holder.
+            selector: Runtime template selection policy engine.
             getters_by_name: Getter instances indexed by class name.
             getter_tasks: Active getter task map.
         """
         interval = 1.0 / self._cfg.refresh_rate
         last_getter_sync = 0.0
+        previous_template = ""
         while not self._shutdown.is_set():
             tick_start = asyncio.get_event_loop().time()
+            active_template = selector.select_template(self._store.snapshot())
+
+            if active_template != previous_template:
+                _log.info("Active template switched to: %s", active_template)
+                previous_template = active_template
 
             if tick_start - last_getter_sync >= _GETTER_SYNC_INTERVAL_SEC:
-                await self._sync_getter_tasks(registry, getters_by_name, getter_tasks)
+                await self._sync_getter_tasks(
+                    registry,
+                    active_template,
+                    getters_by_name,
+                    getter_tasks,
+                )
                 last_getter_sync = tick_start
 
             # Render in a thread pool so PIL doesn't block the event loop
-            image = await asyncio.to_thread(self._render_one, registry, engine)
+            image = await asyncio.to_thread(self._render_one, registry, engine, active_template)
 
             if image is not None:
                 # Framebuffer write is fast mmap — also in thread to be safe
@@ -196,6 +227,7 @@ class Daemon:
         self,
         registry: TemplateRegistry,
         engine: RenderEngine,
+        template_name: str,
     ) -> Image.Image | None:
         """Load the active template, reload if changed, and render one frame.
 
@@ -204,13 +236,15 @@ class Daemon:
         Args:
             registry: Template registry.
             engine: Render engine.
+            template_name: Template name selected for this render tick.
 
         Returns:
             Rendered PIL Image, or ``None`` if rendering failed.
         """
-        template = registry.get(self._cfg.template)
-        if template is None:
-            _log.warning("Template '%s' not found — skipping frame.", self._cfg.template)
+        try:
+            template = registry.get(template_name)
+        except Exception:
+            _log.warning("Template '%s' not found — skipping frame.", template_name)
             return None
 
         try:
@@ -234,6 +268,7 @@ class Daemon:
             DiskGetter(self._store, mount=self._cfg.disk_mount),
             NetworkGetter(self._store, interfaces=self._cfg.net_interfaces),
             SystemGetter(self._store),
+            FanGetter(self._store),
             SpeedtestGetter(
                 self._store,
                 interval=self._cfg.speedtest_interval,
@@ -257,11 +292,12 @@ class Daemon:
     async def _sync_getter_tasks(
         self,
         registry: TemplateRegistry,
+        template_name: str,
         getters_by_name: dict[str, BaseGetter],
         getter_tasks: dict[str, asyncio.Task[None]],
     ) -> None:
         """Start/stop getter tasks based on sources used by active template."""
-        needed = self._needed_getter_names(registry)
+        needed = self._needed_getter_names(registry, template_name)
 
         for name in list(getter_tasks.keys()):
             if name in needed:
@@ -280,31 +316,43 @@ class Daemon:
             task = asyncio.create_task(getter_opt.run(), name=f"getter-{name}")
             getter_tasks[name] = task
 
-    def _needed_getter_names(self, registry: TemplateRegistry) -> set[str]:
+    def _needed_getter_names(self, registry: TemplateRegistry, template_name: str) -> set[str]:
         """Resolve which getters are required by the active template sources."""
-        template = registry.get(self._cfg.template)
-        if template is None:
+        try:
+            template = registry.get(template_name)
+        except Exception:
             return set()
 
         names: set[str] = set()
         for source in self._template_sources(template):
-            if source.startswith("cpu."):
-                names.add("CpuGetter")
-            elif source.startswith("nvidia."):
-                names.add("GpuGetter")
-            elif source.startswith("memory."):
-                names.add("MemoryGetter")
-            elif source.startswith("disk."):
-                names.add("DiskGetter")
-            elif source.startswith("net."):
-                names.add("NetworkGetter")
-            elif source.startswith("system."):
-                names.add("SystemGetter")
-            elif source.startswith("speedtest."):
-                names.add("SpeedtestGetter")
-            elif source.startswith("ollama."):
-                names.add("OllamaGetter")
+            mapped = self._getter_name_for_source(source)
+            if mapped is not None:
+                names.add(mapped)
+
+        for trigger in self._cfg.template_triggers:
+            mapped = self._getter_name_for_source(trigger.source)
+            if mapped is not None:
+                names.add(mapped)
         return names
+
+    @staticmethod
+    def _getter_name_for_source(source: str) -> str | None:
+        """Map a source key namespace to its owning getter class name."""
+        mapping: tuple[tuple[str, str], ...] = (
+            ("cpu.", "CpuGetter"),
+            ("nvidia.", "GpuGetter"),
+            ("memory.", "MemoryGetter"),
+            ("disk.", "DiskGetter"),
+            ("net.", "NetworkGetter"),
+            ("system.", "SystemGetter"),
+            ("fans.", "FanGetter"),
+            ("speedtest.", "SpeedtestGetter"),
+            ("ollama.", "OllamaGetter"),
+        )
+        for prefix, getter_name in mapping:
+            if source.startswith(prefix):
+                return getter_name
+        return None
 
     def _template_sources(self, template: Template) -> set[str]:
         """Collect all widget source keys referenced by a template tree."""
