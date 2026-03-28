@@ -1,21 +1,194 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>CASEDD Getter Key Reference</title>
-</head>
-<body>
-<h1>Getter Key Reference</h1>
-<p>This documentation is based on <code>docs/getters.md</code>.</p>
-<ul>
-  <li>cpu.*</li>
-  <li>memory.*</li>
-  <li>disk.*</li>
-  <li>network.*</li>
-  <li>system.*</li>
-  <li>nvidia.*</li>
-</ul>
-<p>For complete details, see the raw file: <a href="getters.md">getters.md</a>.</p>
-</body>
-</html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>CASEDD getters</title></head>
+<body><h1>CASEDD getters</h1><p>Source: <a href="getters.md">getters.md</a></p>
+<pre style="white-space: pre-wrap; font-family: monospace;">
+# Built-In Getters and Keys
+
+This document lists what CASEDD gathers out of the box and which data-store keys are emitted.
+
+## Key naming conventions
+
+- Getter-produced values use dotted keys like cpu.percent, nvidia.temperature, speedtest.download_mbps.
+- Keys are flat primitives (float, int, str), not nested JSON objects.
+
+## CPU getter
+
+Module: casedd/getters/cpu.py
+
+Emits:
+- cpu.percent
+- cpu.temperature
+- cpu.fan_rpm
+
+Notes:
+- Temperature keys depend on host sensors (coretemp/k10temp/acpitz/cpu_thermal).
+- cpu.fan_rpm remains for compatibility; richer fan telemetry is emitted by fan getter.
+
+## Fan getter
+
+Module: casedd/getters/fans.py
+
+Emits aggregate keys:
+- fans.total.count
+- fans.cpu.count
+- fans.cpu.avg_rpm
+- fans.cpu.max_rpm
+- fans.system.count
+- fans.system.avg_rpm
+- fans.system.max_rpm
+- fans.gpu.count
+- fans.gpu.avg_rpm
+- fans.gpu.max_rpm
+
+Emits per-fan keys:
+- fans.cpu.0.rpm, fans.cpu.1.rpm, ...
+- fans.system.0.rpm, fans.system.1.rpm, ...
+- fans.gpu.0.rpm, fans.gpu.1.rpm, ...
+
+Compatibility:
+- cpu.fan_rpm is mirrored from fans.cpu.max_rpm when fan getter runs.
+
+Notes:
+- CPU/system fans come from psutil.sensors_fans where available.
+- GPU fans use psutil when exposed, plus nvidia-smi fan.speed percentages when available.
+
+## GPU getter (NVIDIA via nvidia-smi)
+
+Module: casedd/getters/gpu.py
+
+Emits backward-compatible primary keys (GPU 0 when present):
+- nvidia.percent
+- nvidia.temperature
+- nvidia.memory_used_mb
+- nvidia.memory_total_mb
+- nvidia.power_w
+
+Emits multi-GPU keys when multiple GPUs are present:
+- nvidia.gpu_count
+- nvidia.0.percent, nvidia.0.temperature, nvidia.0.memory_used_mb, nvidia.0.memory_total_mb, nvidia.0.power_w
+- nvidia.1.percent, nvidia.1.temperature, nvidia.1.memory_used_mb, nvidia.1.memory_total_mb, nvidia.1.power_w
+- etc. for each GPU index
+- nvidia.total_memory_used_mb
+- nvidia.total_memory_mb
+
+nvidia-smi fields currently queried:
+- index
+- utilization.gpu
+- temperature.gpu
+- memory.used
+- memory.total
+- power.draw
+
+Notes:
+- If nvidia-smi is absent, the getter disables itself gracefully.
+
+## Memory getter
+
+Module: casedd/getters/memory.py
+
+Emits:
+- memory.percent
+- memory.used_gb
+- memory.total_gb
+- memory.available_gb
+
+## Disk getter
+
+Module: casedd/getters/disk.py
+
+Emits:
+- disk.percent
+- disk.used_gb
+- disk.total_gb
+- disk.free_gb
+- disk.read_mbps
+- disk.write_mbps
+
+## Network getter
+
+Module: casedd/getters/network.py
+
+Emits:
+- net.bytes_recv_rate
+- net.bytes_sent_rate
+- net.recv_mbps
+- net.sent_mbps
+- net.bytes_recv_total
+- net.bytes_sent_total
+
+## System getter
+
+Module: casedd/getters/system.py
+
+Emits:
+- system.hostname
+- system.uptime
+- system.load_1
+- system.load_5
+- system.load_15
+
+## Speedtest getter (Ookla CLI)
+
+Module: casedd/getters/speedtest.py
+
+Default interval: 1800s (30 min)
+
+Optional env override:
+- CASEDD_SPEEDTEST_SERVER_ID (forces Ookla target server ID instead of auto-select)
+- CASEDD_SPEEDTEST_REFERENCE_DOWN_MBPS (optional host-local downlink baseline)
+- CASEDD_SPEEDTEST_REFERENCE_UP_MBPS (optional host-local uplink baseline)
+
+Emits:
+- speedtest.download_mbps
+- speedtest.upload_mbps
+- speedtest.ping_ms
+- speedtest.jitter_ms
+- speedtest.download_pct_adv
+- speedtest.upload_pct_adv
+- speedtest.download_pct_ref
+- speedtest.upload_pct_ref
+- speedtest.download_status
+- speedtest.upload_status
+- speedtest.threshold_marginal_pct
+- speedtest.threshold_critical_pct
+- speedtest.last_run
+- speedtest.summary
+- speedtest.simple_summary
+- speedtest.compact_summary
+- speedtest.server_id
+- speedtest.server_name
+- speedtest.server_location
+- speedtest.server_country
+- speedtest.server_host
+
+Status defaults:
+- good: &gt;= 90% of advertised
+- marginal: &lt; 90%
+- critical: &lt; 70%
+
+## Ollama API getter
+
+Module: casedd/getters/ollama.py
+
+API endpoint used:
+- GET {CASEDD_OLLAMA_API_BASE}/api/ps
+
+Emits:
+- ollama.active_count
+- ollama.active_models
+- ollama.primary_model
+- ollama.primary_size_gb
+- ollama.primary_gpu_percent
+- ollama.primary_cpu_percent
+- ollama.primary_ttl
+- ollama.summary
+
+Notes:
+- This getter uses the HTTP API only and does not require the ollama command.
+- CPU/GPU percentages are parsed from optional processor text when present in API payload.
+
+## Template-aware polling
+
+CASEDD only runs getters that are needed by the active template sources. If a template does not reference a getter namespace (for example disk.*), that getter is not polled.
+</pre></body></html>

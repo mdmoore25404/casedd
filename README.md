@@ -120,6 +120,9 @@ mypy --strict casedd/
 Templates are YAML files in `templates/`. See [docs/template_format.md](docs/template_format.md) for the full specification.
 Getter key reference lives at [docs/getters.md](docs/getters.md).
 
+- API docs are live from [docs/api.json](docs/api.json).
+- Template examples are available in [templates/](templates/) and in [docs/index.md](docs/index.md) for GitHub Pages.
+
 Quick example:
 
 ```yaml
