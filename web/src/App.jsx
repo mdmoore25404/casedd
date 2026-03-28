@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBolt,
   faCirclePlay,
+  faExpand,
   faFileArrowDown,
   faFileArrowUp,
   faFlask,
@@ -199,12 +200,44 @@ function collectSourceEntries(template) {
   return Array.from(byKey.entries()).map(([key, widget]) => ({ key, widget }));
 }
 
+function collectUpsPrefixedKeys(prefix) {
+  const root = prefix && prefix.trim() ? prefix.trim().replace(/\.+$/, "") : "ups";
+  return [
+    `${root}.status`,
+    `${root}.battery_percent`,
+    `${root}.load_percent`,
+    `${root}.load_watts`,
+    `${root}.runtime_minutes`,
+    `${root}.input_voltage`,
+    `${root}.input_frequency`,
+  ];
+}
+
 function generateScenarioData(template) {
   const entries = collectSourceEntries(template);
+  if (template?.widgets) {
+    Object.values(template.widgets).forEach((widget) => {
+      if (widget?.type !== "ups") {
+        return;
+      }
+      collectUpsPrefixedKeys(widget?.source || "ups").forEach((key) => {
+        if (!entries.some((entry) => entry.key === key)) {
+          entries.push({ key, widget });
+        }
+      });
+    });
+  }
   const updatePayload = {};
   const randomFields = [];
 
   entries.forEach(({ key, widget }) => {
+    if (widget?.type === "ups") {
+      const prefix = widget?.source && widget.source.trim() ? widget.source.trim() : "ups";
+      if (key === prefix) {
+        return;
+      }
+    }
+
     if (isStringMetric(key, widget)) {
       const suffix = key.split(".").at(-1) || key;
       updatePayload[key] = `${suffix} sample`;
@@ -260,6 +293,9 @@ export function App() {
   const [status, setStatus] = useState("ready");
   const [selectedPanel, setSelectedPanel] = useState("");
   const [templateName, setTemplateName] = useState("auto");
+  const [overrideDraftDirty, setOverrideDraftDirty] = useState(false);
+  const [jsonModalTarget, setJsonModalTarget] = useState("");
+  const [jsonModalDraft, setJsonModalDraft] = useState("");
   const [previewNonce, setPreviewNonce] = useState(() => Date.now());
   const [updateJson, setUpdateJson] = useState(() => prettyJson({}));
   const [testModeEnabled, setTestModeEnabled] = useState(false);
@@ -267,6 +303,7 @@ export function App() {
   const [randomJson, setRandomJson] = useState(() => prettyJson({ interval: 1.0, fields: [] }));
   const [replayJson, setReplayJson] = useState(() => prettyJson([]));
   const importInputRef = useRef(null);
+  const selectedPanelRef = useRef("");
 
   const refreshPanels = useCallback(async () => {
     const payload = await fetchPanels();
@@ -356,6 +393,57 @@ export function App() {
     setReplayJson(prettyJson(scenario.replayRecords));
   }, []);
 
+  const loadTemplateForEditor = useCallback(async (templateNameToLoad) => {
+    if (!templateNameToLoad) {
+      return;
+    }
+    const payload = await fetchTemplate(templateNameToLoad);
+    setTemplateDoc(payload.template);
+    setTemplateDirty(false);
+    applyScenarioFromTemplate(payload.template);
+    setStatus(`loaded template ${templateNameToLoad}`);
+  }, [applyScenarioFromTemplate]);
+
+  const openJsonModal = useCallback((target) => {
+    if (target === "update") {
+      setJsonModalDraft(updateJson);
+    } else if (target === "random") {
+      setJsonModalDraft(randomJson);
+    } else if (target === "replay") {
+      setJsonModalDraft(replayJson);
+    } else {
+      return;
+    }
+    setJsonModalTarget(target);
+  }, [randomJson, replayJson, updateJson]);
+
+  const modalJsonState = useMemo(() => {
+    if (!jsonModalTarget) {
+      return { value: null, error: "" };
+    }
+    return parseJson(jsonModalDraft, `${jsonModalTarget} modal`);
+  }, [jsonModalDraft, jsonModalTarget]);
+
+  const closeJsonModal = useCallback(() => {
+    setJsonModalTarget("");
+    setJsonModalDraft("");
+  }, []);
+
+  const applyJsonModal = useCallback(() => {
+    if (modalJsonState.error) {
+      setStatus("fix modal JSON before applying");
+      return;
+    }
+    if (jsonModalTarget === "update") {
+      setUpdateJson(prettyJson(modalJsonState.value));
+    } else if (jsonModalTarget === "random") {
+      setRandomJson(prettyJson(modalJsonState.value));
+    } else if (jsonModalTarget === "replay") {
+      setReplayJson(prettyJson(modalJsonState.value));
+    }
+    closeJsonModal();
+  }, [closeJsonModal, jsonModalTarget, modalJsonState.error, modalJsonState.value]);
+
   useEffect(() => {
     if (!selectedWidget && widgetNames.length > 0) {
       setSelectedWidget(widgetNames[0]);
@@ -370,15 +458,49 @@ export function App() {
     if (!selectedPanelData) {
       return;
     }
+    const panelName = String(selectedPanelData.name || "");
+    const panelChanged = selectedPanelRef.current !== panelName;
+    if (panelChanged) {
+      selectedPanelRef.current = panelName;
+      setOverrideDraftDirty(false);
+    }
     if (!selectedTemplate && selectedPanelData.current_template) {
       setSelectedTemplate(String(selectedPanelData.current_template));
     }
-    setTemplateName(
-      selectedPanelData.forced_template
-        ? String(selectedPanelData.forced_template)
-        : "auto",
-    );
-  }, [selectedPanelData, selectedTemplate]);
+    if (panelChanged || !overrideDraftDirty) {
+      setTemplateName(
+        selectedPanelData.forced_template
+          ? String(selectedPanelData.forced_template)
+          : "auto",
+      );
+    }
+  }, [overrideDraftDirty, selectedPanelData, selectedTemplate]);
+
+  useEffect(() => {
+    if (!selectedTemplate) {
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const payload = await fetchTemplate(selectedTemplate);
+        if (cancelled) {
+          return;
+        }
+        setTemplateDoc(payload.template);
+        setTemplateDirty(false);
+        applyScenarioFromTemplate(payload.template);
+      } catch (_err) {
+        if (!cancelled) {
+          setStatus(`failed to load template ${selectedTemplate}`);
+        }
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [applyScenarioFromTemplate, selectedTemplate]);
 
   function updateTemplate(mutator) {
     setTemplateDoc((previous) => {
@@ -446,11 +568,7 @@ export function App() {
       setStatus("select a template first");
       return;
     }
-    const payload = await fetchTemplate(selectedTemplate);
-    setTemplateDoc(payload.template);
-    setTemplateDirty(false);
-    applyScenarioFromTemplate(payload.template);
-    setStatus(`loaded template ${selectedTemplate}`);
+    await loadTemplateForEditor(selectedTemplate);
   }
 
   async function handleSaveTemplate() {
@@ -473,6 +591,7 @@ export function App() {
     }
     const forced = templateName === "auto" ? null : templateName;
     await postTemplateOverride(selectedPanel, forced);
+    setOverrideDraftDirty(false);
     setStatus(
       forced
         ? `forced ${forced} on ${selectedPanel}`
@@ -623,7 +742,10 @@ export function App() {
               <select
                 className="form-select form-select-sm mb-2"
                 value={templateName}
-                onChange={(event) => setTemplateName(event.target.value)}
+                onChange={(event) => {
+                  setTemplateName(event.target.value);
+                  setOverrideDraftDirty(true);
+                }}
               >
                 <option value="auto">auto</option>
                 {templates.map((name) => (
@@ -1002,6 +1124,12 @@ export function App() {
               >
                 Format JSON
               </button>
+              <button
+                className="btn btn-outline-light btn-sm mt-2 me-2"
+                onClick={() => openJsonModal("update")}
+              >
+                <FontAwesomeIcon icon={faExpand} className="me-1" /> Large Editor
+              </button>
               <button className="btn btn-success btn-sm mt-2" onClick={() => void handlePushUpdate()}>
                 Push /api/update
               </button>
@@ -1059,6 +1187,12 @@ export function App() {
               >
                 Format JSON
               </button>
+              <button
+                className="btn btn-outline-light btn-sm mt-2 mb-3 ms-2"
+                onClick={() => openJsonModal("random")}
+              >
+                <FontAwesomeIcon icon={faExpand} className="me-1" /> Large Editor
+              </button>
               <label className="form-label small">Replay JSON records</label>
               <textarea
                 className={`form-control form-control-sm font-monospace ${replayJsonState.error ? "is-invalid" : ""}`}
@@ -1083,12 +1217,65 @@ export function App() {
               >
                 Format JSON
               </button>
+              <button
+                className="btn btn-outline-light btn-sm mt-2 ms-2"
+                onClick={() => openJsonModal("replay")}
+              >
+                <FontAwesomeIcon icon={faExpand} className="me-1" /> Large Editor
+              </button>
             </div>
           </div>
 
           <div className="alert alert-secondary mt-3 mb-0 py-2 small">{status}</div>
         </div>
       </div>
+
+      {jsonModalTarget ? (
+        <div className="json-modal-backdrop" onClick={closeJsonModal}>
+          <div className="json-modal-card" onClick={(event) => event.stopPropagation()}>
+            <div className="d-flex align-items-center justify-content-between mb-2">
+              <h5 className="mb-0 text-capitalize">{jsonModalTarget} JSON Editor</h5>
+              <button className="btn btn-sm btn-outline-light" onClick={closeJsonModal}>
+                Close
+              </button>
+            </div>
+            <textarea
+              className={`form-control form-control-sm font-monospace json-modal-textarea ${modalJsonState.error ? "is-invalid" : ""}`}
+              value={jsonModalDraft}
+              onChange={(event) => setJsonModalDraft(event.target.value)}
+            />
+            {modalJsonState.error ? (
+              <div className="invalid-feedback d-block">{modalJsonState.error}</div>
+            ) : (
+              <div className="small text-body-secondary mt-2">Valid JSON</div>
+            )}
+            <div className="d-flex gap-2 mt-3">
+              <button
+                className="btn btn-outline-light btn-sm"
+                onClick={() => {
+                  if (modalJsonState.error) {
+                    setStatus("fix modal JSON before formatting");
+                    return;
+                  }
+                  setJsonModalDraft(prettyJson(modalJsonState.value));
+                }}
+              >
+                Format JSON
+              </button>
+              <button
+                className="btn btn-success btn-sm"
+                onClick={applyJsonModal}
+                disabled={Boolean(modalJsonState.error)}
+              >
+                Apply to Section
+              </button>
+              <button className="btn btn-secondary btn-sm" onClick={closeJsonModal}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

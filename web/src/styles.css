@@ -104,3 +104,34 @@ body {
 .app-shell .invalid-feedback {
   color: #ff8f8f;
 }
+
+.json-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 1060;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.json-modal-card {
+  width: min(1200px, 96vw);
+  height: min(88vh, 900px);
+  background: #0f151e;
+  border: 1px solid #2d333b;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+}
+
+.json-modal-textarea {
+  flex: 1;
+  min-height: 400px;
+  resize: none;
+  font-size: 13px;
+  line-height: 1.4;
+}
