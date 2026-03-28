@@ -25,6 +25,27 @@ Stack: Python 3.12, FastAPI, uvicorn, Pillow (PIL), Pydantic v2 strict, psutil, 
 - **Lightweight and high-performance.** Avoid unnecessary allocations in hot paths
   (render loop, WebSocket broadcast). Profile before optimising, but never add bloat.
 
+### Lint anti-pattern blacklist (must avoid while generating code)
+
+Use this section as a pre-flight checklist during implementation, not only at cleanup time.
+
+- **Do not exceed line length limits.** Keep lines <= 99 chars in Python and avoid long
+  single-line string literals inside embedded HTML/JS blocks.
+- **Do not omit trailing newline at EOF.** New/rewritten files must end with a newline.
+- **Do not use unnecessary temporary return variables** (Ruff `RET504`).
+  Return expressions directly unless intermediate variables materially improve clarity.
+- **Do not create high-return-count helper functions** (Ruff `PLR0911`) when a small
+  dispatch table or loop can express the flow more cleanly.
+- **Do not create argument-heavy private helpers** (Ruff `PLR0913`) in render paths
+  unless unavoidable. Prefer a small context object/dataclass, or keep helper logic local.
+- **Do not add blanket `# noqa` / `# type: ignore`.** If suppression is truly needed,
+  use the narrowest code and include a reason on the same line.
+- **Do not over-constrain update payload models** when payload normalization is expected.
+  For nested update flattening, accept `dict[str, object]` at the boundary and coerce
+  to store primitives after validation.
+- **Do not rely on final-pass linting only.** Run `ruff check .` and `mypy --strict casedd/`
+  immediately after significant file edits (or per subsystem) to catch issues early.
+
 ### Python specifics
 
 - Python version: **3.12**. Use modern syntax: `X | Y` unions, `match` statements,
