@@ -76,3 +76,28 @@ export async function getSimulationStatus() {
   const response = await fetch(`${API_ROOT}/api/sim/status`, { cache: "no-store" });
   return readJson(response);
 }
+
+export async function fetchTemplates() {
+  const response = await fetch(`${API_ROOT}/api/templates`, { cache: "no-store" });
+  return readJson(response);
+}
+
+export async function fetchTemplate(name) {
+  const response = await fetch(
+    `${API_ROOT}/api/templates/${encodeURIComponent(name)}`,
+    { cache: "no-store" },
+  );
+  return readJson(response);
+}
+
+export async function saveTemplate(name, template) {
+  const response = await fetch(
+    `${API_ROOT}/api/templates/${encodeURIComponent(name)}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ template }),
+    },
+  );
+  return readJson(response);
+}

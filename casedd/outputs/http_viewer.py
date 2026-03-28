@@ -30,10 +30,13 @@ from typing import Annotated
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
 from PIL import Image
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import uvicorn
+import yaml
 
 from casedd.data_store import DataStore, StoreValue
+from casedd.template.loader import TemplateError, load_template
+from casedd.template.models import Template
 
 _log = logging.getLogger(__name__)
 
@@ -57,6 +60,14 @@ class TemplateOverrideRequest(BaseModel):
 
     panel: str
     template: str | None = None
+
+
+class TemplateSaveRequest(BaseModel):
+    """Payload for saving a .casedd template."""
+
+    model_config = ConfigDict(strict=True, frozen=True)
+
+    template: Annotated[dict[str, object], Field(min_length=1)]
 
 
 class TestModeRequest(BaseModel):
@@ -416,7 +427,7 @@ def _is_local_port_open(host: str, port: int) -> bool:
                 return False
 
 
-def _build_app(  # noqa: PLR0913 -- runtime wiring dependencies are explicit
+def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes discoverable
     store: DataStore,
     frame_store: _FrameStore,
     ws_port: int,
@@ -435,6 +446,25 @@ def _build_app(  # noqa: PLR0913 -- runtime wiring dependencies are explicit
     )
 
     panel_names = [str(panel["name"]) for panel in panels]
+
+    def _template_path(name: str) -> Path:
+        return templates_dir / f"{name}.casedd"
+
+    def _load_template_payload(name: str) -> dict[str, object]:
+        path = _template_path(name)
+        try:
+            template = load_template(path)
+        except TemplateError as exc:
+            if "does not exist" in exc.reason:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Unknown template '{name}'",
+                ) from exc
+            raise HTTPException(
+                status_code=422,
+                detail=f"Template '{name}' is invalid: {exc.reason}",
+            ) from exc
+        return template.model_dump(mode="json")
 
     @app.get("/", response_class=HTMLResponse, summary="Lightweight viewer")
     async def root() -> str:
@@ -518,6 +548,52 @@ def _build_app(  # noqa: PLR0913 -- runtime wiring dependencies are explicit
             raise HTTPException(status_code=400, detail=f"Unknown template '{selected}'")
         store.set(key, selected)
         return {"status": "ok", "mode": "forced", "template": selected}
+
+    @app.get("/api/templates", summary="List available templates")
+    async def list_templates() -> dict[str, object]:
+        templates = sorted(path.stem for path in templates_dir.glob("*.casedd"))
+        return {"templates": templates}
+
+    @app.get("/api/templates/{name}", summary="Get template model for editing")
+    async def get_template(name: str) -> dict[str, object]:
+        payload = _load_template_payload(name)
+        return {
+            "name": name,
+            "path": str(_template_path(name)),
+            "template": payload,
+        }
+
+    @app.put("/api/templates/{name}", summary="Validate and save template")
+    async def put_template(name: str, body: TemplateSaveRequest) -> dict[str, object]:
+        candidate = dict(body.template)
+        candidate["name"] = name
+
+        try:
+            validated = Template.model_validate(candidate)
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Template validation failed: {exc}",
+            ) from exc
+
+        output = validated.model_dump(mode="json")
+        yaml_text = yaml.safe_dump(output, sort_keys=False)
+
+        path = _template_path(name)
+        try:
+            path.write_text(yaml_text, encoding="utf-8")
+        except OSError as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Could not write template '{name}': {exc}",
+            ) from exc
+
+        return {
+            "status": "ok",
+            "name": name,
+            "path": str(path),
+            "template": output,
+        }
 
     @app.get("/api/test-mode", summary="Get global test mode")
     async def get_test_mode() -> dict[str, object]:

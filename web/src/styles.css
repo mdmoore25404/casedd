@@ -22,3 +22,74 @@ body {
 .app-shell textarea {
   min-height: 110px;
 }
+
+.preview-wrap {
+  background: radial-gradient(circle at top left, #22303f, #0a0f14);
+  border: 1px solid #2d333b;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.preview-image {
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid #3d4752;
+  image-rendering: auto;
+}
+
+.editor-grid {
+  display: grid;
+  gap: 6px;
+  grid-auto-rows: minmax(40px, auto);
+}
+
+.editor-grid-cell {
+  background: #131a23;
+  border: 1px solid #2d333b;
+  padding: 4px;
+}
+
+.editor-grid-cell.is-active {
+  border-color: #40a9ff;
+  box-shadow: 0 0 0 1px rgba(64, 169, 255, 0.5);
+}
+
+.grid-cell-input {
+  width: 100%;
+  background: #0b1219;
+  border: 1px solid #2d333b;
+  color: #e6edf3;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.editor-area-map {
+  display: grid;
+  gap: 8px;
+  background: linear-gradient(165deg, #121924, #0c1218);
+  border: 1px solid #2d333b;
+  border-radius: 10px;
+  padding: 8px;
+  min-height: 240px;
+}
+
+.editor-area {
+  border: 1px solid #36404a;
+  border-radius: 8px;
+  background: linear-gradient(150deg, #1a2431, #111821);
+  color: #dbe5ef;
+  padding: 8px;
+  text-align: left;
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+
+.editor-area:hover {
+  border-color: #7fc8ff;
+  transform: translateY(-1px);
+}
+
+.editor-area.is-active {
+  border-color: #40a9ff;
+  box-shadow: 0 0 0 1px rgba(64, 169, 255, 0.35);
+}
