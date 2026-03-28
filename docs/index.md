@@ -18,9 +18,9 @@ This site is served from the `docs/` folder on the `main` branch.
 
 ## User docs
 
-- [Getter key reference](getters.md)
-- [Template format](template_format.md)
-- [REST API / docs descriptor](api.json)
+- [Getter key reference](/getters/)
+- [Template format](/template_format/)
+- [REST API / docs descriptor](/api.json)
 
 ## Example templates
 
