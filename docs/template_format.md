@@ -276,6 +276,27 @@ Note: missing/invalid source values are skipped rather than inserted as zero.
 
 ---
 
+### `ups`
+
+Single-card UPS status widget with battery, load, runtime, and input power.
+
+By default it reads from `ups.*` keys. Optionally set `source` to an alternate
+prefix namespace.
+
+```yaml
+power:
+  type: ups
+  label: "UPS"
+  source: ups
+  padding: 8
+  color: "#e6edf3"
+```
+
+Alias support:
+- `type: power.ups` is accepted and normalized to `type: ups`.
+
+---
+
 ### `clock`
 
 Live clock, re-rendered every frame.

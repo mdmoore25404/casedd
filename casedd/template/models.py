@@ -36,6 +36,15 @@ class WidgetType(StrEnum):
     IMAGE = "image"
     SLIDESHOW = "slideshow"
     CLOCK = "clock"
+    UPS = "ups"
+    HTOP = "htop"
+    NET_PORTS = "net_ports"
+    SYSINFO = "sysinfo"
+    APOD = "apod"
+    WEATHER_CONDITIONS = "weather_conditions"
+    WEATHER_FORECAST = "weather_forecast"
+    WEATHER_ALERTS = "weather_alerts"
+    WEATHER_RADAR = "weather_radar"
 
 
 class ScaleMode(StrEnum):
@@ -142,6 +151,8 @@ class WidgetConfig(BaseModel):
         arc_start: Gauge arc start angle in degrees.
         arc_end: Gauge arc end angle in degrees.
         gauge_ticks: Number of tick marks to draw along a gauge arc.
+        sort_key: Sort column for htop widget ("cpu" or "mem").
+        filter_regex: Optional Python regex; htop rows whose process name matches are hidden.
         border_style: Widget border style (none/solid/dashed/dotted/inset/outset).
         border_color: Border color string.
         border_width: Border line width in pixels.
@@ -173,6 +184,7 @@ class WidgetConfig(BaseModel):
     # Image widget
     path: str | None = None
     scale: ScaleMode = ScaleMode.FIT
+    zoom: float = Field(default=1.0, ge=1.0, le=8.0)
 
     # Slideshow widget
     paths: list[str] = Field(default_factory=list)
@@ -206,10 +218,51 @@ class WidgetConfig(BaseModel):
     arc_end: float = -45.0
     gauge_ticks: int = Field(default=0, ge=0, le=20)
 
+    # Htop process table
+    sort_key: str = Field(default="cpu")
+    filter_regex: str | None = Field(default=None)
+
     # Widget border
     border_style: BorderStyle = BorderStyle.NONE
     border_color: str | None = None
     border_width: int = Field(default=1, ge=1, le=16)
+
+    @field_validator("filter_regex")
+    @classmethod
+    def _validate_filter_regex(cls, value: str | None) -> str | None:
+        """Compile-check filter_regex to catch broken patterns at template load time.
+
+        Args:
+            value: Raw regex string or None.
+
+        Returns:
+            The validated regex string or None.
+
+        Raises:
+            ValueError: If the pattern is not a valid Python regex.
+        """
+        if value is not None:
+            try:
+                re.compile(value)
+            except re.error as exc:
+                msg = f"filter_regex is not a valid regex: {exc}"
+                raise ValueError(msg) from exc
+        return value
+
+    @field_validator("type", mode="before")
+    @classmethod
+    def _normalize_widget_type_alias(cls, value: object) -> object:
+        """Normalize legacy/alias widget type names before enum parsing.
+
+        Args:
+            value: Raw type field value.
+
+        Returns:
+            Normalized widget type token.
+        """
+        if isinstance(value, str) and value.strip().lower() == "power.ups":
+            return "ups"
+        return value
 
     @field_validator("border_style", mode="before")
     @classmethod

@@ -1,0 +1,155 @@
+body {
+  background: #0d1117;
+  color: #e6edf3;
+}
+
+.app-shell .card {
+  background: #11161d !important;
+  color: #e6edf3;
+}
+
+.app-shell .text-body-secondary {
+  color: #a0acb9 !important;
+}
+
+.app-shell .form-control,
+.app-shell .form-select {
+  background: #0f141b;
+  color: #e6edf3;
+  border-color: #2d333b;
+}
+
+.app-shell textarea {
+  min-height: 110px;
+}
+
+.preview-wrap {
+  background: radial-gradient(circle at top left, #22303f, #0a0f14);
+  border: 1px solid #2d333b;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.preview-image {
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid #3d4752;
+  image-rendering: auto;
+}
+
+.editor-grid {
+  display: grid;
+  gap: 6px;
+  grid-auto-rows: minmax(40px, auto);
+}
+
+.editor-grid-cell {
+  background: #131a23;
+  border: 1px solid #2d333b;
+  padding: 4px;
+}
+
+.editor-grid-cell.is-active {
+  border-color: #40a9ff;
+  box-shadow: 0 0 0 1px rgba(64, 169, 255, 0.5);
+}
+
+.grid-cell-input {
+  width: 100%;
+  background: #0b1219;
+  border: 1px solid #2d333b;
+  color: #e6edf3;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 12px;
+}
+
+.editor-area-map {
+  display: grid;
+  gap: 8px;
+  background: linear-gradient(165deg, #121924, #0c1218);
+  border: 1px solid #2d333b;
+  border-radius: 10px;
+  padding: 8px;
+  min-height: 240px;
+}
+
+.editor-area {
+  border: 1px solid #36404a;
+  border-radius: 8px;
+  background: linear-gradient(150deg, #1a2431, #111821);
+  color: #dbe5ef;
+  padding: 8px;
+  text-align: left;
+  transition: border-color 140ms ease, transform 140ms ease;
+}
+
+.editor-area:hover {
+  border-color: #7fc8ff;
+  transform: translateY(-1px);
+}
+
+.editor-area.is-active {
+  border-color: #40a9ff;
+  box-shadow: 0 0 0 1px rgba(64, 169, 255, 0.35);
+}
+
+.grid-syntax-help {
+  border: 1px solid #2d333b;
+  background: #0d141d;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.app-shell .invalid-feedback {
+  color: #ff8f8f;
+}
+
+.inspector-subtitle {
+  border: 1px solid #25303b;
+  background: linear-gradient(140deg, #101925, #0d141e);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.app-shell .card .form-label.small {
+  letter-spacing: 0.01em;
+  font-weight: 600;
+  color: #b9c7d8;
+}
+
+.app-shell .card .form-control,
+.app-shell .card .form-select {
+  border-radius: 7px;
+}
+
+.json-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 1060;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.json-modal-card {
+  width: min(1200px, 96vw);
+  height: min(88vh, 900px);
+  background: #0f151e;
+  border: 1px solid #2d333b;
+  border-radius: 12px;
+  padding: 14px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+}
+
+.json-modal-textarea {
+  flex: 1;
+  min-height: 400px;
+  resize: none;
+  font-size: 13px;
+  line-height: 1.4;
+}

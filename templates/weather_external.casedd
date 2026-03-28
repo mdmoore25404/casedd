@@ -1,0 +1,50 @@
+# weather_external.casedd — weather dashboard via external non-NWS source
+
+name: weather_external
+description: Same weather widgets powered by open-meteo provider example.
+width: 800
+height: 480
+background: "#0d1118"
+refresh_rate: 1.0
+
+grid:
+  template_areas: |
+    conditions  radar
+    forecast    radar
+    alerts      radar
+  columns: 1fr 1fr
+  rows: 1.05fr 0.95fr 0.55fr
+
+widgets:
+  conditions:
+    type: weather_conditions
+    label: "Current Conditions (External)"
+    source: weather.conditions
+    color: "#66ddaa"
+    background: "#111923"
+    padding: [6, 8]
+
+  forecast:
+    type: weather_forecast
+    label: "Forecast (External)"
+    source: weather.forecast_table
+    color: "#9dd4ff"
+    background: "#111923"
+    padding: [6, 8]
+
+  alerts:
+    type: weather_alerts
+    label: "Alert Feed (External)"
+    source: weather.alert_summary
+    color: "#ffc676"
+    background: "#111923"
+    padding: [6, 8]
+
+  radar:
+    type: weather_radar
+    label: "Radar / External"
+    source: weather.radar_url
+    color: "#6ec4ff"
+    zoom: 1.6
+    background: "#111923"
+    padding: [6, 8]

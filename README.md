@@ -25,8 +25,8 @@ Interested in commercial use or white-label rights? Feel free to reach out.
 
 - **Dual output** — push rendered images to `/dev/fb1` (framebuffer) AND a browser via WebSocket simultaneously
 - **Custom layout engine** — declare layouts in `.casedd` YAML files using CSS Grid Template Areas syntax; widget tree supports unlimited nesting via `type: panel`
-- **10 widget types** — `value`, `text`, `bar`, `gauge`, `histogram`, `sparkline`, `image`, `slideshow`, `clock`, `panel`
-- **Live data getters** — CPU, fan telemetry (CPU/system/GPU), NVIDIA GPU (including multi-GPU keys), RAM, disk, network, system uptime/host, speedtest, Ollama API runtime state
+- **11 widget types** — `value`, `text`, `bar`, `gauge`, `histogram`, `sparkline`, `image`, `slideshow`, `clock`, `panel`, `ups`
+- **Live data getters** — CPU, fan telemetry (CPU/system/GPU), NVIDIA GPU (including multi-GPU keys), RAM, disk, network, system uptime/host, speedtest, Ollama API runtime state, UPS telemetry
 - **Template policy engine** — rotate templates, schedule templates by time/day, and trigger template overrides from data-store conditions
 - **Speedtest integration** — optional Ookla CLI getter (default every 30 min) with plan-relative metrics and status keys
 - **External data push** — accept JSON updates via Unix domain socket or REST POST; values cached in RAM and used on next render
@@ -59,7 +59,8 @@ cp .env.example .env
 
 ```bash
 ./dev.sh start
-# Open http://localhost:8080 in your browser to see the live display
+# Open http://localhost:8080 for the lightweight live viewer
+# Open http://localhost:8080/app for the advanced app (Vite dev mode)
 ./dev.sh logs      # tail the log
 ./dev.sh status    # check daemon health
 ./dev.sh stop
@@ -70,14 +71,28 @@ cp .env.example .env
 ## Development workflow
 
 ```bash
-./dev.sh start      # start daemon in background (venv + .env loaded automatically)
-./dev.sh stop       # stop daemon cleanly
+./dev.sh start      # start daemon + advanced app (Vite hot-reload) in background
+./dev.sh stop       # stop daemon + advanced app cleanly
 ./dev.sh restart    # stop + start
-./dev.sh status     # check PID + last log lines
+./dev.sh status     # check daemon/app PIDs + last log lines
 ./dev.sh logs       # tail -f the log file
 ./dev.sh lint       # ruff check + mypy --strict (must be zero errors)
 ./dev.sh docs       # generate API docs to docs/api.json (local only)
 ```
+
+### Advanced React app (Vite)
+
+`./dev.sh start` already launches the advanced app in Vite development mode for
+hot-reload editing. You can still run it manually when needed:
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+The advanced app is built with React + Vite + Bootstrap + FontAwesome.
+It targets the CASEDD API for template overrides, test mode, and simulation.
 
 ### Linting (must be clean before any commit)
 
@@ -179,20 +194,13 @@ echo '{"update": {"outside_temp_f": 72.0}}' | nc -U /run/casedd/casedd.sock
 Or via REST:
 
 ```bash
-curl -X POST http://localhost:8080/update \
+curl -X POST http://localhost:8080/api/update \
   -H "Content-Type: application/json" \
   -d '{"update": {"outside_temp_f": 72.0}}'
 ```
 
-### Browser push tester (dev)
-
-The web viewer now includes a built-in push test panel:
-
-1. Open `http://localhost:8080`
-2. Click the status badge (`live` / `reconnecting`) to expand details
-3. Use **push test update** to send key/value updates to `POST /update`
-
-This is useful for quickly testing ingestion without leaving the browser.
+The lightweight viewer intentionally stays minimal (live state + panel picker).
+Use the advanced app for data push/testing/simulation workflows.
 
 ### Push demo template
 
@@ -226,6 +234,45 @@ This template visualizes:
 - system fan count / avg / max
 - GPU fan count / avg / max (percent when sourced from nvidia-smi)
 
+### Htop-style process template
+
+A single-widget process table template is provided at [templates/htop.casedd](templates/htop.casedd).
+
+```bash
+export CASEDD_TEMPLATE=htop
+./dev.sh restart
+```
+
+The ``htop`` widget shows top processes sorted by CPU utilization.
+
+### Weather templates (NWS + external provider example)
+
+Weather templates are provided at:
+- [templates/weather_nws.casedd](templates/weather_nws.casedd)
+- [templates/weather_external.casedd](templates/weather_external.casedd)
+
+NWS mode (official US APIs):
+
+```bash
+export CASEDD_TEMPLATE=weather_nws
+export CASEDD_WEATHER_PROVIDER=nws
+export CASEDD_WEATHER_ZIPCODE=20852
+./dev.sh restart
+```
+
+External provider example (Open-Meteo):
+
+```bash
+export CASEDD_TEMPLATE=weather_external
+export CASEDD_WEATHER_PROVIDER=open-meteo
+export CASEDD_WEATHER_LAT=38.9856
+export CASEDD_WEATHER_LON=-77.0947
+./dev.sh restart
+```
+
+Both providers emit the same ``weather.*`` keys so the same widgets/templates
+can be reused without NWS-specific rendering logic.
+
 ### Immediate speedtest push helper
 
 Run an on-demand Ookla speedtest and push the result into CASEDD via REST:
@@ -256,11 +303,40 @@ docker compose up -d
 docker compose logs -f
 ```
 
+Compose starts two services:
+- `casedd` backend (HTTP/WS)
+- `casedd-web` advanced app (Vite dev mode with hot reload)
+
+For host metric visibility, the `casedd` container bind-mounts host Linux
+runtime filesystems read-only:
+- `/proc` -> `/host/proc`
+- `/sys` -> `/host/sys`
+- `/run` -> `/host/run`
+
+`CASEDD_PROCFS_PATH` is set to `/host/proc` in Compose so psutil-based getters
+read host process/system views instead of container-local procfs.
+
+Default Docker URLs:
+- lightweight viewer: `http://localhost:18080/`
+- advanced app redirect entry: `http://localhost:18080/app`
+- direct advanced app: `http://localhost:15173/`
+
 ---
 
 ## API
 
 Interactive API docs are available at `http://localhost:8080/docs` when the daemon is running.
+
+Key runtime endpoints:
+
+- `GET /api/panels` — panel metadata and current/forced template state
+- `GET /image?panel=<name>` — latest PNG for a specific panel
+- `POST /api/template/override` — force/clear per-panel template override
+- `GET/POST /api/test-mode` — global getter-disable test mode
+- `POST /api/sim/replay` — replay deterministic records
+- `POST /api/sim/random` — start bounded random simulation
+- `POST /api/sim/stop` / `GET /api/sim/status`
+- `GET /api/debug/render-state` — in-memory sparkline/histogram buffers
 
 To generate a static `docs/api.json`:
 
@@ -292,6 +368,9 @@ CASEDD_SPEEDTEST_CRITICAL_RATIO=0.7
 CASEDD_OLLAMA_API_BASE=http://localhost:11434
 CASEDD_OLLAMA_INTERVAL=10
 CASEDD_OLLAMA_TIMEOUT=3
+CASEDD_UPS_COMMAND=
+CASEDD_UPS_INTERVAL=5
+CASEDD_UPS_UPSC_TARGET=ups@localhost
 ```
 
 ## Template rotation, schedule, and triggers

@@ -25,6 +25,58 @@ Stack: Python 3.12, FastAPI, uvicorn, Pillow (PIL), Pydantic v2 strict, psutil, 
 - **Lightweight and high-performance.** Avoid unnecessary allocations in hot paths
   (render loop, WebSocket broadcast). Profile before optimising, but never add bloat.
 
+### Lint anti-pattern blacklist (must avoid while generating code)
+
+Use this section as a pre-flight checklist during implementation, not only at cleanup time.
+
+- **Do not exceed line length limits.** Keep lines <= 99 chars in Python and avoid long
+  single-line string literals inside embedded HTML/JS blocks.
+- **Do not omit trailing newline at EOF.** New/rewritten files must end with a newline.
+- **Do not use unnecessary temporary return variables** (Ruff `RET504`).
+  Return expressions directly unless intermediate variables materially improve clarity.
+- **Do not create high-return-count helper functions** (Ruff `PLR0911`) when a small
+  dispatch table or loop can express the flow more cleanly.
+- **Do not create argument-heavy private helpers** (Ruff `PLR0913`) in render paths
+  unless unavoidable. Prefer a small context object/dataclass, or keep helper logic local.
+- **Do not add blanket `# noqa` / `# type: ignore`.** If suppression is truly needed,
+  use the narrowest code and include a reason on the same line.
+- **Do not over-constrain update payload models** when payload normalization is expected.
+  For nested update flattening, accept `dict[str, object]` at the boundary and coerce
+  to store primitives after validation.
+- **Do not rely on final-pass linting only.** Run `ruff check .` and `mypy --strict casedd/`
+  immediately after significant file edits (or per subsystem) to catch issues early.
+- **Do not use `▲` (U+25B2) for descending sort indicators.** Descending order (highest
+  first) should use `▼` (U+25BC) — wide side at top, pointing down. `▲` implies ascending.
+- **Do not forget to cast PIL `textbbox()` results to `int`.**  `ImageDraw.textbbox()`
+  returns `tuple[float, float, float, float]`.  All arithmetic on the result (differences,
+  sums used as pixel indices or passed to `int`-typed params) must be wrapped in `int()`.
+  Example: `int(bb[3] - bb[1]) + 3`. Skipping the cast causes `mypy --strict` errors.
+- **Do not use `is None` to narrow psutil `laddr`/`raddr`.**  These are typed
+  `addr | tuple[()]`, not `addr | None`.  Use a falsy check: `if not laddr: continue`.
+  Using `if laddr is None:` fails `mypy --strict` narrowing since `tuple[()]` is not None.
+- **Do not add imports without running `ruff check . --fix` immediately.**  Ruff enforces
+  isort ordering (I001) and will flag out-of-order imports.  After adding any `import`
+  statement, run `ruff check . --fix` to auto-correct ordering before moving on.
+- **Do not write PLR0915-violating functions** (too many statements, limit ≈ 50).  For
+  table/widget renderers, always extract `_paint_header`, `_paint_rows`, `_paint_row`
+  helpers rather than inlining all drawing logic into `draw()`.
+- **Do not trigger S104 false positives on address comparisons.**  Comparing a string
+  variable against wildcard address literals (`"0.0.0.0"`, `"::"`) triggers Ruff S104
+  ("binding to all interfaces"). Suppress with `# noqa: S104  # string compare, not bind`.
+
+### Self-learning anti-pattern protocol
+
+When the agent encounters a new ruff or mypy violation during an implementation session
+that is **not already listed above**, it must:
+
+1. Fix the violation in the code.
+2. Add a concise bullet point to the "Lint anti-pattern blacklist" above, following the
+   established format: bold summary + rule code (if applicable) + one-line fix strategy.
+3. Commit the instruction update together with (or immediately after) the code fix so the
+   knowledge is captured for future sessions.
+
+This keeps the blacklist as a live, self-improving knowledge base rather than a static snapshot.
+
 ### Python specifics
 
 - Python version: **3.12**. Use modern syntax: `X | Y` unions, `match` statements,

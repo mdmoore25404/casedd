@@ -16,4 +16,5 @@ Modules:
     - :mod:`casedd.renderer.widgets.image` — static image display
     - :mod:`casedd.renderer.widgets.slideshow` — cycling image display
     - :mod:`casedd.renderer.widgets.clock` — live clock
+    - :mod:`casedd.renderer.widgets.ups` — single-card UPS status display
 """

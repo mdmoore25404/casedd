@@ -31,6 +31,56 @@ _log = logging.getLogger(__name__)
 _MAX_MESSAGE_BYTES = 65_536
 
 
+def _to_store_value(value: object) -> float | int | str | None:
+    """Convert one JSON value to store-compatible primitive.
+
+    Args:
+        value: Incoming JSON value.
+
+    Returns:
+        ``float``/``int``/``str`` value, or ``None`` when unsupported.
+    """
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, (float, int, str)):
+        return value
+    return None
+
+
+def _flatten_update(
+    mapping: dict[str, object],
+    out: dict[str, float | int | str],
+    prefix: str = "",
+) -> None:
+    """Flatten nested update objects into dotted keys.
+
+    Args:
+        mapping: Raw update mapping.
+        out: Flattened store mapping.
+        prefix: Current dotted key prefix.
+    """
+    for key_obj, value in mapping.items():
+        if not isinstance(key_obj, str):
+            continue
+        key = key_obj.strip()
+        if not key:
+            continue
+        full_key = f"{prefix}.{key}" if prefix else key
+
+        if isinstance(value, dict):
+            nested: dict[str, object] = {}
+            for nested_key, nested_value in value.items():
+                if isinstance(nested_key, str):
+                    nested[nested_key] = nested_value
+            if nested:
+                _flatten_update(nested, out, full_key)
+            continue
+
+        parsed = _to_store_value(value)
+        if parsed is not None:
+            out[full_key] = parsed
+
+
 class UnixSocketIngestion:
     """Listens on a Unix domain socket and writes data to the store.
 
@@ -146,15 +196,8 @@ class UnixSocketIngestion:
             _log.warning("Unix socket: missing 'update' dict from %s.", peer)
             return
 
-        # Filter to only valid store value types; discard any nested objects
         clean: dict[str, float | int | str] = {}
-        for key, val in update.items():
-            if isinstance(key, str) and isinstance(val, float | int | str):
-                clean[key] = val
-            else:
-                _log.debug(
-                    "Unix socket: skipping key %r (value type %s).", key, type(val).__name__
-                )
+        _flatten_update(update, clean)
 
         if clean:
             self._store.update(clean)

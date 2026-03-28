@@ -13,6 +13,10 @@ services:
       # Mount templates and assets for easy editing without rebuild
       - ./templates:/app/templates:ro
       - ./assets:/app/assets:ro
+      # Host Linux runtime views for containerized host metrics collection.
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /run:/host/run:ro
       # Persist logs in Docker-managed storage (avoids host permission mismatches)
       - casedd_logs:/app/logs
     env_file:
@@ -24,6 +28,10 @@ services:
       - CASEDD_SOCKET_PATH=/app/run/casedd.sock
       # Reach host Ollama from inside container; port is controlled by CASEDD_OLLAMA_PORT.
       - CASEDD_OLLAMA_API_BASE=http://host.docker.internal:${CASEDD_OLLAMA_PORT:-11434}
+      # Point psutil at host procfs bind mount instead of container procfs.
+      - CASEDD_PROCFS_PATH=/host/proc
+      # /app route should redirect to host-mapped advanced app dev server port.
+      - CASEDD_APP_PORT=${CASEDD_DOCKER_APP_PORT:-15173}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
@@ -34,5 +42,23 @@ services:
       retries: 3
       start_period: 10s
 
+  casedd-web:
+    image: node:20-alpine
+    restart: unless-stopped
+    working_dir: /app
+    command: >
+      sh -lc "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    ports:
+      - "${CASEDD_DOCKER_APP_PORT:-15173}:5173"
+    volumes:
+      - ./web:/app
+      - casedd_web_node_modules:/app/node_modules
+    environment:
+      # Vite proxy target from inside container to backend service.
+      - CASEDD_API_BASE=http://casedd:8080
+    depends_on:
+      - casedd
+
 volumes:
   casedd_logs:
+  casedd_web_node_modules:

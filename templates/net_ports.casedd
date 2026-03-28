@@ -1,0 +1,23 @@
+# net_ports.casedd — listening network ports table
+
+name: net_ports
+description: Netstat-style table of currently listening TCP/UDP ports.
+width: 800
+height: 480
+background: "#0b1118"
+refresh_rate: 5.0
+
+grid:
+  template_areas: |
+    ports
+  columns: 1fr
+  rows: 1fr
+
+widgets:
+  ports:
+    type: net_ports
+    label: "Listening Ports"
+    source: netports.rows
+    color: "#60b4e6"
+    background: "#101822"
+    padding: [8, 10]

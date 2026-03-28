@@ -129,6 +129,38 @@ class TemplateTriggerRule(BaseModel):
         return self
 
 
+class PanelConfig(BaseModel):
+    """Configuration for one output panel/framebuffer.
+
+    Attributes:
+        name: Stable panel identifier.
+        display_name: Human-friendly panel name for UI selectors.
+        fb_device: Optional framebuffer path for this panel.
+        no_fb: Optional per-panel framebuffer disable flag.
+        width: Optional panel width override in pixels.
+        height: Optional panel height override in pixels.
+        template: Optional per-panel base template name.
+        template_rotation: Optional per-panel rotation templates.
+        template_rotation_interval: Optional per-panel rotation interval seconds.
+        template_schedule: Optional per-panel schedule rules.
+        template_triggers: Optional per-panel trigger rules.
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
+
+    name: str
+    display_name: str | None = None
+    fb_device: Path | None = None
+    no_fb: bool | None = None
+    width: int | None = Field(default=None, gt=0)
+    height: int | None = Field(default=None, gt=0)
+    template: str | None = None
+    template_rotation: list[str] = Field(default_factory=list)
+    template_rotation_interval: float | None = Field(default=None, gt=0)
+    template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
+    template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
+
+
 @dataclass(config=ConfigDict(frozen=True))
 class Config:
     """Daemon-wide configuration.
@@ -146,6 +178,7 @@ class Config:
         height: Canvas height in pixels.
         templates_dir: Directory containing ``.casedd`` template files.
         assets_dir: Directory containing static assets.
+        procfs_path: Linux procfs root path used by psutil.
         disk_mount: Filesystem mount point to monitor for disk metrics.
         viewer_bg: Default browser viewer page background color.
         speedtest_interval: Interval between speed tests in seconds.
@@ -157,9 +190,20 @@ class Config:
         speedtest_critical_ratio: Ratio under which speeds are considered critical.
         speedtest_binary: Speedtest CLI binary name or absolute path.
         speedtest_server_id: Optional Ookla server ID to force test target.
+        htop_interval: Process table polling interval in seconds.
+        htop_max_rows: Maximum process rows for htop-style widget.
+        weather_provider: Weather provider identifier (nws/open-meteo).
+        weather_interval: Weather polling interval in seconds.
+        weather_zipcode: Optional US zipcode used for location lookup.
+        weather_lat: Optional latitude override for weather polling.
+        weather_lon: Optional longitude override for weather polling.
+        weather_user_agent: User-Agent header sent to weather APIs.
         ollama_api_base: Base URL for Ollama HTTP API.
         ollama_interval: Ollama polling interval in seconds.
         ollama_timeout: Ollama request timeout in seconds.
+        ups_interval: UPS polling interval in seconds.
+        ups_command: Optional custom UPS command override.
+        ups_upsc_target: Target argument for ``upsc`` fallback mode.
         net_interfaces: Explicit network interface names to monitor (e.g.
             ``["enp8s0"]``). Traffic from all other interfaces (Docker bridges,
             veth pairs, loopback) is excluded. Empty list falls back to the
@@ -168,6 +212,9 @@ class Config:
         template_rotation_interval: Seconds spent on each rotated template.
         template_schedule: Local-time schedule rules overriding rotation.
         template_triggers: Data-value trigger rules overriding schedule/rotation.
+        panels: Optional per-panel output/runtime definitions.
+        always_collect_prefixes: Namespaces that are always sampled.
+        test_mode: Disable all getters globally when true.
     """
 
     log_level: str = Field(default="INFO")
@@ -182,6 +229,7 @@ class Config:
     height: int = Field(default=480)
     templates_dir: Path = Field(default=Path("templates"))
     assets_dir: Path = Field(default=Path("assets"))
+    procfs_path: str = Field(default="/proc")
     disk_mount: str = Field(default="/")
     viewer_bg: str = Field(default="#0d0f12")
     speedtest_interval: float = Field(default=1800.0)
@@ -193,14 +241,33 @@ class Config:
     speedtest_critical_ratio: float = Field(default=0.7)
     speedtest_binary: str = Field(default="speedtest")
     speedtest_server_id: str | None = Field(default=None)
+    htop_interval: float = Field(default=2.0)
+    htop_max_rows: int = Field(default=12, ge=1, le=40)
+    weather_provider: str = Field(default="nws")
+    weather_interval: float = Field(default=300.0)
+    weather_zipcode: str | None = Field(default=None)
+    weather_lat: float | None = Field(default=None)
+    weather_lon: float | None = Field(default=None)
+    weather_user_agent: str = Field(
+        default="CASEDD/0.2 (https://github.com/casedd/casedd)",
+    )
     ollama_api_base: str = Field(default="http://localhost:11434")
     ollama_interval: float = Field(default=10.0)
     ollama_timeout: float = Field(default=3.0)
+    ups_interval: float = Field(default=5.0)
+    ups_command: str | None = Field(default=None)
+    ups_upsc_target: str = Field(default="ups@localhost")
     net_interfaces: list[str] = Field(default_factory=list)
+    nasa_api_key: str | None = Field(default=None)
+    apod_interval: float = Field(default=3600.0, gt=0)
+    apod_cache_dir: str = Field(default="assets/apod")
     template_rotation: list[str] = Field(default_factory=list)
     template_rotation_interval: float = Field(default=30.0)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
+    panels: list[PanelConfig] = Field(default_factory=list)
+    always_collect_prefixes: list[str] = Field(default_factory=list)
+    test_mode: bool = Field(default=False)
 
     @field_validator("log_level")
     @classmethod
@@ -356,6 +423,25 @@ class Config:
             raise ValueError(msg)
         return v
 
+    @field_validator("ups_interval")
+    @classmethod
+    def _validate_ups_interval(cls, v: float) -> float:
+        """Ensure UPS polling interval is positive and practical.
+
+        Args:
+            v: Poll interval seconds.
+
+        Returns:
+            Validated interval value.
+
+        Raises:
+            ValueError: If interval is outside accepted bounds.
+        """
+        if not (1.0 <= v <= 3600.0):
+            msg = f"ups_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
     @field_validator("template_rotation_interval")
     @classmethod
     def _validate_template_rotation_interval(cls, v: float) -> float:
@@ -374,6 +460,27 @@ class Config:
             msg = f"template_rotation_interval must be between 1 and 86400, got {v}"
             raise ValueError(msg)
         return v
+
+    @field_validator("always_collect_prefixes")
+    @classmethod
+    def _validate_always_collect_prefixes(cls, value: list[str]) -> list[str]:
+        """Normalize always-on source namespace prefixes.
+
+        Args:
+            value: Raw prefix list from env/yaml.
+
+        Returns:
+            Normalized and deduplicated prefix list.
+        """
+        normalized: list[str] = []
+        seen: set[str] = set()
+        for item in value:
+            name = item.strip().lower().rstrip(".")
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            normalized.append(name)
+        return normalized
 
 
 def _read_yaml(path: Path) -> dict[str, object]:
@@ -446,6 +553,18 @@ def load_config() -> Config:
             return raw
         return []
 
+    def _get_always_collect_prefixes() -> list[str]:
+        """Parse always-on getter categories from env/yaml.
+
+        Returns:
+            Namespace prefix list.
+        """
+        raw = _get("CASEDD_ALWAYS_COLLECT_PREFIXES", "always_collect_prefixes", [])
+        if isinstance(raw, list):
+            return [str(item).strip() for item in raw if str(item).strip()]
+        text = str(raw)
+        return [item.strip() for item in text.split(",") if item.strip()]
+
     return Config(
         log_level=str(_get("CASEDD_LOG_LEVEL", "log_level", "INFO")),
         no_fb=str(_get("CASEDD_NO_FB", "no_fb", "0")) not in {"0", "false", "False", ""},
@@ -461,6 +580,7 @@ def load_config() -> Config:
         height=int(str(_get("CASEDD_HEIGHT", "height", 480))),
         templates_dir=Path(str(_get("CASEDD_TEMPLATES_DIR", "templates_dir", "templates"))),
         assets_dir=Path(str(_get("CASEDD_ASSETS_DIR", "assets_dir", "assets"))),
+        procfs_path=str(_get("CASEDD_PROCFS_PATH", "procfs_path", "/proc")),
         disk_mount=str(_get("CASEDD_DISK_MOUNT", "disk_mount", "/")),
         viewer_bg=str(_get("CASEDD_VIEWER_BG", "viewer_bg", "#0d0f12")),
         speedtest_interval=float(
@@ -503,14 +623,37 @@ def load_config() -> Config:
             _get("CASEDD_SPEEDTEST_SERVER_ID", "speedtest_server_id", "")
         )
         or None,
+        htop_interval=float(str(_get("CASEDD_HTOP_INTERVAL", "htop_interval", 2.0))),
+        htop_max_rows=int(str(_get("CASEDD_HTOP_MAX_ROWS", "htop_max_rows", 12))),
+        weather_provider=str(_get("CASEDD_WEATHER_PROVIDER", "weather_provider", "nws")),
+        weather_interval=float(
+            str(_get("CASEDD_WEATHER_INTERVAL", "weather_interval", 300.0))
+        ),
+        weather_zipcode=str(_get("CASEDD_WEATHER_ZIPCODE", "weather_zipcode", "")).strip()
+        or None,
+        weather_lat=_get_optional_float("CASEDD_WEATHER_LAT", "weather_lat"),
+        weather_lon=_get_optional_float("CASEDD_WEATHER_LON", "weather_lon"),
+        weather_user_agent=str(
+            _get(
+                "CASEDD_WEATHER_USER_AGENT",
+                "weather_user_agent",
+                "CASEDD/0.2 (https://github.com/casedd/casedd)",
+            )
+        ),
         ollama_api_base=str(_get("CASEDD_OLLAMA_API_BASE", "ollama_api_base", "http://localhost:11434")),
         ollama_interval=float(str(_get("CASEDD_OLLAMA_INTERVAL", "ollama_interval", 10.0))),
         ollama_timeout=float(str(_get("CASEDD_OLLAMA_TIMEOUT", "ollama_timeout", 3.0))),
+        ups_interval=float(str(_get("CASEDD_UPS_INTERVAL", "ups_interval", 5.0))),
+        ups_command=str(_get("CASEDD_UPS_COMMAND", "ups_command", "")).strip() or None,
+        ups_upsc_target=str(_get("CASEDD_UPS_UPSC_TARGET", "ups_upsc_target", "ups@localhost")),
         net_interfaces=[
             iface.strip()
             for iface in str(_get("CASEDD_NET_INTERFACES", "net_interfaces", "")).split(",")
             if iface.strip()
         ],
+        nasa_api_key=str(_get("CASEDD_NASA_API_KEY", "nasa_api_key", "")).strip() or None,
+        apod_interval=float(str(_get("CASEDD_APOD_INTERVAL", "apod_interval", 3600.0))),
+        apod_cache_dir=str(_get("CASEDD_APOD_CACHE_DIR", "apod_cache_dir", "assets/apod")),
         template_rotation=_get_rotation_templates(),
         template_rotation_interval=float(
             str(_get("CASEDD_TEMPLATE_ROTATION_INTERVAL", "template_rotation_interval", 30.0))
@@ -523,4 +666,8 @@ def load_config() -> Config:
             "list[TemplateTriggerRule]",
             _get_yaml_list("template_triggers"),
         ),
+        panels=cast("list[PanelConfig]", _get_yaml_list("panels")),
+        always_collect_prefixes=_get_always_collect_prefixes(),
+        test_mode=str(_get("CASEDD_TEST_MODE", "test_mode", "0"))
+        not in {"0", "false", "False", ""},
     )

@@ -1,0 +1,17 @@
+name: apod
+description: >
+  NASA Astronomy Picture of the Day — fills the entire display with the
+  daily APOD image and overlays the title at the bottom.
+
+background: "#000000"
+
+grid:
+  template_areas: '"apod_img"'
+  columns: 1fr
+  rows: 1fr
+
+widgets:
+  apod_img:
+    type: apod
+    source: apod.image_path
+    scale: fill

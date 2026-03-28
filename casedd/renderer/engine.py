@@ -15,6 +15,7 @@ Public API:
 from __future__ import annotations
 
 import logging
+import threading
 
 from PIL import Image
 
@@ -55,6 +56,7 @@ class RenderEngine:
         self._default_h = height
         # widget_name → mutable state dict (history buffers, cached images, etc.)
         self._widget_states: dict[str, dict[str, object]] = {}
+        self._state_lock = threading.Lock()
 
     def render(self, template: Template, data: DataStore) -> Image.Image:
         """Render one frame.
@@ -69,40 +71,77 @@ class RenderEngine:
         Returns:
             A PIL ``Image`` in RGB mode at the template's canvas dimensions.
         """
-        w = template.width or self._default_w
-        h = template.height or self._default_h
+        with self._state_lock:
+            w = template.width or self._default_w
+            h = template.height or self._default_h
 
-        # Create a fresh canvas with the template background color
-        bg_rgb = parse_color(template.background, fallback=(0, 0, 0))
-        img = Image.new("RGB", (w, h), bg_rgb)
+            # Create a fresh canvas with the template background color
+            bg_rgb = parse_color(template.background, fallback=(0, 0, 0))
+            img = Image.new("RGB", (w, h), bg_rgb)
 
-        # Resolve the CSS grid to pixel rects for all top-level widgets
-        rects = resolve_grid(
-            template_areas=template.grid.template_areas,
-            columns=template.grid.columns,
-            rows=template.grid.rows,
-            canvas_w=w,
-            canvas_h=h,
-        )
+            # Resolve the CSS grid to pixel rects for all top-level widgets
+            rects = resolve_grid(
+                template_areas=template.grid.template_areas,
+                columns=template.grid.columns,
+                rows=template.grid.rows,
+                canvas_w=w,
+                canvas_h=h,
+            )
 
-        # Render each widget into its allocated rect
-        for name, cfg in template.widgets.items():
-            rect = rects.get(name)
-            if rect is None:
-                _log.warning("Widget '%s' has no grid rect — skipping.", name)
-                continue
+            # Render each widget into its allocated rect
+            for name, cfg in template.widgets.items():
+                rect = rects.get(name)
+                if rect is None:
+                    _log.warning("Widget '%s' has no grid rect — skipping.", name)
+                    continue
 
-            # Retrieve or create per-widget mutable state
-            if name not in self._widget_states:
-                self._widget_states[name] = {}
-            state = self._widget_states[name]
+                # Retrieve or create per-widget mutable state
+                if name not in self._widget_states:
+                    self._widget_states[name] = {}
+                state = self._widget_states[name]
 
-            try:
-                renderer = get_widget_renderer(cfg.type)
-                renderer.draw(img, rect, cfg, data, state)
-                draw_widget_border(img, rect, cfg)
-            except Exception:
-                _log.exception("Widget '%s' (%s) raised during render:", name, cfg.type)
+                try:
+                    renderer = get_widget_renderer(cfg.type)
+                    renderer.draw(img, rect, cfg, data, state)
+                    draw_widget_border(img, rect, cfg)
+                except Exception:
+                    _log.exception("Widget '%s' (%s) raised during render:", name, cfg.type)
 
         _log.debug("Rendered frame: %dx%d, %d widgets", w, h, len(template.widgets))
         return img
+
+    def debug_state_snapshot(self) -> dict[str, object]:
+        """Return JSON-serializable history state for sparkline/histogram widgets.
+
+        Returns:
+            Dict keyed by widget name with ``buf`` and/or ``multi_buf`` values.
+        """
+        with self._state_lock:
+            snapshot: dict[str, object] = {}
+            for widget_name, state in self._widget_states.items():
+                widget_payload: dict[str, object] = {}
+
+                buf_obj = state.get("buf")
+                if buf_obj is not None and hasattr(buf_obj, "__iter__"):
+                    widget_payload["buf"] = [
+                        float(sample[1])
+                        for sample in list(buf_obj)
+                        if isinstance(sample, tuple) and len(sample) == 2
+                    ]
+
+                multi_obj = state.get("multi_buf")
+                if isinstance(multi_obj, dict):
+                    multi_payload: dict[str, list[float]] = {}
+                    for source, source_buf in multi_obj.items():
+                        if hasattr(source_buf, "__iter__"):
+                            multi_payload[str(source)] = [
+                                float(sample[1])
+                                for sample in list(source_buf)
+                                if isinstance(sample, tuple) and len(sample) == 2
+                            ]
+                    widget_payload["multi_buf"] = multi_payload
+
+                if widget_payload:
+                    snapshot[widget_name] = widget_payload
+
+            return snapshot
