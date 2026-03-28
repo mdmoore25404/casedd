@@ -11,6 +11,7 @@
 #   logs      Tail the log file (Ctrl-C to exit)
 #   lint      Run ruff + mypy (must be zero errors before committing)
 #   docs      Generate API docs to docs/api.json (local only)
+#   pages     Serve GitHub Pages docs locally on http://localhost:4000
 #   help      Show this message
 #
 # All paths are relative to the repo root (where this script lives).
@@ -336,6 +337,16 @@ cmd_docs() {
     bash "$REPO_ROOT/scripts/gen_docs.sh"
 }
 
+cmd_pages() {
+    echo "==> Serving GitHub Pages docs on http://localhost:4000"
+    echo "    Press Ctrl-C to stop."
+    docker run --rm \
+        --volume "$REPO_ROOT/docs:/srv/jekyll:Z" \
+        --publish 4000:4000 \
+        jekyll/jekyll:4 \
+        jekyll serve --livereload --port 4000 --host 0.0.0.0 2>&1
+}
+
 cmd_help() {
     grep '^#' "$0" | sed 's/^# \?//'
 }
@@ -352,6 +363,7 @@ case "${1:-help}" in
     logs)    cmd_logs ;;
     lint)    cmd_lint ;;
     docs)    cmd_docs ;;
+    pages)   cmd_pages ;;
     help|--help|-h) cmd_help ;;
     *)
         echo "Unknown command: $1" >&2

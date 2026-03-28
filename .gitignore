@@ -222,3 +222,7 @@ logs/*.log*
 # Vite/React frontend artifacts
 web/node_modules/
 web/dist/
+# Jekyll local preview
+docs/Gemfile.lock
+docs/_site/
+docs/.jekyll-cache/
