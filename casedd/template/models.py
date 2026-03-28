@@ -40,6 +40,7 @@ class WidgetType(StrEnum):
     HTOP = "htop"
     NET_PORTS = "net_ports"
     SYSINFO = "sysinfo"
+    APOD = "apod"
     WEATHER_CONDITIONS = "weather_conditions"
     WEATHER_FORECAST = "weather_forecast"
     WEATHER_ALERTS = "weather_alerts"

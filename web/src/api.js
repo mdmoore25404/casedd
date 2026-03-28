@@ -122,3 +122,26 @@ export async function importTemplateFile(content, name = null) {
   });
   return readJson(response);
 }
+
+export async function fetchRotation(panelName) {
+  const response = await fetch(
+    `${API_ROOT}/api/panels/${encodeURIComponent(panelName)}/rotation`,
+    { cache: "no-store" },
+  );
+  return readJson(response);
+}
+
+export async function updateRotation(panelName, rotationTemplates, rotationInterval) {
+  const response = await fetch(
+    `${API_ROOT}/api/panels/${encodeURIComponent(panelName)}/rotation`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        rotation_templates: rotationTemplates,
+        rotation_interval: rotationInterval,
+      }),
+    },
+  );
+  return readJson(response);
+}

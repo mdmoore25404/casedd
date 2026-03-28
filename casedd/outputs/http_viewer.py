@@ -7,6 +7,7 @@ Provides:
 - Data ingestion endpoint ``POST /api/update`` and legacy ``POST /update``
 - Panel metadata endpoint ``GET /api/panels``
 - Template override endpoint ``POST /api/template/override``
+- Template rotation endpoints ``GET/PUT /api/panels/{name}/rotation``
 - Global test-mode endpoints ``GET/POST /api/test-mode``
 - Simulation endpoints for replay/randomized test data
 - Render buffer inspection endpoint ``GET /api/debug/render-state``
@@ -86,6 +87,21 @@ class TestModeRequest(BaseModel):
     model_config = ConfigDict(strict=True, frozen=True)
 
     enabled: bool
+
+
+class RotationUpdateRequest(BaseModel):
+    """Payload for ``PUT /api/panels/{name}/rotation``.
+
+    Attributes:
+        rotation_templates: Ordered list of template names to rotate through
+            (excluding the base template, which always leads the cycle).
+        rotation_interval: Seconds to display each template before advancing.
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True)
+
+    rotation_templates: list[str] = Field(default_factory=list)
+    rotation_interval: float = Field(default=30.0, gt=0)
 
 
 class ReplayRecord(BaseModel):
@@ -447,6 +463,8 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     templates_dir: Path,
     history_provider: Callable[[], dict[str, object]],
     simulation: _SimulationController,
+    rotation_provider: Callable[[str], dict[str, object]],
+    rotation_updater: Callable[[str, list[str], float], None],
 ) -> FastAPI:
     """Build and configure FastAPI app for viewer and control APIs."""
     app = FastAPI(
@@ -550,6 +568,32 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
             msg = "update payload has no valid primitive values"
             raise HTTPException(status_code=422, detail=msg)
         store.update(payload)
+
+    @app.get(
+        "/api/panels/{name}/rotation",
+        summary="Get rotation config for a panel",
+    )
+    async def get_panel_rotation(name: str) -> dict[str, object]:
+        if name not in panel_names:
+            raise HTTPException(status_code=404, detail=f"Unknown panel '{name}'")
+        return rotation_provider(name)
+
+    @app.put(
+        "/api/panels/{name}/rotation",
+        summary="Update rotation templates and interval for a panel",
+    )
+    async def put_panel_rotation(name: str, body: RotationUpdateRequest) -> dict[str, object]:
+        if name not in panel_names:
+            raise HTTPException(status_code=404, detail=f"Unknown panel '{name}'")
+        available_templates = {path.stem for path in templates_dir.glob("*.casedd")}
+        unknown = [t for t in body.rotation_templates if t not in available_templates]
+        if unknown:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Unknown template(s): {', '.join(sorted(unknown))}",
+            )
+        rotation_updater(name, list(body.rotation_templates), body.rotation_interval)
+        return rotation_provider(name)
 
     @app.post("/api/template/override", summary="Set/clear per-panel template override")
     async def set_template_override(body: TemplateOverrideRequest) -> dict[str, object]:
@@ -722,12 +766,19 @@ class HttpViewerOutput:
         viewer_bg: str,
         templates_dir: Path,
         history_provider: Callable[[], dict[str, object]],
+        rotation_provider: Callable[[str], dict[str, object]] | None = None,
+        rotation_updater: Callable[[str, list[str], float], None] | None = None,
     ) -> None:
         """Initialize HTTP viewer output."""
         self._host = host
         self._port = port
         self._frame_store = _FrameStore()
         self._simulation = _SimulationController(store)
+        # Provide no-op stubs if rotation callables are not wired (e.g. tests).
+        _rot_provider: Callable[[str], dict[str, object]] = rotation_provider or (lambda _n: {})
+        _rot_updater: Callable[[str, list[str], float], None] = (
+            rotation_updater or (lambda _n, _t, _i: None)
+        )
         self._app = _build_app(
             store=store,
             frame_store=self._frame_store,
@@ -738,6 +789,8 @@ class HttpViewerOutput:
             templates_dir=templates_dir,
             history_provider=history_provider,
             simulation=self._simulation,
+            rotation_provider=_rot_provider,
+            rotation_updater=_rot_updater,
         )
         self._task: asyncio.Task[None] | None = None
 

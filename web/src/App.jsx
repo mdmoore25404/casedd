@@ -11,6 +11,7 @@ import {
   faList,
   faPenRuler,
   faRotate,
+  faShuffle,
   faTableCells,
   faToggleOn,
   faUpload,
@@ -19,6 +20,7 @@ import {
 
 import {
   exportTemplateFile,
+  fetchRotation,
   fetchTemplate,
   fetchTemplates,
   fetchPanels,
@@ -32,6 +34,7 @@ import {
   startRandomSimulation,
   startReplaySimulation,
   stopSimulation,
+  updateRotation,
 } from "./api";
 
 function usePolling(callback, intervalMs) {
@@ -120,6 +123,7 @@ const WIDGET_TYPES = [
   "histogram",
   "sparkline",
   "image",
+  "apod",
   "slideshow",
   "clock",
   "ups",
@@ -405,6 +409,9 @@ export function App() {
   const [simStatus, setSimStatus] = useState({ running: false, mode: "idle" });
   const [randomJson, setRandomJson] = useState(() => prettyJson({ interval: 1.0, fields: [] }));
   const [replayJson, setReplayJson] = useState(() => prettyJson([]));
+  const [rotationTemplates, setRotationTemplates] = useState([]);
+  const [rotationInterval, setRotationInterval] = useState(30);
+  const [rotationDirty, setRotationDirty] = useState(false);
   const importInputRef = useRef(null);
   const selectedPanelRef = useRef("");
 
@@ -580,6 +587,7 @@ export function App() {
     if (panelChanged) {
       selectedPanelRef.current = panelName;
       setOverrideDraftDirty(false);
+      setRotationDirty(false);
     }
     if (!selectedTemplate && selectedPanelData.current_template) {
       setSelectedTemplate(String(selectedPanelData.current_template));
@@ -591,7 +599,13 @@ export function App() {
           : "auto",
       );
     }
-  }, [overrideDraftDirty, selectedPanelData, selectedTemplate]);
+    // Sync rotation state when panel changes (and not dirty).
+    if ((panelChanged || !rotationDirty) && Array.isArray(selectedPanelData.rotation_templates)) {
+      setRotationTemplates(selectedPanelData.rotation_templates.map(String));
+      const iv = Number(selectedPanelData.rotation_interval);
+      setRotationInterval(Number.isFinite(iv) && iv > 0 ? iv : 30);
+    }
+  }, [overrideDraftDirty, rotationDirty, selectedPanelData, selectedTemplate]);
 
   useEffect(() => {
     if (!selectedTemplate) {
@@ -722,6 +736,22 @@ export function App() {
         ? `forced ${forced} on ${selectedPanel}`
         : `cleared override on ${selectedPanel}`,
     );
+    await refreshPanels();
+  }
+
+  async function handleSaveRotation() {
+    if (!selectedPanel) {
+      setStatus("select a panel first");
+      return;
+    }
+    const interval = Number(rotationInterval);
+    if (!Number.isFinite(interval) || interval <= 0) {
+      setStatus("rotation interval must be a positive number");
+      return;
+    }
+    await updateRotation(selectedPanel, rotationTemplates, interval);
+    setRotationDirty(false);
+    setStatus(`rotation saved for ${selectedPanel}: [${rotationTemplates.join(", ") || "none"}] every ${interval}s`);
     await refreshPanels();
   }
 
@@ -882,6 +912,59 @@ export function App() {
               <button className="btn btn-primary btn-sm" onClick={() => void handleTemplateForce()}>
                 <FontAwesomeIcon icon={faWandMagicSparkles} className="me-1" /> Apply
               </button>
+            </div>
+          </div>
+
+          <div className="card border-secondary bg-dark-subtle mt-3">
+            <div className="card-body">
+              <h5 className="card-title d-flex align-items-center gap-2">
+                <FontAwesomeIcon icon={faShuffle} /> Template Rotation
+              </h5>
+              <p className="small text-body-secondary mb-2">
+                Templates cycle automatically in order. Base template leads; add extras below.
+              </p>
+              {selectedPanelData ? (
+                <div className="small text-body-secondary mb-2">
+                  Base: <strong className="text-light">{selectedPanelData.base_template || "n/a"}</strong>
+                </div>
+              ) : null}
+              <label className="form-label small">Extra templates (one per line)</label>
+              <textarea
+                className="form-control form-control-sm font-monospace mb-2"
+                rows={4}
+                value={rotationTemplates.join("\n")}
+                onChange={(event) => {
+                  const parsed = event.target.value
+                    .split("\n")
+                    .map((t) => t.trim())
+                    .filter((t) => t.length > 0);
+                  setRotationTemplates(parsed);
+                  setRotationDirty(true);
+                }}
+                placeholder={"htop\nsysinfo"}
+              />
+              <label className="form-label small">Interval (seconds)</label>
+              <input
+                className="form-control form-control-sm mb-2"
+                type="number"
+                min={1}
+                step={1}
+                value={rotationInterval}
+                onChange={(event) => {
+                  setRotationInterval(event.target.value);
+                  setRotationDirty(true);
+                }}
+              />
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => void handleSaveRotation()}
+                disabled={!selectedPanel}
+              >
+                <FontAwesomeIcon icon={faFloppyDisk} className="me-1" /> Save Rotation
+              </button>
+              {rotationDirty ? (
+                <span className="small text-warning ms-2">Unsaved changes</span>
+              ) : null}
             </div>
           </div>
 

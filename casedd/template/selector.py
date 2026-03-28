@@ -79,6 +79,42 @@ class TemplateSelector:
         self._trigger_cooldown_until: dict[int, float] = {}
         self._force_store_key = force_store_key
 
+    def update_rotation(self, rotation_templates: list[str], rotation_interval: float) -> None:
+        """Replace the rotation list and interval at runtime.
+
+        Safe to call from any thread; Python's GIL guarantees atomic list
+        replacement.  The rotation index is reset so the new list begins
+        from the base template.
+
+        Args:
+            rotation_templates: New list of additional templates to rotate through.
+                The base template is always prepended automatically.
+            rotation_interval: New interval in seconds between rotation steps.
+        """
+        self._rotation_templates = self._build_rotation_list(
+            self._base_template, rotation_templates
+        )
+        self._rotation_interval = max(1.0, rotation_interval)
+        self._rotation_index = 0
+        self._rotation_last_step = monotonic_time.monotonic()
+
+    @property
+    def base_template(self) -> str:
+        """The base (default) template name."""
+        return self._base_template
+
+    @property
+    def rotation_templates(self) -> list[str]:
+        """Current rotation list (excludes base if it was deduplicated)."""
+        # Return without the implicit base-template prepend so callers see
+        # the same list they would configure.
+        return [t for t in self._rotation_templates if t != self._base_template]
+
+    @property
+    def rotation_interval(self) -> float:
+        """Current rotation interval in seconds."""
+        return self._rotation_interval
+
     def select_template(self, snapshot: dict[str, StoreValue]) -> str:
         """Return the active template name for the current tick.
 

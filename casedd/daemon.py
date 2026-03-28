@@ -26,6 +26,7 @@ import psutil
 
 from casedd.config import Config, PanelConfig, TemplateScheduleRule, TemplateTriggerRule
 from casedd.data_store import DataStore, StoreValue
+from casedd.getters.apod import ApodGetter
 from casedd.getters.base import BaseGetter
 from casedd.getters.cpu import CpuGetter
 from casedd.getters.disk import DiskGetter
@@ -70,6 +71,7 @@ class _PanelRuntime:
     height: int
     base_template: str
     rotation_templates: list[str]
+    rotation_interval: float
     schedule_rules: list[TemplateScheduleRule]
     trigger_rules: list[TemplateTriggerRule]
     selector: TemplateSelector
@@ -109,6 +111,25 @@ class Daemon:
         panel_runtimes = self._build_panel_runtimes(registry)
 
         ws_output = WebSocketOutput(_BIND_HOST, self._cfg.ws_port)
+
+        def _rotation_provider(panel_name: str) -> dict[str, object]:
+            runtime = next((r for r in panel_runtimes if r.name == panel_name), None)
+            if runtime is None:
+                return {}
+            return {
+                "base_template": runtime.base_template,
+                "rotation_templates": list(runtime.selector.rotation_templates),
+                "rotation_interval": runtime.selector.rotation_interval,
+            }
+
+        def _rotation_updater(panel_name: str, templates: list[str], interval: float) -> None:
+            runtime = next((r for r in panel_runtimes if r.name == panel_name), None)
+            if runtime is None:
+                return
+            runtime.selector.update_rotation(templates, interval)
+            runtime.rotation_templates = templates
+            runtime.rotation_interval = interval
+
         http_output = HttpViewerOutput(
             self._store,
             _BIND_HOST,
@@ -120,6 +141,9 @@ class Daemon:
                     "display_name": panel.display_name,
                     "width": panel.width,
                     "height": panel.height,
+                    "base_template": panel.base_template,
+                    "rotation_templates": list(panel.rotation_templates),
+                    "rotation_interval": panel.rotation_interval,
                 }
                 for panel in panel_runtimes
             ],
@@ -129,6 +153,8 @@ class Daemon:
             lambda: {
                 panel.name: panel.engine.debug_state_snapshot() for panel in panel_runtimes
             },
+            _rotation_provider,
+            _rotation_updater,
         )
 
         unix_ingestion = UnixSocketIngestion(Path(self._cfg.socket_path), self._store)
@@ -243,6 +269,7 @@ class Daemon:
                 height=height,
                 base_template=base_template,
                 rotation_templates=rotation_templates,
+                rotation_interval=rotation_interval,
                 schedule_rules=schedule_rules,
                 trigger_rules=trigger_rules,
                 selector=selector,
@@ -379,6 +406,12 @@ class Daemon:
                 lon=self._cfg.weather_lon,
                 user_agent=self._cfg.weather_user_agent,
             ),
+            ApodGetter(
+                self._store,
+                api_key=self._cfg.nasa_api_key,
+                interval=self._cfg.apod_interval,
+                cache_dir=self._cfg.apod_cache_dir,
+            ),
             NetPortsGetter(self._store),
             SysinfoGetter(self._store),
         ]
@@ -472,6 +505,7 @@ class Daemon:
             ("ups.", "UpsGetter"),
             ("htop.", "HtopGetter"),
             ("weather.", "WeatherGetter"),
+            ("apod.", "ApodGetter"),
             ("netports.", "NetPortsGetter"),
             ("sysinfo.", "SysinfoGetter"),
         )

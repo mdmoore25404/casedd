@@ -13,6 +13,7 @@ Public API:
 
 from __future__ import annotations
 
+from casedd.renderer.widgets.apod import ApodWidget
 from casedd.renderer.widgets.bar import BarWidget
 from casedd.renderer.widgets.base import BaseWidget
 from casedd.renderer.widgets.clock import ClockWidget
@@ -51,6 +52,7 @@ _REGISTRY: dict[WidgetType, BaseWidget] = {
     WidgetType.HTOP: HtopWidget(),
     WidgetType.NET_PORTS: NetPortsWidget(),
     WidgetType.SYSINFO: SysinfoWidget(),
+    WidgetType.APOD: ApodWidget(),
     WidgetType.WEATHER_CONDITIONS: WeatherConditionsWidget(),
     WidgetType.WEATHER_FORECAST: WeatherForecastWidget(),
     WidgetType.WEATHER_ALERTS: WeatherAlertsWidget(),
