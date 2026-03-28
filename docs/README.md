@@ -1,4 +1,10 @@
-# CASEDD — Case Display Daemon
+---
+title: Project Overview
+nav_order: 1
+permalink: /overview/
+---
+
+
 
 A lightweight, high-performance Python daemon that drives a small USB framebuffer display
 mounted inside a PC case, while simultaneously serving the same content over WebSocket and

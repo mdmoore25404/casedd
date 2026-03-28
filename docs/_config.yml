@@ -1,5 +1,64 @@
-title: CASEDD Documentation
-description: Documentation for the CASEDD project
-theme: jekyll-theme-leap-day
+title: CASEDD
+description: >-
+  Case Display Daemon — drive your case display with real-time CPU, GPU,
+  RAM, and temperature data. Built for AI rigs and homelabs.
+
+remote_theme: just-the-docs/just-the-docs@v0.10.0
+
+color_scheme: dark
+
 markdown: kramdown
-permalink: /:path/
+permalink: pretty
+
+# Sidebar navigation
+nav_enabled: true
+search_enabled: true
+search_tokenizer_separator: /[\s/]+/
+
+# Aux links (top-right of the nav bar)
+aux_links:
+  "← casedd.dev": "/"
+  "GitHub":
+    - "https://github.com/mdmoore25404/casedd"
+aux_links_new_tab: false
+
+# Footer
+back_to_top: true
+back_to_top_text: "Back to top"
+footer_content: >
+  Released under the
+  <a href="https://github.com/mdmoore25404/casedd/blob/main/LICENSE">Business Source License 1.1</a>.
+  Free for personal and hobbyist use.
+
+# GitHub edit links
+gh_edit_link: true
+gh_edit_link_text: "Edit this page on GitHub"
+gh_edit_repository: "https://github.com/mdmoore25404/casedd"
+gh_edit_branch: "main"
+gh_edit_source: docs
+gh_edit_view_mode: "tree"
+
+# Callout configuration
+callouts_level: quiet
+callouts:
+  note:
+    title: Note
+    color: blue
+  tip:
+    title: Tip
+    color: green
+  warning:
+    title: Warning
+    color: yellow
+
+defaults:
+  - scope:
+      path: ""
+    values:
+      layout: default
+
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+  - jekyll-include-cache
+
