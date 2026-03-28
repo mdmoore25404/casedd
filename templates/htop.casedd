@@ -18,6 +18,7 @@ widgets:
     type: htop
     label: "Top Processes"
     source: htop.rows
+    sort_key: cpu
     color: "#6ee786"
     background: "#101822"
     padding: [8, 10]

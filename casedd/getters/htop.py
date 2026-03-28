@@ -84,8 +84,10 @@ class HtopGetter(BaseGetter):
                 "htop.top_cpu": 0.0,
             }
 
+        # Pipe-delimited structured rows: PID|CPU|MEM|NAME
+        # The renderer controls sort order and column formatting at draw time.
         rendered_rows = [
-            f"{row.pid:>6} {row.cpu:>5.1f}% {row.mem:>5.1f}% {row.name[:28]}"
+            f"{row.pid}|{row.cpu:.2f}|{row.mem:.2f}|{row.name}"
             for row in top_rows
         ]
         top = top_rows[0]

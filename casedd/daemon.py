@@ -33,9 +33,11 @@ from casedd.getters.fans import FanGetter
 from casedd.getters.gpu import GpuGetter
 from casedd.getters.htop import HtopGetter
 from casedd.getters.memory import MemoryGetter
+from casedd.getters.net_ports import NetPortsGetter
 from casedd.getters.network import NetworkGetter
 from casedd.getters.ollama import OllamaGetter
 from casedd.getters.speedtest import SpeedtestGetter
+from casedd.getters.sysinfo import SysinfoGetter
 from casedd.getters.system import SystemGetter
 from casedd.getters.ups import UpsGetter
 from casedd.getters.weather import WeatherGetter
@@ -377,6 +379,8 @@ class Daemon:
                 lon=self._cfg.weather_lon,
                 user_agent=self._cfg.weather_user_agent,
             ),
+            NetPortsGetter(self._store),
+            SysinfoGetter(self._store),
         ]
 
     async def _sync_getter_tasks(
@@ -468,6 +472,8 @@ class Daemon:
             ("ups.", "UpsGetter"),
             ("htop.", "HtopGetter"),
             ("weather.", "WeatherGetter"),
+            ("netports.", "NetPortsGetter"),
+            ("sysinfo.", "SysinfoGetter"),
         )
         for prefix, getter_name in mapping:
             if source.startswith(prefix):

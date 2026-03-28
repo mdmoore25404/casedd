@@ -20,8 +20,10 @@ from casedd.renderer.widgets.gauge import GaugeWidget
 from casedd.renderer.widgets.histogram import HistogramWidget
 from casedd.renderer.widgets.htop import HtopWidget
 from casedd.renderer.widgets.image import ImageWidget
+from casedd.renderer.widgets.net_ports import NetPortsWidget
 from casedd.renderer.widgets.slideshow import SlideshowWidget
 from casedd.renderer.widgets.sparkline import SparklineWidget
+from casedd.renderer.widgets.sysinfo import SysinfoWidget
 from casedd.renderer.widgets.text import TextWidget
 from casedd.renderer.widgets.ups import UpsWidget
 from casedd.renderer.widgets.value import ValueWidget
@@ -47,6 +49,8 @@ _REGISTRY: dict[WidgetType, BaseWidget] = {
     WidgetType.CLOCK: ClockWidget(),
     WidgetType.UPS: UpsWidget(),
     WidgetType.HTOP: HtopWidget(),
+    WidgetType.NET_PORTS: NetPortsWidget(),
+    WidgetType.SYSINFO: SysinfoWidget(),
     WidgetType.WEATHER_CONDITIONS: WeatherConditionsWidget(),
     WidgetType.WEATHER_FORECAST: WeatherForecastWidget(),
     WidgetType.WEATHER_ALERTS: WeatherAlertsWidget(),

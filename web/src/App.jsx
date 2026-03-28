@@ -124,6 +124,8 @@ const WIDGET_TYPES = [
   "clock",
   "ups",
   "htop",
+  "net_ports",
+  "sysinfo",
   "weather_conditions",
   "weather_forecast",
   "weather_alerts",

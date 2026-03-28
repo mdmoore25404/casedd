@@ -38,6 +38,8 @@ class WidgetType(StrEnum):
     CLOCK = "clock"
     UPS = "ups"
     HTOP = "htop"
+    NET_PORTS = "net_ports"
+    SYSINFO = "sysinfo"
     WEATHER_CONDITIONS = "weather_conditions"
     WEATHER_FORECAST = "weather_forecast"
     WEATHER_ALERTS = "weather_alerts"
@@ -148,6 +150,7 @@ class WidgetConfig(BaseModel):
         arc_start: Gauge arc start angle in degrees.
         arc_end: Gauge arc end angle in degrees.
         gauge_ticks: Number of tick marks to draw along a gauge arc.
+        sort_key: Sort column for htop widget ("cpu" or "mem").
         border_style: Widget border style (none/solid/dashed/dotted/inset/outset).
         border_color: Border color string.
         border_width: Border line width in pixels.
@@ -212,6 +215,9 @@ class WidgetConfig(BaseModel):
     arc_start: float = 225.0
     arc_end: float = -45.0
     gauge_ticks: int = Field(default=0, ge=0, le=20)
+
+    # Htop process table
+    sort_key: str = Field(default="cpu")
 
     # Widget border
     border_style: BorderStyle = BorderStyle.NONE
