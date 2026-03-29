@@ -26,6 +26,12 @@ IDLE_SECONDS = int(os.environ.get("IDLE_SECONDS", "60"))
 INPUT_GLOB = os.environ.get("INPUT_GLOB", "/dev/input/event*")
 POLL_INTERVAL = 1.0
 
+# When true, the daemon will attempt to disable the kernel framebuffer
+# console for the fb device while the display is blanked.
+FB_DISABLE_CONSOLE = os.environ.get("FB_DISABLE_CONSOLE", "1") not in {"0", "false", "False", ""}
+# When present, this file prevents the daemon from re-blanking the display.
+FB_KEEP_PATH = Path(os.environ.get("FB_KEEP_PATH", "/run/casedd/keep-unblank"))
+
 _running = True
 
 
@@ -49,6 +55,24 @@ def _open_input_devices() -> Dict[int, object]:
     return devs
 
 
+def _write_vt_cursor(show: bool) -> None:
+    """Show or hide the primary virtual terminal cursor (tty1).
+
+    Writes the terminal escape sequence to `/dev/tty1`. Silently fails
+    when `/dev/tty1` is unavailable.
+    """
+    seq = "\x1b[?25h" if show else "\x1b[?25l"
+    # Try common virtual terminals and /dev/console as fallbacks. This is
+    # best-effort: failures are ignored so the daemon remains robust.
+    targets = [f"/dev/tty{i}" for i in range(1, 7)] + ["/dev/console"]
+    for t in targets:
+        try:
+            with open(t, "wb", buffering=0) as fh:
+                fh.write(seq.encode("ascii"))
+        except Exception:
+            continue
+
+
 def _close_input_devices(devs: Dict[int, object]) -> None:
     for fh in list(devs.values()):
         try:
@@ -56,6 +80,20 @@ def _close_input_devices(devs: Dict[int, object]) -> None:
         except Exception:
             pass
     devs.clear()
+
+
+def _set_console(enable: bool) -> None:
+    """Enable or disable the kernel framebuffer console for the fb device.
+
+    Writes '1' to the `console` sysfs file to enable, '0' to disable. Best-effort.
+    """
+    try:
+        fb_dir = FB_BLANK_PATH.parent
+        console_path = fb_dir / "console"
+        if console_path.exists():
+            console_path.write_text("1" if enable else "0")
+    except Exception:
+        pass
 
 
 def _handle_signals(signum, frame):  # pragma: no cover - signal wiring
@@ -74,6 +112,8 @@ def main() -> int:
     # Start blanked
     _set_blank(1)
     is_blank = True
+    # Hide VT cursor while blanked
+    _write_vt_cursor(False)
     last_activity = time.time()
 
     devs = _open_input_devices()
@@ -96,6 +136,8 @@ def main() -> int:
                 # Any input event -> unblank and reset timer
                 if is_blank:
                     _set_blank(0)
+                    # show VT cursor when display is unblanked
+                    _write_vt_cursor(True)
                     is_blank = False
                 last_activity = now
                 # consume data from fds to clear state
@@ -105,10 +147,16 @@ def main() -> int:
                     except Exception:
                         pass
 
-            # Idle check
+            # Idle check: respect a keep-file to prevent re-blanking during tests
             if not is_blank and (now - last_activity) >= IDLE_SECONDS:
-                _set_blank(1)
-                is_blank = True
+                if not FB_KEEP_PATH.exists():
+                    _set_blank(1)
+                    # hide VT cursor when re-blanking
+                    _write_vt_cursor(False)
+                    # optionally disable kernel console if configured
+                    if FB_DISABLE_CONSOLE:
+                        _set_console(False)
+                    is_blank = True
 
             # periodic device refresh: unregister and reopen any dead fds
             dead_fds: List[int] = [fd for fd, fh in devs.items() if fh.closed]
@@ -132,6 +180,13 @@ def main() -> int:
                     continue
 
     finally:
+        # Ensure cursor and console are put back to usable state on exit.
+        try:
+            _write_vt_cursor(True)
+            if FB_DISABLE_CONSOLE:
+                _set_console(True)
+        except Exception:
+            pass
         _close_input_devices(devs)
 
     return 0
