@@ -19,11 +19,30 @@ from __future__ import annotations
 import logging
 import mmap
 from pathlib import Path
+import re
 import struct
 
 from PIL import Image
 
 _log = logging.getLogger(__name__)
+
+# Framebuffer mode string pattern: TYPE:WxH[p|i]-HZ, e.g. "U:800x480p-60".
+_MODE_RE = re.compile(r"^[A-Z]:(\d+)x(\d+)[pi]-(\d+(?:\.\d+)?)$")
+
+
+def _read_sysfs_str(path: Path) -> str | None:
+    """Read text from a sysfs pseudo-file.
+
+    Args:
+        path: Sysfs file path.
+
+    Returns:
+        Stripped text, or ``None`` on any read error.
+    """
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
 
 
 def _read_sysfs_int(path: Path, default: int) -> int:
@@ -36,10 +55,34 @@ def _read_sysfs_int(path: Path, default: int) -> int:
     Returns:
         The integer value, or ``default`` on any error.
     """
-    try:
-        return int(path.read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
+    raw = _read_sysfs_str(path)
+    if raw is None:
         return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _parse_fb_modes(sysfs_fb: Path) -> tuple[list[str], list[float]]:
+    """Parse supported video modes from the sysfs ``modes`` file.
+
+    Args:
+        sysfs_fb: Sysfs directory for the framebuffer device.
+
+    Returns:
+        Tuple of (list of raw mode strings, sorted list of Hz values).
+    """
+    raw = _read_sysfs_str(sysfs_fb / "modes")
+    if not raw:
+        return [], []
+    modes = [line.strip() for line in raw.splitlines() if line.strip()]
+    hz_set: set[float] = set()
+    for mode in modes:
+        m = _MODE_RE.match(mode)
+        if m:
+            hz_set.add(float(m.group(3)))
+    return modes, sorted(hz_set)
 
 
 class FramebufferOutput:
@@ -64,6 +107,9 @@ class FramebufferOutput:
         """
         self._device = device
         self._enabled = False
+        # Initialised to empty; populated when the device is successfully opened.
+        self._supported_modes: list[str] = []
+        self._supported_hz: list[float] = []
 
         if disabled:
             _log.info("Framebuffer output disabled (CASEDD_NO_FB=1).")
@@ -96,11 +142,42 @@ class FramebufferOutput:
         self._bytes_per_pixel = self._bpp // 8
         self._frame_size = fb_w * fb_h * self._bytes_per_pixel
 
+        self._supported_modes, self._supported_hz = _parse_fb_modes(sysfs_base)
+
         _log.info(
             "Framebuffer: %s %dx%d %dbpp (%d bytes/frame)",
             device, fb_w, fb_h, self._bpp, self._frame_size,
         )
+        if self._supported_modes:
+            _log.info(
+                "Framebuffer modes: %s",
+                ", ".join(self._supported_modes),
+            )
+        if self._supported_hz:
+            hz_str = ", ".join(f"{h:.0f} Hz" for h in self._supported_hz)
+            _log.info("Framebuffer supported refresh rates: %s", hz_str)
         self._enabled = True
+
+    @property
+    def supported_modes(self) -> list[str]:
+        """Supported video mode strings as reported by sysfs.
+
+        Returns:
+            List of mode strings (e.g. ``["U:800x480p-60"]``), or an
+            empty list when the framebuffer is disabled or modes are not
+            advertised by the driver.
+        """
+        return list(self._supported_modes)
+
+    @property
+    def supported_hz(self) -> list[float]:
+        """Supported refresh rates in Hz, sorted ascending.
+
+        Returns:
+            List of distinct Hz values parsed from ``supported_modes``,
+            or an empty list when unavailable.
+        """
+        return list(self._supported_hz)
 
     def write(self, image: Image.Image) -> None:
         """Write a PIL image to the framebuffer.

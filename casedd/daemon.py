@@ -50,6 +50,7 @@ from casedd.renderer.engine import RenderEngine
 from casedd.template.models import Template, WidgetConfig
 from casedd.template.registry import TemplateRegistry
 from casedd.template.selector import TemplateSelector
+from casedd.usb_display import FramebufferInfo, find_usb_framebuffers
 
 _log = logging.getLogger(__name__)
 
@@ -92,6 +93,8 @@ class Daemon:
         self._cfg = config
         self._store = DataStore()
         self._shutdown = asyncio.Event()
+        # Populated by USB display auto-detection when fb_auto_detect=True.
+        self._auto_detected_fb: FramebufferInfo | None = None
 
     async def run(self) -> None:
         """Start all subsystems and run the main render loop until shutdown."""
@@ -100,6 +103,19 @@ class Daemon:
             loop.add_signal_handler(sig, self._shutdown.set)
 
         self._store.set(_TEST_MODE_STORE_KEY, 1 if self._cfg.test_mode else 0)
+
+        if self._cfg.fb_auto_detect:
+            usb_displays = find_usb_framebuffers()
+            if usb_displays:
+                self._auto_detected_fb = usb_displays[0]
+                _log.info(
+                    "Auto-detected USB framebuffer: %s",
+                    self._auto_detected_fb.describe(),
+                )
+            else:
+                _log.warning(
+                    "fb_auto_detect enabled but no USB framebuffer displays found."
+                )
 
         getters = self._create_getters()
         getters_by_name = {type(getter).__name__: getter for getter in getters}
@@ -257,6 +273,29 @@ class Daemon:
 
             fb_device = panel.fb_device if panel.fb_device is not None else self._cfg.fb_device
             no_fb = panel.no_fb if panel.no_fb is not None else self._cfg.no_fb
+
+            # USB auto-detect: if configured device is absent, use detected display.
+            if self._auto_detected_fb is not None and not fb_device.exists():
+                fb_device = self._auto_detected_fb.device
+                _log.info(
+                    "Panel '%s': using auto-detected USB display %s",
+                    panel_name, fb_device,
+                )
+
+            # Inherit resolution from auto-detected display when not overridden.
+            if (
+                self._auto_detected_fb is not None
+                and self._auto_detected_fb.width > 0
+                and panel.width is None
+            ):
+                width = self._auto_detected_fb.width
+            if (
+                self._auto_detected_fb is not None
+                and self._auto_detected_fb.height > 0
+                and panel.height is None
+            ):
+                height = self._auto_detected_fb.height
+
             framebuffer = FramebufferOutput(fb_device, disabled=no_fb)
 
             # Validate template availability early so startup fails loudly if broken.

@@ -169,6 +169,10 @@ class Config:
         log_level: Logging verbosity (DEBUG, INFO, WARNING, ERROR, CRITICAL).
         no_fb: Disable framebuffer output entirely (dev / no-hardware mode).
         fb_device: Path to the framebuffer device file.
+        fb_auto_detect: Scan for USB framebuffer displays at startup; uses the
+            first detected USB display when the configured ``fb_device`` is
+            absent.  Resolution is derived from the display when not explicitly
+            overridden via ``width`` / ``height``.
         ws_port: WebSocket server port.
         http_port: HTTP viewer / API port.
         socket_path: Unix domain socket path for JSON data-write pushes.
@@ -220,6 +224,7 @@ class Config:
     log_level: str = Field(default="INFO")
     no_fb: bool = Field(default=False)
     fb_device: Path = Field(default=Path("/dev/fb1"))
+    fb_auto_detect: bool = Field(default=False)
     ws_port: int = Field(default=8765)
     http_port: int = Field(default=8080)
     socket_path: Path = Field(default=Path("/run/casedd/casedd.sock"))
@@ -569,6 +574,9 @@ def load_config() -> Config:
         log_level=str(_get("CASEDD_LOG_LEVEL", "log_level", "INFO")),
         no_fb=str(_get("CASEDD_NO_FB", "no_fb", "0")) not in {"0", "false", "False", ""},
         fb_device=Path(str(_get("CASEDD_FB_DEVICE", "fb_device", "/dev/fb1"))),
+        fb_auto_detect=str(
+            _get("CASEDD_FB_AUTO_DETECT", "fb_auto_detect", "0")
+        ) not in {"0", "false", "False", ""},
         ws_port=int(str(_get("CASEDD_WS_PORT", "ws_port", 8765))),
         http_port=int(str(_get("CASEDD_HTTP_PORT", "http_port", 8080))),
         socket_path=Path(

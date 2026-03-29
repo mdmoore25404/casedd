@@ -7,6 +7,17 @@ log_level: INFO
 template: system_stats
 refresh_rate: 2.0
 
+# Framebuffer device.  Override when you have multiple /dev/fb* devices.
+# fb_device: /dev/fb1
+
+# Set to true to scan for a USB-connected framebuffer at startup.
+# The first detected USB display is used when fb_device does not exist.
+# Resolution is inherited from the display when width/height are not set.
+# fb_auto_detect: false
+
+# Disable framebuffer output entirely (HTTP/WebSocket viewers still work).
+# no_fb: false
+
 # Rotation applies when no trigger or schedule rule is active.
 template_rotation:
   - fans
