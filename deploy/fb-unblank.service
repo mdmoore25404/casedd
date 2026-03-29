@@ -1,0 +1,12 @@
+[Unit]
+Description=CASEDD framebuffer unblank on local input
+After=local-fs.target
+
+[Service]
+Type=simple
+# Run as root so it can read input devices and write sysfs blank
+ExecStart=/usr/bin/env PYTHONPATH=/home/michaelmoore/casedd /home/michaelmoore/casedd/.venv/bin/python3 /home/michaelmoore/casedd/scripts/fb_unblank_daemon.py
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
