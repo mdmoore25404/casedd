@@ -159,6 +159,16 @@ class PanelConfig(BaseModel):
     template_rotation_interval: float | None = Field(default=None, gt=0)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
+    rotation: int | None = None
+
+    @field_validator("rotation")
+    @classmethod
+    def _validate_rotation(cls, v: int | None) -> int | None:
+        if v is None:
+            return None
+        if int(v) not in {0, 90, 180, 270}:
+            raise ValueError("rotation must be one of 0, 90, 180, 270")
+        return int(v)
 
 
 @dataclass(config=ConfigDict(frozen=True))
@@ -225,6 +235,11 @@ class Config:
     no_fb: bool = Field(default=False)
     fb_device: Path = Field(default=Path("/dev/fb1"))
     fb_auto_detect: bool = Field(default=False)
+    fb_rotation: int = Field(default=0)
+    # When true, CASEDD will claim the primary display at startup if no local
+    # keyboard or mouse is attached. This avoids taking over a user's login
+    # monitor when local input is present.
+    fb_claim_on_no_input: bool = Field(default=False)
     ws_port: int = Field(default=8765)
     http_port: int = Field(default=8080)
     socket_path: Path = Field(default=Path("/run/casedd/casedd.sock"))
@@ -576,6 +591,10 @@ def load_config() -> Config:
         fb_device=Path(str(_get("CASEDD_FB_DEVICE", "fb_device", "/dev/fb1"))),
         fb_auto_detect=str(
             _get("CASEDD_FB_AUTO_DETECT", "fb_auto_detect", "0")
+        ) not in {"0", "false", "False", ""},
+        fb_rotation=int(str(_get("CASEDD_FB_ROTATION", "fb_rotation", "0"))),
+        fb_claim_on_no_input=str(
+            _get("CASEDD_FB_CLAIM_ON_NO_INPUT", "fb_claim_on_no_input", "0")
         ) not in {"0", "false", "False", ""},
         ws_port=int(str(_get("CASEDD_WS_PORT", "ws_port", 8765))),
         http_port=int(str(_get("CASEDD_HTTP_PORT", "http_port", 8080))),

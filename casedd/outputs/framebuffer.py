@@ -95,7 +95,7 @@ class FramebufferOutput:
         disabled: When ``True``, all write calls are silent no-ops.
     """
 
-    def __init__(self, device: Path, *, disabled: bool = False) -> None:
+    def __init__(self, device: Path, *, disabled: bool = False, rotation: int = 0) -> None:
         """Initialise the framebuffer output.
 
         Probes device availability and pixel format. If the device is not
@@ -110,6 +110,7 @@ class FramebufferOutput:
         # Initialised to empty; populated when the device is successfully opened.
         self._supported_modes: list[str] = []
         self._supported_hz: list[float] = []
+        self._rotation = int(rotation) if rotation is not None else 0
 
         if disabled:
             _log.info("Framebuffer output disabled (CASEDD_NO_FB=1).")
@@ -192,7 +193,17 @@ class FramebufferOutput:
             return
 
         try:
-            self._write_unsafe(image)
+            # Apply rotation if required before writing. Use transpose for
+            # 90/180/270-degree rotations to preserve pixel integrity.
+            img = image
+            if self._rotation in (90, 180, 270):
+                if self._rotation == 90:
+                    img = img.transpose(Image.ROTATE_90)
+                elif self._rotation == 180:
+                    img = img.transpose(Image.ROTATE_180)
+                elif self._rotation == 270:
+                    img = img.transpose(Image.ROTATE_270)
+            self._write_unsafe(img)
         except OSError as exc:
             _log.error("Framebuffer write error: %s — disabling output.", exc)
             self._enabled = False

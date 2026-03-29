@@ -51,6 +51,7 @@ from casedd.template.models import Template, WidgetConfig
 from casedd.template.registry import TemplateRegistry
 from casedd.template.selector import TemplateSelector
 from casedd.usb_display import FramebufferInfo, find_usb_framebuffers
+from casedd.input_detect import has_local_keyboard_or_mouse
 
 _log = logging.getLogger(__name__)
 
@@ -116,6 +117,23 @@ class Daemon:
                 _log.warning(
                     "fb_auto_detect enabled but no USB framebuffer displays found."
                 )
+
+        # If requested, claim the primary framebuffer at boot only when no
+        # local keyboard or mouse is attached. We implement this by creating
+        # the keep-unblank file used by the existing fb-unblank daemon so
+        # CASEDD's frames remain visible without a separate manager taking
+        # over the display.
+        if self._cfg.fb_claim_on_no_input:
+            try:
+                if not has_local_keyboard_or_mouse():
+                    keep_dir = Path("/run/casedd")
+                    keep_dir.mkdir(parents=True, exist_ok=True)
+                    (keep_dir / "keep-unblank").write_text("")
+                    _log.info("No local input detected — claiming primary display")
+                else:
+                    _log.info("Local input detected — will not claim primary display")
+            except Exception:
+                _log.exception("Failed to evaluate/claim primary display")
 
         getters = self._create_getters()
         getters_by_name = {type(getter).__name__: getter for getter in getters}
@@ -274,6 +292,18 @@ class Daemon:
             fb_device = panel.fb_device if panel.fb_device is not None else self._cfg.fb_device
             no_fb = panel.no_fb if panel.no_fb is not None else self._cfg.no_fb
 
+            # Probe the configured framebuffer device (if present) to inherit
+            # its resolution when per-panel width/height are not set.
+            try:
+                if fb_device.exists():
+                    probe_fb = FramebufferOutput(fb_device, disabled=no_fb)
+                    if (panel.width is None) and getattr(probe_fb, "_fb_w", 0) > 0:
+                        width = probe_fb._fb_w
+                    if (panel.height is None) and getattr(probe_fb, "_fb_h", 0) > 0:
+                        height = probe_fb._fb_h
+            except Exception:
+                _log.debug("Could not probe framebuffer %s for dimensions", fb_device)
+
             # USB auto-detect: if configured device is absent, use detected display.
             if self._auto_detected_fb is not None and not fb_device.exists():
                 fb_device = self._auto_detected_fb.device
@@ -296,7 +326,9 @@ class Daemon:
             ):
                 height = self._auto_detected_fb.height
 
-            framebuffer = FramebufferOutput(fb_device, disabled=no_fb)
+            # Determine rotation: per-panel override wins, otherwise global
+            rot = panel.rotation if panel.rotation is not None else self._cfg.fb_rotation
+            framebuffer = FramebufferOutput(fb_device, disabled=no_fb, rotation=rot)
 
             # Validate template availability early so startup fails loudly if broken.
             registry.get(base_template)

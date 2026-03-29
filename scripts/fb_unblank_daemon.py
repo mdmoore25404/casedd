@@ -109,11 +109,22 @@ def main() -> int:
         print(f"FB blank path {FB_BLANK_PATH} not found.", file=sys.stderr)
         return 2
 
-    # Start blanked
-    _set_blank(1)
-    is_blank = True
-    # Hide VT cursor while blanked
-    _write_vt_cursor(False)
+    # Start state: if a keep-file exists (tests or user override), start
+    # unblanked so we don't immediately hide the display. Otherwise start
+    # blanked as before.
+    if FB_KEEP_PATH.exists():
+        _set_blank(0)
+        is_blank = False
+        # Start with VT cursor hidden and kernel console disabled so
+        # rendered frames are not overlaid by the kernel text cursor.
+        _write_vt_cursor(False)
+        if FB_DISABLE_CONSOLE:
+            _set_console(False)
+    else:
+        _set_blank(1)
+        is_blank = True
+        # Hide VT cursor while blanked
+        _write_vt_cursor(False)
     last_activity = time.time()
 
     devs = _open_input_devices()
@@ -126,11 +137,18 @@ def main() -> int:
         while _running:
             # Re-scan devices periodically to catch hotplug
             if not devs:
+                # No input devices currently present — avoid busy-looping by
+                # sleeping for POLL_INTERVAL and rescanning.
                 devs = _open_input_devices()
-                for fd in devs.keys():
-                    poller.register(fd, select.POLLIN)
+                if devs:
+                    for fd in devs.keys():
+                        poller.register(fd, select.POLLIN)
+                else:
+                    time.sleep(POLL_INTERVAL)
+                    continue
 
-            events = poller.poll(int(POLL_INTERVAL * 1000))
+            # Only poll when we have device fds registered.
+            events = poller.poll(int(POLL_INTERVAL * 1000)) if devs else []
             now = time.time()
             if events:
                 # Any input event -> unblank and reset timer
@@ -138,6 +156,9 @@ def main() -> int:
                     _set_blank(0)
                     # show VT cursor when display is unblanked
                     _write_vt_cursor(True)
+                    # enable kernel console so local login/prompt works
+                    if FB_DISABLE_CONSOLE:
+                        _set_console(True)
                     is_blank = False
                 last_activity = now
                 # consume data from fds to clear state
@@ -178,6 +199,10 @@ def main() -> int:
                     poller.register(fd, select.POLLIN)
                 except Exception:
                     continue
+
+            # Small sleep to avoid tight spinning if events keep arriving
+            # rapidly (prevents runaway CPU usage on busy devices).
+            time.sleep(0.01)
 
     finally:
         # Ensure cursor and console are put back to usable state on exit.
