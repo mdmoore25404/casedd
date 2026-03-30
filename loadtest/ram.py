@@ -8,8 +8,9 @@ misleadingly low RSS reading.  All allocated buffers are released in the
 
 Usage:
     python loadtest/ram.py                  # allocate 512 MB for 30 s
-    python loadtest/ram.py -s 30 -m 512     # explicit defaults
-    python loadtest/ram.py -s 60 -m 2048    # hold 2 GB for 60 s
+    python loadtest/ram.py -s 30 -m 512     # plain MB number
+    python loadtest/ram.py -s 60 -m 2G      # unit suffixes accepted
+    python loadtest/ram.py -s 60 -m 2048MB  # long suffix form also ok
     ./loadtest/ram.py --help
 
 Ctrl-C / SIGTERM releases all memory cleanly via the finally block.
@@ -18,12 +19,62 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import sys
 import time
 
 # Default chunk size kept small enough to give visible allocation progress
 # but large enough to amortise the os.urandom overhead.
 _DEFAULT_CHUNK_MB = 64.0
+
+# Accepted suffix → multiplier (relative to MB)
+_UNIT_MULTIPLIERS: dict[str, float] = {
+    "b":   1.0 / (1024 * 1024),
+    "k":   1.0 / 1024,
+    "kb":  1.0 / 1024,
+    "m":   1.0,
+    "mb":  1.0,
+    "g":   1024.0,
+    "gb":  1024.0,
+    "t":   1024.0 * 1024,
+    "tb":  1024.0 * 1024,
+}
+
+_SIZE_RE = re.compile(r"^\s*([0-9]*\.?[0-9]+)\s*([a-zA-Z]*)\s*$")
+
+
+def _parse_size_mb(raw: str) -> float:
+    """Parse a size string into a float number of megabytes.
+
+    Accepts plain numbers (interpreted as MB) or a number followed by a unit
+    suffix.  Suffixes are case-insensitive.  Supported: ``B``, ``K``/``KB``,
+    ``M``/``MB``, ``G``/``GB``, ``T``/``TB``.
+
+    Args:
+        raw: Raw size string from the command line, e.g. ``"512"``,
+             ``"2G"``, ``"1.5GB"``, ``"2048MB"``.
+
+    Returns:
+        Equivalent size in megabytes as a float.
+
+    Raises:
+        argparse.ArgumentTypeError: On unrecognised format or unit.
+    """
+    m = _SIZE_RE.match(raw)
+    if not m:
+        raise argparse.ArgumentTypeError(
+            f"invalid size '{raw}' — expected a number with optional unit "
+            "(e.g. 512, 512M, 2G, 1.5GB)"
+        )
+    number_str, suffix = m.group(1), m.group(2).lower()
+    multiplier = _UNIT_MULTIPLIERS.get(suffix if suffix else "m")
+    if multiplier is None:
+        known = ", ".join(sorted({k.upper() for k in _UNIT_MULTIPLIERS}))
+        raise argparse.ArgumentTypeError(
+            f"unknown unit '{m.group(2)}' — supported: {known}"
+        )
+    return float(number_str) * multiplier
+
 
 
 def main() -> None:
@@ -33,8 +84,10 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"
-            "  ./loadtest/ram.py -s 30 -m 512    # 512 MB for 30 s\n"
-            "  ./loadtest/ram.py -s 60 -m 2048   # 2 GB for 60 s\n"
+            "  ./loadtest/ram.py -s 30 -m 512     # 512 MB for 30 s\n"
+            "  ./loadtest/ram.py -s 60 -m 2G      # 2 GB for 60 s\n"
+            "  ./loadtest/ram.py -s 60 -m 1.5GB   # 1.5 GB for 60 s\n"
+            "  ./loadtest/ram.py -s 30 -m 2048MB  # same as 2G\n"
         ),
     )
     parser.add_argument(
@@ -46,17 +99,19 @@ def main() -> None:
     )
     parser.add_argument(
         "-m", "--mb",
-        type=float,
+        type=_parse_size_mb,
         default=512.0,
-        metavar="N",
-        help="Megabytes to allocate (default: 512)",
+        metavar="SIZE",
+        help="Amount of RAM to allocate; accepts plain MB number or unit suffix "
+             "(e.g. 512, 512M, 2G, 1.5GB — default: 512M)",
     )
     parser.add_argument(
         "--chunk-mb",
-        type=float,
+        type=_parse_size_mb,
         default=_DEFAULT_CHUNK_MB,
-        metavar="N",
-        help=f"Allocation chunk size in MB (default: {_DEFAULT_CHUNK_MB:.0f})",
+        metavar="SIZE",
+        help=f"Chunk size per allocation step; same unit suffixes accepted "
+             f"(default: {_DEFAULT_CHUNK_MB:.0f}M)",
     )
     args = parser.parse_args()
 
