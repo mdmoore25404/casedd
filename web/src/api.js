@@ -139,16 +139,20 @@ export async function fetchRotation(panelName) {
   return readJson(response);
 }
 
-export async function updateRotation(panelName, rotationTemplates, rotationInterval) {
+export async function updateRotation(panelName, rotationTemplates, rotationInterval, rotationEntries) {
+  const body = {
+    rotation_templates: rotationTemplates,
+    rotation_interval: rotationInterval,
+  };
+  if (rotationEntries && rotationEntries.length > 0) {
+    body.rotation_entries = rotationEntries;
+  }
   const response = await fetch(
     `${API_ROOT}/api/panels/${encodeURIComponent(panelName)}/rotation`,
     {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        rotation_templates: rotationTemplates,
-        rotation_interval: rotationInterval,
-      }),
+      body: JSON.stringify(body),
     },
   );
   return readJson(response);

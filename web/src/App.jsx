@@ -457,7 +457,7 @@ export function App() {
   const [simStatus, setSimStatus] = useState({ running: false, mode: "idle" });
   const [randomJson, setRandomJson] = useState(() => prettyJson({ interval: 1.0, fields: [] }));
   const [replayJson, setReplayJson] = useState(() => prettyJson([]));
-  const [rotationText, setRotationText] = useState("");
+  const [rotationEntries, setRotationEntries] = useState([]);
   const [rotationInterval, setRotationInterval] = useState(30);
   const [rotationDirty, setRotationDirty] = useState(false);
   const [dataStore, setDataStore] = useState({ count: 0, data: {} });
@@ -666,8 +666,13 @@ export function App() {
       );
     }
     // Sync rotation state only when the selected panel changes.
-    if (panelChanged && Array.isArray(selectedPanelData.rotation_templates)) {
-      setRotationText(selectedPanelData.rotation_templates.map(String).join("\n"));
+    if (panelChanged) {
+      const srcEntries = Array.isArray(selectedPanelData.rotation_entries)
+        ? selectedPanelData.rotation_entries
+        : (Array.isArray(selectedPanelData.rotation_templates)
+          ? selectedPanelData.rotation_templates.map((t) => ({ template: String(t), seconds: null, skip_if: [] }))
+          : []);
+      setRotationEntries(srcEntries.map(toUiEntry));
       const iv = Number(selectedPanelData.rotation_interval);
       setRotationInterval(Number.isFinite(iv) && iv > 0 ? iv : 30);
       setRotationDirty(false);
@@ -806,6 +811,51 @@ export function App() {
     await refreshPanels();
   }
 
+  function toUiEntry(entry) {
+    const skipCond =
+      Array.isArray(entry.skip_if) && entry.skip_if.length > 0 ? entry.skip_if[0] : null;
+    return {
+      template: String(entry.template || ""),
+      seconds: entry.seconds != null ? Number(entry.seconds) : null,
+      skip_source: skipCond ? String(skipCond.source || "") : "",
+      skip_operator: skipCond ? String(skipCond.operator || "lte") : "lte",
+      skip_value: skipCond ? String(skipCond.value ?? 0) : "0",
+    };
+  }
+
+  function fromUiEntry(entry) {
+    const result = { template: entry.template, seconds: entry.seconds || null, skip_if: [] };
+    const src = (entry.skip_source || "").trim();
+    if (src) {
+      const numVal = Number(entry.skip_value);
+      result.skip_if = [{
+        source: src,
+        operator: entry.skip_operator,
+        value: Number.isNaN(numVal) ? entry.skip_value : numVal,
+      }];
+    }
+    return result;
+  }
+
+  function updateRotationEntry(idx, field, value) {
+    setRotationEntries((prev) => prev.map((e, i) => (i === idx ? { ...e, [field]: value } : e)));
+    setRotationDirty(true);
+  }
+
+  function addRotationEntry() {
+    const defaultTemplate = templates && templates.length > 0 ? templates[0] : "";
+    setRotationEntries((prev) => [
+      ...prev,
+      { template: defaultTemplate, seconds: null, skip_source: "", skip_operator: "lte", skip_value: "0" },
+    ]);
+    setRotationDirty(true);
+  }
+
+  function removeRotationEntry(idx) {
+    setRotationEntries((prev) => prev.filter((_, i) => i !== idx));
+    setRotationDirty(true);
+  }
+
   async function handleSaveRotation() {
     if (!selectedPanel) {
       setStatus("select a panel first");
@@ -816,13 +866,11 @@ export function App() {
       setStatus("rotation interval must be a positive number");
       return;
     }
-    const rotationTemplates = rotationText
-      .split("\n")
-      .map((t) => t.trim())
-      .filter((t) => t.length > 0);
-    await updateRotation(selectedPanel, rotationTemplates, interval);
+    const entries = rotationEntries.map(fromUiEntry);
+    const templateNames = entries.map((e) => e.template);
+    await updateRotation(selectedPanel, templateNames, interval, entries);
     setRotationDirty(false);
-    setStatus(`rotation saved for ${selectedPanel}: [${rotationTemplates.join(", ") || "none"}] every ${interval}s`);
+    setStatus(`rotation saved for ${selectedPanel}: [${templateNames.join(", ") || "none"}] every ${interval}s`);
     await refreshPanels();
   }
 
@@ -992,46 +1040,114 @@ export function App() {
                 <FontAwesomeIcon icon={faShuffle} /> Template Rotation
               </h5>
               <p className="small text-body-secondary mb-2">
-                Templates cycle automatically in order. Base template leads; add extras below.
+                Templates cycle in order. Set per-entry dwell time and optional skip conditions.
               </p>
               {selectedPanelData ? (
                 <div className="small text-body-secondary mb-2">
                   Base: <strong className="text-light">{selectedPanelData.base_template || "n/a"}</strong>
                 </div>
               ) : null}
-              <label className="form-label small">Extra templates (one per line)</label>
-              <textarea
-                className="form-control form-control-sm font-monospace mb-2"
-                rows={4}
-                value={rotationText}
-                onChange={(event) => {
-                  setRotationText(event.target.value);
-                  setRotationDirty(true);
-                }}
-                placeholder={"htop\nsysinfo"}
-              />
-              <label className="form-label small">Interval (seconds)</label>
-              <input
-                className="form-control form-control-sm mb-2"
-                type="number"
-                min={1}
-                step={1}
-                value={rotationInterval}
-                onChange={(event) => {
-                  setRotationInterval(event.target.value);
-                  setRotationDirty(true);
-                }}
-              />
+              <div className="d-flex align-items-center gap-2 mb-3">
+                <label className="form-label small mb-0">Default dwell (s):</label>
+                <input
+                  className="form-control form-control-sm"
+                  type="number"
+                  min={1}
+                  step={1}
+                  style={{ width: "6rem" }}
+                  value={rotationInterval}
+                  onChange={(event) => {
+                    setRotationInterval(event.target.value);
+                    setRotationDirty(true);
+                  }}
+                />
+              </div>
+              <div className="small text-body-secondary mb-1 d-flex gap-1" style={{ fontWeight: 600 }}>
+                <span style={{ flex: "0 0 9rem" }}>Template</span>
+                <span style={{ flex: "0 0 6rem" }}>Dwell (s)</span>
+                <span className="flex-grow-1">Skip if… key / op / value</span>
+              </div>
+              {rotationEntries.map((entry, idx) => (
+                <div key={idx} className="d-flex flex-wrap gap-1 align-items-center mb-2">
+                  <select
+                    className="form-select form-select-sm"
+                    style={{ flex: "0 0 9rem" }}
+                    value={entry.template}
+                    onChange={(e) => updateRotationEntry(idx, "template", e.target.value)}
+                  >
+                    {(templates || []).map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                  <input
+                    className="form-control form-control-sm"
+                    type="number"
+                    min={1}
+                    step={1}
+                    placeholder="default"
+                    style={{ flex: "0 0 6rem" }}
+                    value={entry.seconds ?? ""}
+                    onChange={(e) => updateRotationEntry(
+                      idx, "seconds", e.target.value === "" ? null : Number(e.target.value)
+                    )}
+                  />
+                  <input
+                    className="form-control form-control-sm font-monospace"
+                    style={{ flex: "1 1 10rem" }}
+                    placeholder="skip if key…"
+                    value={entry.skip_source}
+                    onChange={(e) => updateRotationEntry(idx, "skip_source", e.target.value)}
+                  />
+                  {entry.skip_source ? (
+                    <>
+                      <select
+                        className="form-select form-select-sm"
+                        style={{ flex: "0 0 5rem" }}
+                        value={entry.skip_operator}
+                        onChange={(e) => updateRotationEntry(idx, "skip_operator", e.target.value)}
+                      >
+                        <option value="lte">&le;</option>
+                        <option value="lt">&lt;</option>
+                        <option value="gte">&ge;</option>
+                        <option value="gt">&gt;</option>
+                        <option value="eq">=</option>
+                        <option value="neq">&ne;</option>
+                      </select>
+                      <input
+                        className="form-control form-control-sm"
+                        style={{ flex: "0 0 5rem" }}
+                        value={entry.skip_value}
+                        onChange={(e) => updateRotationEntry(idx, "skip_value", e.target.value)}
+                      />
+                    </>
+                  ) : null}
+                  <button
+                    className="btn btn-outline-danger btn-sm"
+                    style={{ flex: "0 0 auto" }}
+                    title="Remove entry"
+                    onClick={() => removeRotationEntry(idx)}
+                  >×</button>
+                </div>
+              ))}
               <button
-                className="btn btn-primary btn-sm"
-                onClick={() => void handleSaveRotation()}
-                disabled={!selectedPanel}
+                className="btn btn-outline-secondary btn-sm mb-3"
+                onClick={addRotationEntry}
+                disabled={!templates || templates.length === 0}
               >
-                <FontAwesomeIcon icon={faFloppyDisk} className="me-1" /> Save Rotation
+                + Add template
               </button>
-              {rotationDirty ? (
-                <span className="small text-warning ms-2">Unsaved changes</span>
-              ) : null}
+              <div className="d-flex align-items-center gap-2">
+                <button
+                  className="btn btn-primary btn-sm"
+                  onClick={() => void handleSaveRotation()}
+                  disabled={!selectedPanel}
+                >
+                  <FontAwesomeIcon icon={faFloppyDisk} className="me-1" /> Save Rotation
+                </button>
+                {rotationDirty ? (
+                  <span className="small text-warning">Unsaved changes</span>
+                ) : null}
+              </div>
             </div>
           </div>
 

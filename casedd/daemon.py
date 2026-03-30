@@ -18,6 +18,7 @@ import asyncio
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import json
 import logging
 from pathlib import Path
 import signal
@@ -25,7 +26,13 @@ import signal
 from PIL import Image, ImageDraw
 import psutil
 
-from casedd.config import Config, PanelConfig, TemplateScheduleRule, TemplateTriggerRule
+from casedd.config import (
+    Config,
+    PanelConfig,
+    RotationEntry,
+    TemplateScheduleRule,
+    TemplateTriggerRule,
+)
 from casedd.data_store import DataStore, StoreValue
 from casedd.getters.apod import ApodGetter
 from casedd.getters.base import BaseGetter
@@ -69,6 +76,66 @@ _TEST_MODE_STORE_KEY = "casedd.test_mode"
 _TEMPLATE_FORCE_PREFIX = "casedd.template.force."
 _TEMPLATE_CURRENT_PREFIX = "casedd.template.current."
 
+# Directory that holds per-panel rotation state files (survives restarts).
+_ROTATION_STATE_DIR = Path("run")
+
+
+def _rotation_state_path(panel_name: str) -> Path:
+    """Return the path for a panel's persisted rotation state file."""
+    return _ROTATION_STATE_DIR / f"rotation-{panel_name}.json"
+
+
+def _save_rotation_state(
+    panel_name: str,
+    entries: list[RotationEntry],
+    default_interval: float,
+) -> None:
+    """Persist rotation entries to a JSON file under ``run/``.
+
+    Args:
+        panel_name: Stable panel identifier.
+        entries: Full ordered entry list to persist.
+        default_interval: Default dwell interval in seconds.
+    """
+    path = _rotation_state_path(panel_name)
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data: dict[str, object] = {
+            "entries": [e.model_dump(mode="json") for e in entries],
+            "rotation_interval": default_interval,
+        }
+        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    except OSError:
+        _log.warning("Could not save rotation state for panel '%s'", panel_name)
+
+
+def _load_rotation_state(
+    panel_name: str,
+) -> tuple[list[RotationEntry], float] | None:
+    """Load persisted rotation state previously written by :func:`_save_rotation_state`.
+
+    Args:
+        panel_name: Stable panel identifier.
+
+    Returns:
+        ``(entries, default_interval)`` tuple, or ``None`` when no saved state
+        exists or the file cannot be parsed.
+    """
+    path = _rotation_state_path(panel_name)
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        entries = [
+            RotationEntry.model_validate(item)
+            for item in raw.get("entries", [])
+        ]
+        interval = float(raw.get("rotation_interval", 30.0))
+        return entries, interval
+    except Exception:  # best-effort load; fall back to defaults
+        _log.warning("Could not load rotation state for panel '%s' — using defaults", panel_name)
+        return None
+
 
 @dataclass
 class _PanelRuntime:
@@ -81,6 +148,7 @@ class _PanelRuntime:
     base_template: str
     rotation_templates: list[str]
     rotation_interval: float
+    rotation_entries: list[RotationEntry]
     schedule_rules: list[TemplateScheduleRule]
     trigger_rules: list[TemplateTriggerRule]
     selector: TemplateSelector
@@ -240,17 +308,25 @@ class Daemon:
                 "base_template": runtime.base_template,
                 "rotation_templates": list(runtime.selector.rotation_templates),
                 "rotation_interval": runtime.selector.rotation_interval,
+                "rotation_entries": [
+                    e.model_dump(mode="json") for e in runtime.selector.rotation_entries
+                ],
             }
 
         def _rotation_updater(
-            panel_name: str, templates: list[str], interval: float
+            panel_name: str,
+            templates: list[str],
+            interval: float,
+            entries: list[RotationEntry] | None = None,
         ) -> None:
             runtime = next((r for r in panel_runtimes if r.name == panel_name), None)
             if runtime is None:
                 return
-            runtime.selector.update_rotation(templates, interval)
+            runtime.selector.update_rotation(templates, interval, entries)
             runtime.rotation_templates = templates
             runtime.rotation_interval = interval
+            runtime.rotation_entries = list(runtime.selector.rotation_entries)
+            _save_rotation_state(panel_name, runtime.rotation_entries, interval)
 
         ws_output = WebSocketOutput(_BIND_HOST, self._cfg.ws_port)
 
@@ -268,6 +344,9 @@ class Daemon:
                     "base_template": panel.base_template,
                     "rotation_templates": list(panel.rotation_templates),
                     "rotation_interval": panel.rotation_interval,
+                    "rotation_entries": [
+                        e.model_dump(mode="json") for e in panel.rotation_entries
+                    ],
                 }
                 for panel in panel_runtimes
             ],
@@ -516,6 +595,18 @@ class Daemon:
                 else self._cfg.template_rotation_interval
             )
 
+            # Load persisted rotation state (saved between restarts via UI).
+            # Persisted state takes priority over config-file defaults.
+            saved_state = _load_rotation_state(panel_name)
+            rotation_entries: list[RotationEntry] | None = None
+            if saved_state is not None:
+                rotation_entries, rotation_interval = saved_state
+                _log.info(
+                    "Panel '%s': loaded persisted rotation state (%d entries)",
+                    panel_name,
+                    len(rotation_entries),
+                )
+
             force_key = f"{_TEMPLATE_FORCE_PREFIX}{panel_name}"
             selector = TemplateSelector(
                 base_template=base_template,
@@ -524,6 +615,7 @@ class Daemon:
                 schedule_rules=schedule_rules,
                 trigger_rules=trigger_rules,
                 force_store_key=force_key,
+                rotation_entries=rotation_entries,
             )
 
             fb_device = panel.fb_device if panel.fb_device is not None else self._cfg.fb_device
@@ -585,6 +677,7 @@ class Daemon:
                 base_template=base_template,
                 rotation_templates=rotation_templates,
                 rotation_interval=rotation_interval,
+                rotation_entries=list(selector.rotation_entries),
                 schedule_rules=schedule_rules,
                 trigger_rules=trigger_rules,
                 selector=selector,
@@ -784,7 +877,9 @@ class Daemon:
         template_names = set(active_templates)
         for panel in panel_runtimes:
             template_names.add(panel.base_template)
-            template_names.update(panel.rotation_templates)
+            # Use rotation_entries when available (may differ from rotation_templates
+            # when a persisted or entries-based rotation config is active).
+            template_names.update(e.template for e in panel.rotation_entries)
             template_names.update(rule.template for rule in panel.schedule_rules)
             template_names.update(rule.template for rule in panel.trigger_rules)
 

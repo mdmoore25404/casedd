@@ -76,7 +76,7 @@ Push any subset of these keys.  CASEDD will display whatever is present.
 | `speedtest.upload_status` | `str` | `good`, `marginal`, or `critical` |
 | `speedtest.simple_summary` | `str` | Human-readable one-liner, e.g. `"1847 / 1923 Mb/s"` |
 | `speedtest.summary` | `str` | Verbose summary with status and ping |
-| `speedtest.last_run` | `str` | Timestamp of the test, e.g. `"2026-03-29 14:32:00"` |
+| `speedtest.last_run` | `str` | Timestamp of the test, e.g. `"2026-03-29 14:32:00"` — **auto-filled by CASEDD** if absent |
 | `speedtest.server_name` | `str` | Speedtest server name (optional) |
 | `speedtest.server_location` | `str` | Speedtest server location (optional) |
 | `speedtest.server_country` | `str` | Speedtest server country (optional) |
@@ -86,6 +86,12 @@ Push any subset of these keys.  CASEDD will display whatever is present.
 > **Minimum required for the speedtest template to be useful:**
 > `download_mbps`, `upload_mbps`, `ping_ms`, `jitter_ms`, `download_pct_ref`,
 > `upload_pct_ref`, and `simple_summary`.
+
+> **Auto-filled fields:** When any `speedtest.*` key is pushed via `POST /api/update`
+> and `speedtest.last_run` is absent, CASEDD automatically records the server's
+> current local time (format: `"YYYY-MM-DD HH:MM:SS"`).  You do **not** need to
+> include `speedtest.last_run` in your push payload unless you want to override the
+> timestamp with a value from the remote machine.
 
 ---
 

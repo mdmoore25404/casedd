@@ -15,7 +15,7 @@ grid:
     speed_down  speed_up    ping_jitter
     summary     summary     summary
   columns: 1fr 1fr 1fr
-  rows: 1.6fr 1fr
+  rows: 2.4fr 1fr
 
 background: "#111111"
 
@@ -61,6 +61,13 @@ widgets:
     padding: [4, 6]
     direction: column
     children:
+      - type: text
+        label: "Last Test"
+        source: speedtest.last_run
+        font_size: auto
+        color: "#7a8899"
+        padding: [2, 4]
+
       - type: value
         label: "Ping (ms)"
         source: speedtest.ping_ms

@@ -129,6 +129,45 @@ class TemplateTriggerRule(BaseModel):
         return self
 
 
+class RotationSkipCondition(BaseModel):
+    """One condition that causes a rotation entry to be skipped.
+
+    All conditions in a ``skip_if`` list must match (AND semantics) for the
+    entry to be skipped.  When the ``source`` key is absent from the data
+    store the condition evaluates to ``True`` (skip the template) so that
+    templates whose data has never arrived are not shown.
+
+    Attributes:
+        source: Dotted data-store key to inspect.
+        operator: Comparison operator.
+        value: Threshold value.
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
+
+    source: str
+    operator: Literal["gt", "gte", "lt", "lte", "eq", "neq"] = "lte"
+    value: float | int | str = 0
+
+
+class RotationEntry(BaseModel):
+    """One template entry in a rotation sequence.
+
+    Attributes:
+        template: Template name to display.
+        seconds: Dwell time in seconds.  ``None`` means use the panel's
+            default rotation interval.
+        skip_if: Conditions that must all be true for this entry to be
+            skipped.  An empty list means the entry is never skipped.
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
+
+    template: str
+    seconds: float | None = Field(default=None, gt=0)
+    skip_if: list[RotationSkipCondition] = Field(default_factory=list)
+
+
 class PanelConfig(BaseModel):
     """Configuration for one output panel/framebuffer.
 
