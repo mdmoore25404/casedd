@@ -31,6 +31,7 @@ from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import uvicorn
@@ -408,6 +409,14 @@ _LIGHT_VIEWER_HTML = """\
 
 _ADVANCED_APP_PORT = int(os.environ.get("CASEDD_APP_PORT", "5173"))
 
+# Directory containing the production-built React app (from ``npm run build``).
+# Resolved relative to the working directory if not absolute.  When this
+# directory contains an ``index.html`` the app is served directly from casedd
+# at ``/app/`` — no redirect to port 5173 and no dependency on a live Vite
+# process.  Falls back to the Vite redirect only when no built assets exist.
+_STATIC_APP_DIR_RAW = os.environ.get("CASEDD_APP_STATIC_DIR", "web/dist")
+_STATIC_APP_DIR = Path(_STATIC_APP_DIR_RAW)
+
 
 def _advanced_app_unavailable_html(port: int) -> str:
         """Build fallback HTML when Vite dev server is unavailable.
@@ -527,6 +536,11 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
 
     @app.get("/app", response_class=HTMLResponse, summary="Advanced app entrypoint")
     async def app_page(request: Request) -> Response:
+        # If a production-built React app was mounted at /app/, redirect there.
+        # This keeps the URL canonical and lets the SPA's asset paths resolve.
+        if (_STATIC_APP_DIR / "index.html").is_file():
+            return RedirectResponse(url="/app/", status_code=307)
+        # Dev fallback: proxy to the Vite dev server on the configured port.
         host = request.url.hostname or "localhost"
         if not _is_local_port_open(host, _ADVANCED_APP_PORT):
             return HTMLResponse(
@@ -765,6 +779,16 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     @app.get("/api/debug/render-state", summary="Inspect renderer history buffers")
     async def debug_render_state() -> dict[str, object]:
         return history_provider()
+
+    # Mount the production-built React SPA last so it never shadows API routes.
+    # When web/dist/index.html exists (i.e. ``npm run build`` was run), the SPA
+    # is served directly from casedd at /app/ so browser API calls (which use
+    # a relative empty root) go to the same instance that served the page.
+    # This prevents the Vite dev redirect from routing prod visitors to the
+    # dev casedd backend.
+    if (_STATIC_APP_DIR / "index.html").is_file():
+        app.mount("/app", StaticFiles(directory=str(_STATIC_APP_DIR), html=True), name="app")
+        _log.info("Static app mounted from %s", _STATIC_APP_DIR)
 
     return app
 
