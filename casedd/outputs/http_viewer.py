@@ -31,6 +31,7 @@ from typing import Annotated
 
 from fastapi import FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import uvicorn
@@ -144,22 +145,37 @@ class RandomStartRequest(BaseModel):
 
 
 class _FrameStore:
-    """Thread-safe per-panel PNG frame holder."""
+    """Thread-safe per-panel latest PIL Image holder.
+
+    Stores raw PIL Image objects rather than pre-encoded JPEG bytes so that
+    JPEG compression only occurs when a client actually requests ``/image``.
+    Encoding every frame at 2 Hz regardless of HTTP traffic wastes ~35% CPU;
+    lazy encoding reduces that to near-zero when no browser is viewing.
+    """
 
     def __init__(self) -> None:
         """Initialize empty frame map."""
         self._lock = threading.Lock()
-        self._frames: dict[str, bytes] = {}
+        self._images: dict[str, Image.Image] = {}
 
-    def set(self, panel: str, data: bytes) -> None:
-        """Store a panel PNG frame."""
+    def set(self, panel: str, image: Image.Image) -> None:
+        """Store the latest rendered PIL Image for a panel (JPEG-encoded on demand)."""
         with self._lock:
-            self._frames[panel] = data
+            self._images[panel] = image
 
     def get(self, panel: str) -> bytes | None:
-        """Get latest frame bytes for one panel."""
+        """Encode the latest frame as JPEG bytes on demand and return them.
+
+        JPEG encoding happens only when a caller actually requests the frame,
+        not on every render tick. Returns ``None`` if no frame is available.
+        """
         with self._lock:
-            return self._frames.get(panel)
+            image = self._images.get(panel)
+        if image is None:
+            return None
+        buf = io.BytesIO()
+        image.save(buf, format="JPEG", quality=80, optimize=False)
+        return buf.getvalue()
 
 
 class _SimulationController:
@@ -364,7 +380,7 @@ _LIGHT_VIEWER_HTML = """\
           if (msg.panel && msg.panel !== panelName) {
             return;
           }
-          frame.src = 'data:image/png;base64,' + msg.data;
+          frame.src = 'data:image/' + (msg.format || 'jpeg') + ';base64,' + msg.data;
         } catch (_err) {
           refreshFrame();
         }
@@ -392,6 +408,14 @@ _LIGHT_VIEWER_HTML = """\
 
 
 _ADVANCED_APP_PORT = int(os.environ.get("CASEDD_APP_PORT", "5173"))
+
+# Directory containing the production-built React app (from ``npm run build``).
+# Resolved relative to the working directory if not absolute.  When this
+# directory contains an ``index.html`` the app is served directly from casedd
+# at ``/app/`` — no redirect to port 5173 and no dependency on a live Vite
+# process.  Falls back to the Vite redirect only when no built assets exist.
+_STATIC_APP_DIR_RAW = os.environ.get("CASEDD_APP_STATIC_DIR", "web/dist")
+_STATIC_APP_DIR = Path(_STATIC_APP_DIR_RAW)
 
 
 def _advanced_app_unavailable_html(port: int) -> str:
@@ -512,6 +536,11 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
 
     @app.get("/app", response_class=HTMLResponse, summary="Advanced app entrypoint")
     async def app_page(request: Request) -> Response:
+        # If a production-built React app was mounted at /app/, redirect there.
+        # This keeps the URL canonical and lets the SPA's asset paths resolve.
+        if (_STATIC_APP_DIR / "index.html").is_file():
+            return RedirectResponse(url="/app/", status_code=307)
+        # Dev fallback: proxy to the Vite dev server on the configured port.
         host = request.url.hostname or "localhost"
         if not _is_local_port_open(host, _ADVANCED_APP_PORT):
             return HTMLResponse(
@@ -521,7 +550,7 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         app_url = f"{request.url.scheme}://{host}:{_ADVANCED_APP_PORT}/"
         return RedirectResponse(url=app_url, status_code=307)
 
-    @app.get("/image", summary="Latest rendered PNG")
+    @app.get("/image", summary="Latest rendered JPEG")
     async def image(
         panel: str = Query(default=default_panel, description="Panel name to view"),
     ) -> Response:
@@ -530,7 +559,7 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         data = frame_store.get(panel)
         if data is None:
             return Response(status_code=503, content=b"Frame not ready yet")
-        return Response(content=data, media_type="image/png")
+        return Response(content=data, media_type="image/jpeg")
 
     @app.get("/api/panels", summary="List configured panels")
     async def get_panels() -> dict[str, object]:
@@ -751,6 +780,16 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     async def debug_render_state() -> dict[str, object]:
         return history_provider()
 
+    # Mount the production-built React SPA last so it never shadows API routes.
+    # When web/dist/index.html exists (i.e. ``npm run build`` was run), the SPA
+    # is served directly from casedd at /app/ so browser API calls (which use
+    # a relative empty root) go to the same instance that served the page.
+    # This prevents the Vite dev redirect from routing prod visitors to the
+    # dev casedd backend.
+    if (_STATIC_APP_DIR / "index.html").is_file():
+        app.mount("/app", StaticFiles(directory=str(_STATIC_APP_DIR), html=True), name="app")
+        _log.info("Static app mounted from %s", _STATIC_APP_DIR)
+
     return app
 
 
@@ -819,11 +858,9 @@ class HttpViewerOutput:
         _log.info("HTTP server stopped.")
 
     def set_latest_image(self, panel: str, image: Image.Image) -> None:
-        """Store latest rendered image bytes for one panel."""
+        """Store latest rendered PIL Image for one panel (JPEG-encoded on demand)."""
         assert isinstance(image, Image.Image)
-        buf = io.BytesIO()
-        image.save(buf, format="PNG", optimize=False)
-        self._frame_store.set(panel, buf.getvalue())
+        self._frame_store.set(panel, image)
 
 
 def _is_test_mode(raw: StoreValue | None) -> bool:

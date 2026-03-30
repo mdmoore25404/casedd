@@ -62,8 +62,16 @@ Use this section as a pre-flight checklist during implementation, not only at cl
   helpers rather than inlining all drawing logic into `draw()`.
 - **Do not trigger S104 false positives on address comparisons.**  Comparing a string
   variable against wildcard address literals (`"0.0.0.0"`, `"::"`) triggers Ruff S104
-  ("binding to all interfaces"). Suppress with `# noqa: S104  # string compare, not bind`.
-
+  ("binding to all interfaces"). Suppress with `# noqa: S104  # string compare, not bind`.- **Do not position PIL text by the draw origin without correcting for bbox offsets.**
+  `draw.text((x, y), text, font=font)` places the font **origin** at `(x, y)`.  The visible
+  glyph actually renders from `y + bbox[1]` to `y + bbox[3]` (and `x + bbox[0]` to
+  `x + bbox[2]`).  Centring by `th = bbox[3] - bbox[1]` alone shifts glyphs downward and
+  causes bottom-of-cell overflow at large font sizes.  Always correct:  
+  `y_draw = y_target - bbox[1]` and `x_draw = x_target - bbox[0]`.
+- **Do not hard-cap font sizes at display-agnostic magic numbers.**  Small integer caps like
+  `min(16, ...)` or fixed `get_font(13)` become invisible at 4K / large panel resolutions.
+  Scale proportionally: `max(14, rect.w // 55)` or similar formula, with no upper cap for
+  full-screen widgets.
 ### Self-learning anti-pattern protocol
 
 When the agent encounters a new ruff or mypy violation during an implementation session
@@ -236,11 +244,15 @@ When modifying templates or renderer behavior, the agent should self-validate
 visual output by fetching the live rendered frame and inspecting it directly:
 
 ```bash
-curl -sS http://localhost:8080/image -o /tmp/casedd-frame.png
+curl -sS http://localhost:18080/image -o /tmp/casedd-frame.jpg
 ```
 
-Then review `/tmp/casedd-frame.png` with the available image-viewing tool before
+Then review `/tmp/casedd-frame.jpg` with the available image-viewing tool before
 finalizing layout/typography changes.
+
+> **Note:** The `/image` endpoint serves **JPEG** (not PNG). The dev server runs on port
+> **18080** (not 8080 which is reserved for production). Always use `http://localhost:18080`
+> during development.
 
 ---
 

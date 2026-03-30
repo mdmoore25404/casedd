@@ -1,7 +1,7 @@
 """WebSocket output: broadcasts rendered frames to connected browser clients.
 
 Runs a FastAPI WebSocket endpoint that pushes every rendered frame as a
-PNG-encoded image wrapped in a JSON envelope.  Multiple simultaneous clients
+JPEG-encoded image wrapped in a JSON envelope.  Multiple simultaneous clients
 are supported.  Clients that disconnect mid-send are removed silently.
 
 The server is started via :func:`start_server` and stopped via
@@ -146,6 +146,10 @@ class WebSocketOutput:
             port=self._port,
             log_level="warning",
             access_log=False,
+            # Disable WebSocket per-message DEFLATE compression.  The frames are
+            # JPEG-encoded and already compressed, so deflate achieves little
+            # while consuming significant CPU scanning the payload.
+            ws_per_message_deflate=False,
         )
         server = uvicorn.Server(config)
         self._task = asyncio.create_task(server.serve(), name="casedd-ws-server")
@@ -160,7 +164,7 @@ class WebSocketOutput:
         _log.info("WebSocket server stopped.")
 
     async def broadcast(self, image: Image.Image, panel: str | None = None) -> None:
-        """Encode a PIL image as PNG and broadcast it to all WS clients.
+        """Encode a PIL image as JPEG and broadcast it to all WS clients.
 
         Skips the encode/broadcast step when no clients are connected to avoid
         unnecessary CPU/memory work.
@@ -173,10 +177,13 @@ class WebSocketOutput:
             return
 
         buf = io.BytesIO()
-        image.save(buf, format="PNG", optimize=False)
+        # JPEG encodes ~5-10x faster than PNG for rendered content and the
+        # compressed payload resists WS deflate better (we disable deflate
+        # above, but JPEG stays smaller regardless).
+        image.save(buf, format="JPEG", quality=80, optimize=False)
         encoded = base64.b64encode(buf.getvalue()).decode("ascii")
         if panel is None:
-            payload = f'{{"type":"frame","data":"{encoded}"}}'
+            payload = f'{{"type":"frame","format":"jpeg","data":"{encoded}"}}'
         else:
-            payload = f'{{"type":"frame","panel":"{panel}","data":"{encoded}"}}'
+            payload = f'{{"type":"frame","format":"jpeg","panel":"{panel}","data":"{encoded}"}}'
         await self._manager.broadcast(payload)

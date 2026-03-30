@@ -5,6 +5,7 @@
 #
 # Commands:
 #   start     Start daemon + advanced app dev server in the background
+#   start-fb  Start dev daemon with real framebuffer output (/dev/fb*)
 #   stop      Stop daemon + advanced app dev server cleanly
 #   restart   Stop then start
 #   status    Show daemon/web health + last 20 log lines
@@ -26,6 +27,7 @@ LOG_FILE="$REPO_ROOT/logs/casedd.log"
 DEV_PID_FILE="$REPO_ROOT/run/casedd-dev.pid"
 DEV_LOG_FILE="$REPO_ROOT/logs/casedd-dev.log"
 DEV_SOCKET_FILE="$REPO_ROOT/run/casedd-dev.sock"
+DEV_FB_PREF_FILE="$REPO_ROOT/run/casedd-dev-use-fb.pref"
 WEB_DIR="$REPO_ROOT/web"
 WEB_PID_FILE="$REPO_ROOT/run/casedd-web.pid"
 WEB_LOG_FILE="$REPO_ROOT/logs/casedd-web.log"
@@ -104,6 +106,18 @@ _is_running() {
 
 _is_web_running() {
     [[ -f "$WEB_PID_FILE" ]] && kill -0 "$(cat "$WEB_PID_FILE")" 2>/dev/null
+}
+
+_save_fb_pref() {
+    echo "1" > "$DEV_FB_PREF_FILE"
+}
+
+_clear_fb_pref() {
+    rm -f "$DEV_FB_PREF_FILE"
+}
+
+_should_use_fb() {
+    [[ -f "$DEV_FB_PREF_FILE" ]] && [[ $(cat "$DEV_FB_PREF_FILE") == "1" ]]
 }
 
 _cleanup_web_processes() {
@@ -233,7 +247,14 @@ cmd_start() {
     # Production/systemd runs should not use this script.
     export CASEDD_LOG_LEVEL="${CASEDD_DEV_LOG_LEVEL:-DEBUG}"
     export CASEDD_DEBUG_FRAME_LOGS="${CASEDD_DEV_DEBUG_FRAME_LOGS:-1}"
+
+    # Check if user previously ran with -fb; honor it before exporting NO_FB.
+    if _should_use_fb && ! _prod_service_active; then
+        export CASEDD_DEV_NO_FB=0
+    fi
+
     export CASEDD_NO_FB="${CASEDD_DEV_NO_FB:-1}"
+
     export CASEDD_PID_FILE="${CASEDD_DEV_PID_FILE:-$DEV_PID_FILE}"
     export CASEDD_LOG_DIR="${CASEDD_DEV_LOG_DIR:-$REPO_ROOT/logs}"
 
@@ -244,6 +265,8 @@ cmd_start() {
         export CASEDD_NO_FB=1
         export CASEDD_HTTP_PORT="${CASEDD_DEV_HTTP_PORT:-18080}"
         export CASEDD_WS_PORT="${CASEDD_DEV_WS_PORT:-18765}"
+        # Clear preference since production is blocking framebuffer access
+        _clear_fb_pref
     fi
 
     # In local dev, default to a repo-local Unix socket to avoid requiring
@@ -282,6 +305,22 @@ cmd_start() {
     fi
 }
 
+cmd_start_fb() {
+    _load_env
+
+    if _prod_service_active; then
+        echo "ERROR: casedd.service is active; refusing to use /dev/fb in dev mode." >&2
+        echo "Stop production first: sudo systemctl stop casedd.service" >&2
+        exit 1
+    fi
+
+    _ensure_dirs
+    _save_fb_pref
+    export CASEDD_DEV_NO_FB=0
+    echo "Production service is not active; starting dev mode with framebuffer enabled"
+    cmd_start
+}
+
 cmd_stop() {
     _load_env
     _stop_web
@@ -316,6 +355,7 @@ cmd_stop() {
 cmd_restart() {
     cmd_stop
     sleep 1
+    # Restart will respect the stored framebuffer preference (if safe)
     cmd_start
 }
 
@@ -392,6 +432,7 @@ cmd_help() {
 
 case "${1:-help}" in
     start)   cmd_start ;;
+    start-fb) cmd_start_fb ;;
     stop)    cmd_stop ;;
     restart) cmd_restart ;;
     status)  cmd_status ;;

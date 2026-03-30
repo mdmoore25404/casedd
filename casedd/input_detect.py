@@ -10,9 +10,8 @@ Public API:
 """
 from __future__ import annotations
 
-import glob
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 try:  # pragma: no cover - runtime dependency
     from evdev import InputDevice
@@ -23,8 +22,7 @@ except Exception:  # pragma: no cover - runtime dependency
 
 
 def _iter_event_paths() -> Iterable[Path]:
-    for p in glob.glob("/dev/input/event*"):
-        yield Path(p)
+    yield from Path("/dev/input").glob("event*")
 
 
 def _check_with_evdev(path: Path) -> bool:
@@ -38,9 +36,7 @@ def _check_with_evdev(path: Path) -> bool:
     # imply a pointing device.
     if e.EV_KEY in caps:
         return True
-    if e.EV_REL in caps or e.EV_ABS in caps:
-        return True
-    return False
+    return bool(e.EV_REL in caps or e.EV_ABS in caps)
 
 
 def has_local_keyboard_or_mouse() -> bool:
@@ -60,7 +56,4 @@ def has_local_keyboard_or_mouse() -> bool:
         # there's local input hardware attached.
         return True
 
-    for p in paths:
-        if _check_with_evdev(p):
-            return True
-    return False
+    return any(_check_with_evdev(p) for p in paths)

@@ -207,6 +207,17 @@ class Config:
         speedtest_reference_up_mbps: Optional effective uplink baseline in Mb/s.
         speedtest_marginal_ratio: Ratio under which speeds are considered marginal.
         speedtest_critical_ratio: Ratio under which speeds are considered critical.
+        display_padding: Padding in pixels applied between the physical display
+            edge and the rendered content area.  Accepts a single integer (all
+            four sides) or a list of two ([vertical, horizontal]) or four
+            ([top, right, bottom, left]) integers.  The surrounding area is
+            filled with the template background colour.  Defaults to ``0``
+            (no padding).  Useful when the monitor bezel clips the image edges
+            or when a visual margin is desired.
+        speedtest_passive: When true, disable the local CLI poller entirely and
+            accept speed results only via ``POST /api/update``.  Use this when
+            another machine on the network runs the actual speed test and pushes
+            results via the REST ingestion endpoint.
         speedtest_binary: Speedtest CLI binary name or absolute path.
         speedtest_server_id: Optional Ookla server ID to force test target.
         htop_interval: Process table polling interval in seconds.
@@ -259,6 +270,7 @@ class Config:
     procfs_path: str = Field(default="/proc")
     disk_mount: str = Field(default="/")
     viewer_bg: str = Field(default="#0d0f12")
+    display_padding: int | list[int] = Field(default=0)
     speedtest_interval: float = Field(default=1800.0)
     speedtest_startup_delay: float = Field(default=0.0)
     speedtest_advertised_down_mbps: float = Field(default=2000.0)
@@ -267,6 +279,7 @@ class Config:
     speedtest_reference_up_mbps: float | None = Field(default=None)
     speedtest_marginal_ratio: float = Field(default=0.9)
     speedtest_critical_ratio: float = Field(default=0.7)
+    speedtest_passive: bool = Field(default=False)
     speedtest_binary: str = Field(default="speedtest")
     speedtest_server_id: str | None = Field(default=None)
     htop_interval: float = Field(default=2.0)
@@ -288,7 +301,7 @@ class Config:
     net_interfaces: list[str] = Field(default_factory=list)
     nasa_api_key: str | None = Field(default=None)
     apod_interval: float = Field(default=3600.0, gt=0)
-    apod_cache_dir: str = Field(default="assets/apod")
+    apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data
     template_rotation: list[str] = Field(default_factory=list)
     template_rotation_interval: float = Field(default=30.0)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
@@ -742,7 +755,7 @@ def load_config() -> Config:
         ],
         nasa_api_key=str(_get("CASEDD_NASA_API_KEY", "nasa_api_key", "")).strip() or None,
         apod_interval=float(str(_get("CASEDD_APOD_INTERVAL", "apod_interval", 3600.0))),
-        apod_cache_dir=str(_get("CASEDD_APOD_CACHE_DIR", "apod_cache_dir", "assets/apod")),
+        apod_cache_dir=str(_get("CASEDD_APOD_CACHE_DIR", "apod_cache_dir", "/tmp/casedd-apod")),  # noqa: S108
         template_rotation=_get_rotation_templates(),
         template_rotation_interval=float(
             str(_get("CASEDD_TEMPLATE_ROTATION_INTERVAL", "template_rotation_interval", 30.0))

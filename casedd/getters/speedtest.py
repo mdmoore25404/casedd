@@ -3,6 +3,15 @@
 Runs the Ookla ``speedtest`` CLI on a configurable interval and publishes
 results into the data store under the ``speedtest.*`` namespace.
 
+When ``passive=True``, the local CLI is never invoked.  Speed test results
+are expected to arrive via the REST ingestion endpoint
+(``POST /api/update``) from an external machine.  The getter still
+derives status and percentage fields from raw Mb/s readings pushed into
+``speedtest.download_mbps`` and ``speedtest.upload_mbps`` by computing
+them once on startup and writing them to the store as configuration hints
+(thresholds, advertised speeds, reference speeds).  All derived metrics
+must be computed by the pushing machine or accepted as-is from the payload.
+
 Store keys written:
     - ``speedtest.download_mbps`` (float)
     - ``speedtest.upload_mbps`` (float)
@@ -45,9 +54,13 @@ _MEGABIT = 1_000_000.0
 class SpeedtestGetter(BaseGetter):
     """Periodic speedtest getter backed by the Ookla CLI.
 
+    When ``passive=True`` the local CLI is never invoked; speed test results
+    must be pushed via ``POST /api/update`` from an external machine.
+
     Args:
         store: Shared data store instance.
         interval: Poll interval in seconds.
+        passive: When ``True``, skip local CLI runs and accept pushed data only.
         binary: Speedtest binary name or absolute path.
         server_id: Optional Ookla server ID to force for test target.
         advertised_down_mbps: Advertised download speed used for % of plan.
@@ -63,6 +76,7 @@ class SpeedtestGetter(BaseGetter):
         self,
         store: DataStore,
         interval: float = 1800.0,
+        passive: bool = False,
         binary: str = "speedtest",
         server_id: str | None = None,
         advertised_down_mbps: float = 2000.0,
@@ -78,6 +92,7 @@ class SpeedtestGetter(BaseGetter):
         Args:
             store: Shared data store.
             interval: Poll interval in seconds.
+            passive: When ``True``, disable local CLI and accept pushed data only.
             binary: Speedtest binary path or executable name.
             server_id: Optional Ookla server ID to force.
             advertised_down_mbps: Advertised downlink speed.
@@ -98,9 +113,18 @@ class SpeedtestGetter(BaseGetter):
         self._marginal_ratio = marginal_ratio
         self._critical_ratio = critical_ratio
         self._startup_delay = startup_delay
-        self._enabled = shutil.which(binary) is not None or binary.startswith("/")
+        self._passive = passive
+        self._enabled = (
+            not passive
+            and (shutil.which(binary) is not None or binary.startswith("/"))
+        )
 
-        if self._enabled:
+        if passive:
+            _log.info(
+                "Speedtest getter in passive mode — local CLI disabled."
+                "  Push results via POST /api/update (speedtest.* keys).",
+            )
+        elif self._enabled:
             _log.info(
                 "Speedtest getter active (binary=%s, interval=%.0fs, server_id=%s).",
                 binary,
@@ -116,12 +140,23 @@ class SpeedtestGetter(BaseGetter):
     async def run(self) -> None:
         """Run speedtest polling loop with optional startup delay.
 
+        In passive mode the loop exits immediately after logging — the daemon
+        keeps this getter registered so the ``speedtest.*`` namespace still
+        triggers getter-awareness logic, but no CLI process is ever spawned.
+
         Returns:
             None
         """
         self._running = True
         name = type(self).__name__
         _log.info("Getter started: %s (interval=%.1fs)", name, self._interval)
+
+        if self._passive:
+            _log.info("%s: passive mode — waiting for pushed data only.", name)
+            # Park the coroutine cheaply without spinning; data arrives via REST.
+            while self._running:
+                await asyncio.sleep(60.0)
+            return
 
         if self._enabled and self._startup_delay > 0.0:
             _log.info("Speedtest first run delayed by %.0fs", self._startup_delay)
