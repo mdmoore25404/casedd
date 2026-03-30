@@ -237,13 +237,9 @@ widgets:
     color: "#b3b9c5"
 
   mascot:
-    type: slideshow
-    paths:
-      - assets/slideshow/animals
-    interval: 10
-    transition: none
+    type: image
+    path: assets/casedd-logo.png
     scale: fit
-    background: "#0d0d0d"
     padding: [4, 8]
 
   outside:
