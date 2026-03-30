@@ -250,14 +250,11 @@ cmd_start() {
     export CASEDD_NO_FB="${CASEDD_DEV_NO_FB:-1}"
 
     # Check if user previously ran with -fb; if so, try to honor it again.
+    # But respect production service blocking.
     if _should_use_fb && ! _prod_service_active; then
         export CASEDD_DEV_NO_FB=0
-    else
-        # Clear preference if production is blocking us or user didn't request fb.
-        if _prod_service_active || [[ "${CASEDD_DEV_NO_FB:-1}" == "1" ]]; then
-            _clear_fb_pref
-        fi
     fi
+
     export CASEDD_PID_FILE="${CASEDD_DEV_PID_FILE:-$DEV_PID_FILE}"
     export CASEDD_LOG_DIR="${CASEDD_DEV_LOG_DIR:-$REPO_ROOT/logs}"
 
@@ -268,6 +265,8 @@ cmd_start() {
         export CASEDD_NO_FB=1
         export CASEDD_HTTP_PORT="${CASEDD_DEV_HTTP_PORT:-18080}"
         export CASEDD_WS_PORT="${CASEDD_DEV_WS_PORT:-18765}"
+        # Clear preference since production is blocking framebuffer access
+        _clear_fb_pref
     fi
 
     # In local dev, default to a repo-local Unix socket to avoid requiring
