@@ -78,11 +78,15 @@ template_triggers:
 
   - source: nvidia.memory_percent
     operator: gte
+    # Raise this if you cache LLM models in VRAM — e.g. 97 when ~83% is
+    # normal steady-state so the alert only fires on genuine pressure.
     value: 90
     template: nvidia_detail
     duration: 5
     hold_for: 30
     clear_operator: lt
+    # Set clear_value above your normal idle VRAM usage (e.g. 88 if idle ~83%)
+    # so the trigger view doesn't re-activate immediately after clearing.
     clear_value: 80
     cooldown: 60
     priority: 20
