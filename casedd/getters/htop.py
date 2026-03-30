@@ -65,7 +65,7 @@ class HtopGetter(BaseGetter):
                 name = str(name_raw) if isinstance(name_raw, str) and name_raw else "unknown"
                 mem_raw = proc.info.get("memory_percent")
                 mem = float(mem_raw) if isinstance(mem_raw, int | float) else 0.0
-                cpu = float(proc.cpu_percent(interval=0.01))
+                cpu = float(proc.cpu_percent(interval=None))
                 rows.append(_ProcRow(pid=pid, cpu=max(0.0, cpu), mem=max(0.0, mem), name=name))
             except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
