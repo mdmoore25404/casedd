@@ -698,6 +698,7 @@ class Daemon:
                 self._store,
                 interval=self._cfg.speedtest_interval,
                 startup_delay=self._cfg.speedtest_startup_delay,
+                passive=self._cfg.speedtest_passive,
                 binary=self._cfg.speedtest_binary,
                 server_id=self._cfg.speedtest_server_id,
                 advertised_down_mbps=self._cfg.speedtest_advertised_down_mbps,

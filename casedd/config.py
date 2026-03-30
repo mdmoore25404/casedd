@@ -207,6 +207,10 @@ class Config:
         speedtest_reference_up_mbps: Optional effective uplink baseline in Mb/s.
         speedtest_marginal_ratio: Ratio under which speeds are considered marginal.
         speedtest_critical_ratio: Ratio under which speeds are considered critical.
+        speedtest_passive: When true, disable the local CLI poller entirely and
+            accept speed results only via ``POST /api/update``.  Use this when
+            another machine on the network runs the actual speed test and pushes
+            results via the REST ingestion endpoint.
         speedtest_binary: Speedtest CLI binary name or absolute path.
         speedtest_server_id: Optional Ookla server ID to force test target.
         htop_interval: Process table polling interval in seconds.
@@ -267,6 +271,7 @@ class Config:
     speedtest_reference_up_mbps: float | None = Field(default=None)
     speedtest_marginal_ratio: float = Field(default=0.9)
     speedtest_critical_ratio: float = Field(default=0.7)
+    speedtest_passive: bool = Field(default=False)
     speedtest_binary: str = Field(default="speedtest")
     speedtest_server_id: str | None = Field(default=None)
     htop_interval: float = Field(default=2.0)
