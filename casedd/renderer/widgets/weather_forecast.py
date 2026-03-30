@@ -35,8 +35,8 @@ class _ForecastLayout:
     muted_color: tuple[int, int, int]
     y_start: int
     row_h: int
+    text_h: int
     icon_size: int
-    icon_y_offset: int
     day_x: int
     right_lohi: int
     right_pcp: int
@@ -122,7 +122,8 @@ def _compute_layout(
     max_rows = 2 if tiny_mode else (3 if compact_mode else 5)
     visible_rows = max(1, min(max_rows, row_count))
     row_h = max(text_h + 5, available_h // visible_rows)
-    icon_size = max(10, min(row_h - 4, 36))
+    icon_size = max(10, min(int(text_h * 0.95), row_h - 2))
+    icon_day_gap = max(4, icon_size // 3)
 
     return _ForecastLayout(
         body_font=body_font,
@@ -130,9 +131,9 @@ def _compute_layout(
         muted_color=(186, 196, 206),
         y_start=y_start,
         row_h=row_h,
+        text_h=text_h,
         icon_size=icon_size,
-        icon_y_offset=max(0, (row_h - icon_size) // 2),
-        day_x=inner.x + (6 if tiny_mode else icon_size + 12),
+        day_x=inner.x + icon_size + icon_day_gap + 4,
         right_lohi=inner.x + int(inner.w * 0.48),
         right_pcp=inner.x + int(inner.w * 0.64),
         right_wind=inner.x + inner.w - 6,
@@ -154,23 +155,24 @@ def _paint_rows(
     for row in rows[: layout.visible_rows]:
         if y + layout.row_h > inner.y + inner.h:
             break
-        if not layout.tiny_mode:
-            _draw_tiny_icon(
-                draw,
-                inner.x + 4,
-                y + layout.icon_y_offset,
-                _condition_kind(row.condition),
-                size=layout.icon_size,
-            )
+        row_text_y = y + max(0, (layout.row_h - layout.text_h) // 2)
+        row_icon_y = y + max(0, (layout.row_h - layout.icon_size) // 2)
+        _draw_tiny_icon(
+            draw,
+            inner.x + 4,
+            row_icon_y,
+            _condition_kind(row.condition),
+            size=layout.icon_size,
+        )
         draw.text(
-            (layout.day_x, y),
+            (layout.day_x, row_text_y),
             f"{row.day:>3}",
             fill=layout.text_color,
             font=layout.body_font,
         )
 
         lo_hi_text = f"{row.low:>2}/{row.high:>2}"
-        rd = _RightDraw(draw=draw, font=layout.body_font, y=y)
+        rd = _RightDraw(draw=draw, font=layout.body_font, y=row_text_y)
         rd.emit(layout.right_lohi, lo_hi_text, layout.text_color)
         if layout.show_precip:
             rd.emit(layout.right_pcp, f"{row.precip:>3}", layout.muted_color)
