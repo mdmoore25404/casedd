@@ -207,6 +207,13 @@ class Config:
         speedtest_reference_up_mbps: Optional effective uplink baseline in Mb/s.
         speedtest_marginal_ratio: Ratio under which speeds are considered marginal.
         speedtest_critical_ratio: Ratio under which speeds are considered critical.
+        display_padding: Padding in pixels applied between the physical display
+            edge and the rendered content area.  Accepts a single integer (all
+            four sides) or a list of two ([vertical, horizontal]) or four
+            ([top, right, bottom, left]) integers.  The surrounding area is
+            filled with the template background colour.  Defaults to ``0``
+            (no padding).  Useful when the monitor bezel clips the image edges
+            or when a visual margin is desired.
         speedtest_passive: When true, disable the local CLI poller entirely and
             accept speed results only via ``POST /api/update``.  Use this when
             another machine on the network runs the actual speed test and pushes
@@ -263,6 +270,7 @@ class Config:
     procfs_path: str = Field(default="/proc")
     disk_mount: str = Field(default="/")
     viewer_bg: str = Field(default="#0d0f12")
+    display_padding: int | list[int] = Field(default=0)
     speedtest_interval: float = Field(default=1800.0)
     speedtest_startup_delay: float = Field(default=0.0)
     speedtest_advertised_down_mbps: float = Field(default=2000.0)

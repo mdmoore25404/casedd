@@ -21,7 +21,7 @@ from PIL import Image
 
 from casedd.data_store import DataStore
 from casedd.renderer.color import parse_color
-from casedd.renderer.widgets.base import draw_widget_border
+from casedd.renderer.widgets.base import _normalize_padding, draw_widget_border
 from casedd.renderer.widgets.registry import get_widget_renderer
 from casedd.template.grid import Rect, resolve_grid
 from casedd.template.models import Template
@@ -77,7 +77,14 @@ class RenderEngine:
         height: Canvas height in pixels.
     """
 
-    def __init__(self, width: int, height: int, *, debug_frame_logs: bool = False) -> None:
+    def __init__(
+        self,
+        width: int,
+        height: int,
+        *,
+        debug_frame_logs: bool = False,
+        display_padding: int | list[int] = 0,
+    ) -> None:
         """Initialise the render engine.
 
         Args:
@@ -85,10 +92,17 @@ class RenderEngine:
                 panel/output size and takes precedence over any template-embedded
                 dimensions.
             height: Canvas height in pixels.
+            debug_frame_logs: Enable per-frame renderer debug logging.
+            display_padding: Padding in pixels applied between the physical
+                edge and the rendered content area.  Accepts the same
+                int / [v, h] / [t, r, b, l] shorthand as widget padding.
         """
         self._default_w = width
         self._default_h = height
         self._debug_frame_logs = debug_frame_logs
+        self._display_padding = _normalize_padding(
+            display_padding if isinstance(display_padding, int) else list(display_padding)
+        )
         # widget_name → mutable state dict (history buffers, cached images, etc.)
         self._widget_states: dict[str, dict[str, object]] = {}
         self._state_lock = threading.Lock()
@@ -118,10 +132,25 @@ class RenderEngine:
             bg_rgb = parse_color(template.background, fallback=(0, 0, 0))
             img = Image.new("RGB", (w, h), bg_rgb)
 
-            viewport = Rect(0, 0, w, h)
+            # Apply display padding to create an inset content area. The
+            # surrounding border keeps the template background colour.
+            pad_t, pad_r, pad_b, pad_l = self._display_padding
+            inner_x = pad_l
+            inner_y = pad_t
+            inner_w = max(1, w - pad_l - pad_r)
+            inner_h = max(1, h - pad_t - pad_b)
+            viewport = Rect(inner_x, inner_y, inner_w, inner_h)
+
             aspect_ratio = _parse_aspect_ratio(template)
             if aspect_ratio is not None and template.layout_mode.value == "fit":
-                viewport = _fit_layout_rect(w, h, aspect_ratio)
+                # Letterbox within the already-padded inner area.
+                fit_rect = _fit_layout_rect(inner_w, inner_h, aspect_ratio)
+                viewport = Rect(
+                    inner_x + fit_rect.x,
+                    inner_y + fit_rect.y,
+                    fit_rect.w,
+                    fit_rect.h,
+                )
 
             # Resolve the CSS grid to pixel rects for all top-level widgets
             rects = resolve_grid(

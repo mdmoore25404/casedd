@@ -592,6 +592,7 @@ class Daemon:
                     width,
                     height,
                     debug_frame_logs=self._cfg.debug_frame_logs,
+                    display_padding=self._cfg.display_padding,
                 ),
                 framebuffer=framebuffer,
                 fb_device=fb_device,
