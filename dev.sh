@@ -5,6 +5,7 @@
 #
 # Commands:
 #   start     Start daemon + advanced app dev server in the background
+#   start-fb  Start dev daemon with real framebuffer output (/dev/fb*)
 #   stop      Stop daemon + advanced app dev server cleanly
 #   restart   Stop then start
 #   status    Show daemon/web health + last 20 log lines
@@ -282,6 +283,20 @@ cmd_start() {
     fi
 }
 
+cmd_start_fb() {
+    _load_env
+
+    if _prod_service_active; then
+        echo "ERROR: casedd.service is active; refusing to use /dev/fb in dev mode." >&2
+        echo "Stop production first: sudo systemctl stop casedd.service" >&2
+        exit 1
+    fi
+
+    export CASEDD_DEV_NO_FB=0
+    echo "Production service is not active; starting dev mode with framebuffer enabled"
+    cmd_start
+}
+
 cmd_stop() {
     _load_env
     _stop_web
@@ -392,6 +407,7 @@ cmd_help() {
 
 case "${1:-help}" in
     start)   cmd_start ;;
+    start-fb) cmd_start_fb ;;
     stop)    cmd_stop ;;
     restart) cmd_restart ;;
     status)  cmd_status ;;
