@@ -96,6 +96,9 @@ class TemplateTriggerRule(BaseModel):
         clear_value: Optional explicit threshold used with clear_operator.
         cooldown: Seconds before the same trigger may activate again.
         priority: Lower number = higher priority when multiple triggers match.
+        notify: Send a Pushover webhook notification when this trigger activates.
+        notify_title: Optional custom notification title (default: source key name).
+        notify_message: Optional custom notification body (default: auto-generated).
     """
 
     model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
@@ -110,6 +113,9 @@ class TemplateTriggerRule(BaseModel):
     clear_value: float | int | str | None = None
     cooldown: float = Field(default=0.0, ge=0.0)
     priority: int = Field(default=100, ge=0, le=1000)
+    notify: bool = False
+    notify_title: str | None = None
+    notify_message: str | None = None
 
     @model_validator(mode="after")
     def _validate_clear_rule(self) -> "TemplateTriggerRule":
@@ -283,6 +289,10 @@ class Config:
         template_triggers: Data-value trigger rules overriding schedule/rotation.
         panels: Optional per-panel output/runtime definitions.
         always_collect_prefixes: Namespaces that are always sampled.
+        pushover_webhook_url: Pushover webhook URL for trigger notifications.
+            Create a webhook at https://pushover.net/dashboard and paste its
+            URL here.  When a trigger rule with ``notify: true`` activates,
+            CASEDD posts a JSON payload to this URL.
         test_mode: Disable all getters globally when true.
     """
 
@@ -341,6 +351,7 @@ class Config:
     nasa_api_key: str | None = Field(default=None)
     apod_interval: float = Field(default=3600.0, gt=0)
     apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data
+    pushover_webhook_url: str | None = Field(default=None)
     template_rotation: list[str] = Field(default_factory=list)
     template_rotation_interval: float = Field(default=30.0)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
@@ -795,6 +806,9 @@ def load_config() -> Config:
         nasa_api_key=str(_get("CASEDD_NASA_API_KEY", "nasa_api_key", "")).strip() or None,
         apod_interval=float(str(_get("CASEDD_APOD_INTERVAL", "apod_interval", 3600.0))),
         apod_cache_dir=str(_get("CASEDD_APOD_CACHE_DIR", "apod_cache_dir", "/tmp/casedd-apod")),  # noqa: S108
+        pushover_webhook_url=str(
+            _get("CASEDD_PUSHOVER_WEBHOOK_URL", "pushover_webhook_url", "")
+        ).strip() or None,
         template_rotation=_get_rotation_templates(),
         template_rotation_interval=float(
             str(_get("CASEDD_TEMPLATE_ROTATION_INTERVAL", "template_rotation_interval", 30.0))

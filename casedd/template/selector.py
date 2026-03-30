@@ -60,6 +60,9 @@ class TemplateSelector:
         force_store_key: str | None = None,
         rotation_entries: list[RotationEntry] | None = None,
         template_resolver: Callable[[str], list[RotationSkipCondition]] | None = None,
+        on_trigger_activate: (
+            Callable[[TemplateTriggerRule, StoreValue | None], None] | None
+        ) = None,
     ) -> None:
         """Initialise the selector and state used across render ticks.
 
@@ -76,9 +79,15 @@ class TemplateSelector:
                 ``skip_if`` conditions by name.  Used as fallback when a
                 rotation entry has no entry-level skip conditions.  Rotation-
                 level conditions always take priority.
+            on_trigger_activate: Optional callback invoked once when a trigger
+                rule first activates.  Receives the rule and current store
+                value (``None`` if the key was absent from the snapshot).
+                Called synchronously on the render tick; keep it non-blocking
+                (e.g. schedule an asyncio task and return).
         """
         self._base_template = base_template
         self._template_resolver = template_resolver
+        self._on_trigger_activate = on_trigger_activate
         self._rotation_entries = self._build_rotation_entries(
             base_template, rotation_templates, rotation_entries
         )
@@ -215,6 +224,8 @@ class TemplateSelector:
                 cooldown_until = self._trigger_cooldown_until.get(idx, 0.0)
                 if now_ts >= true_since + rule.duration and now_ts >= cooldown_until:
                     self._trigger_active_since[idx] = now_ts
+                    if self._on_trigger_activate is not None and rule.notify:
+                        self._on_trigger_activate(rule, value)
                     return rule.template
             else:
                 self._trigger_true_since.pop(idx, None)

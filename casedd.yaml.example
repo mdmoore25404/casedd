@@ -43,6 +43,11 @@ template_triggers:
     clear_value: 70
     cooldown: 30
     priority: 10
+    # Send a Pushover notification when this trigger first activates.
+    # Requires CASEDD_PUSHOVER_WEBHOOK_URL to be configured.
+    notify: true
+    notify_title: "High CPU Alert"
+    notify_message: "CPU usage exceeded 90% — switched to system_stats view."
 
   - source: fans.cpu.max_rpm
     operator: gte

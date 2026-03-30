@@ -15,6 +15,7 @@ Public API:
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -52,6 +53,7 @@ from casedd.getters.ups import UpsGetter
 from casedd.getters.weather import WeatherGetter
 from casedd.ingestion.unix_socket import UnixSocketIngestion
 from casedd.input_detect import has_local_keyboard_or_mouse
+from casedd.notifications.pushover import send_pushover_webhook
 from casedd.outputs.framebuffer import FramebufferOutput
 from casedd.outputs.http_viewer import HttpViewerOutput
 from casedd.outputs.websocket import WebSocketOutput
@@ -552,6 +554,29 @@ class Daemon:
             image = self._build_status_frame(panel.width, panel.height, "CASEDD stopping", lines)
             await self._display_panel_frame(panel, image, ws_output, http_output)
 
+    def _make_trigger_callback(
+        self,
+    ) -> Callable[[TemplateTriggerRule, StoreValue | None], None] | None:
+        """Build a sync callback that fires Pushover webhook notifications.
+
+        Returns ``None`` when no Pushover webhook URL is configured, so the
+        selector skips the call entirely.
+
+        Returns:
+            A callback suitable for ``TemplateSelector.on_trigger_activate``,
+            or ``None`` if notifications are not configured.
+        """
+        webhook_url = self._cfg.pushover_webhook_url
+        if not webhook_url:
+            return None
+
+        def _notify(rule: TemplateTriggerRule, value: StoreValue | None) -> None:
+            _task = asyncio.ensure_future(  # noqa: RUF006  # fire-and-forget; errors logged in coroutine
+                send_pushover_webhook(webhook_url, rule, value)
+            )
+
+        return _notify
+
     def _build_panel_runtimes(self, registry: TemplateRegistry) -> list[_PanelRuntime]:
         """Create panel runtimes from config or legacy single-panel settings.
 
@@ -617,6 +642,7 @@ class Daemon:
                 force_store_key=force_key,
                 rotation_entries=rotation_entries,
                 template_resolver=registry.get_template_skip_if,
+                on_trigger_activate=self._make_trigger_callback(),
             )
 
             fb_device = panel.fb_device if panel.fb_device is not None else self._cfg.fb_device
