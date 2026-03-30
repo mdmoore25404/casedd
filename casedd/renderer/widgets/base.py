@@ -101,10 +101,14 @@ def draw_label(
     bbox = font.getbbox(label)
     lw = bbox[2] - bbox[0]
     lh = bbox[3] - bbox[1]
-    x = rect.x + (rect.w - lw) // 2  # horizontally centered
+    # Correct for the glyph offset from the font origin (same reasoning as
+    # draw_value_text): subtract bbox offsets so the visible pixels land at the
+    # intended pixel position rather than being shifted by the font's internal
+    # ascent metrics.
+    x = rect.x + (rect.w - lw) // 2 - bbox[0]  # horizontally centered
     top_pad = max(2, label_max_h // 8)
     bottom_gap = max(2, label_max_h // 8)
-    draw.text((x, rect.y + top_pad), label, fill=color, font=font)
+    draw.text((x, rect.y + top_pad - bbox[1]), label, fill=color, font=font)
     return int(lh) + top_pad + bottom_gap
 
 
@@ -172,8 +176,15 @@ def draw_value_text(  # noqa: PLR0913 — helper genuinely needs all parameters;
     bbox = font.getbbox(text)
     tw = bbox[2] - bbox[0]
     th = bbox[3] - bbox[1]
-    x = rect.x + (rect.w - tw) // 2
-    y = rect.y + label_offset + (available_h - th) // 2
+
+    # bbox[0]/bbox[1] are the glyph offsets FROM the draw origin, not from the
+    # top-left of the rendered pixels.  draw.text((x, y)) places the font origin
+    # at (x, y); the glyph top actually lands at y + bbox[1] and the glyph bottom
+    # at y + bbox[3].  Without correcting for these offsets the glyph is shifted
+    # down by bbox[1] (always > 0 for TrueType fonts), causing the bottom of large
+    # glyphs to overflow the cell.  Subtracting them centres the visible pixels.
+    x = rect.x + (rect.w - tw) // 2 - bbox[0]
+    y = rect.y + label_offset + (available_h - th) // 2 - bbox[1]
     draw.text((x, y), text, fill=color, font=font)
 
 

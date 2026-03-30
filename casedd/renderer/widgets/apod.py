@@ -121,7 +121,9 @@ def _render_placeholder(img: Image.Image, rect: Rect, color: str | None) -> None
     """
     draw = ImageDraw.Draw(img)
     accent = parse_color(color, fallback=(120, 160, 220))
-    font = get_font(13)
+    # Scale placeholder text proportionally to display size, not a fixed 13px.
+    font_sz = max(13, rect.w // 55)
+    font = get_font(font_sz)
     text = "APOD loading..."
     bb = draw.textbbox((0, 0), text, font=font)
     x = rect.x + (rect.w - int(bb[2] - bb[0])) // 2
@@ -143,20 +145,22 @@ def _render_title_overlay(
         title: Title string to render.
         color: Accent colour for the title text.
     """
-    # Scale font based on widget width; cap for readability.
-    font_sz = max(9, min(16, rect.w // 40))
+    # Scale font and padding proportionally to display width — no hard cap so
+    # large outputs (4K etc.) remain readable.  floor at 14 for tiny displays.
+    font_sz = max(14, rect.w // 55)
     font = get_font(font_sz)
+    pad = max(6, font_sz // 3)
     draw = ImageDraw.Draw(img)
     bb = draw.textbbox((0, 0), title, font=font)
     text_h = int(bb[3] - bb[1])
-    bar_h = text_h + 6
+    bar_h = text_h + pad * 2
     bar_top = rect.y + rect.h - bar_h
 
     # Semi-transparent dark bar — composite onto the existing image.
-    overlay = Image.new("RGBA", (rect.w, bar_h), (0, 0, 0, 160))
+    overlay = Image.new("RGBA", (rect.w, bar_h), (0, 0, 0, 180))
     base_crop = img.crop((rect.x, bar_top, rect.x + rect.w, rect.y + rect.h)).convert("RGBA")
     composited = Image.alpha_composite(base_crop, overlay)
     img.paste(composited.convert("RGB"), (rect.x, bar_top))
 
     accent = parse_color(color, fallback=(220, 225, 235))
-    draw.text((rect.x + 6, bar_top + 4), title, fill=accent, font=font)
+    draw.text((rect.x + pad, bar_top + pad), title, fill=accent, font=font)

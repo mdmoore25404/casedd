@@ -146,8 +146,8 @@ class RandomStartRequest(BaseModel):
 class _FrameStore:
     """Thread-safe per-panel latest PIL Image holder.
 
-    Stores raw PIL Image objects rather than pre-encoded PNG bytes so that
-    PNG compression only occurs when a client actually requests ``/image``.
+    Stores raw PIL Image objects rather than pre-encoded JPEG bytes so that
+    JPEG compression only occurs when a client actually requests ``/image``.
     Encoding every frame at 2 Hz regardless of HTTP traffic wastes ~35% CPU;
     lazy encoding reduces that to near-zero when no browser is viewing.
     """
@@ -158,15 +158,15 @@ class _FrameStore:
         self._images: dict[str, Image.Image] = {}
 
     def set(self, panel: str, image: Image.Image) -> None:
-        """Store the latest rendered PIL Image for a panel (no encoding)."""
+        """Store the latest rendered PIL Image for a panel (JPEG-encoded on demand)."""
         with self._lock:
             self._images[panel] = image
 
     def get(self, panel: str) -> bytes | None:
         """Encode the latest frame as JPEG bytes on demand and return them.
 
-        JPEG encoding runs here only when a caller actually requests the
-        image, not on every rendered frame.
+        JPEG encoding happens only when a caller actually requests the frame,
+        not on every render tick. Returns ``None`` if no frame is available.
         """
         with self._lock:
             image = self._images.get(panel)
@@ -536,7 +536,7 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         app_url = f"{request.url.scheme}://{host}:{_ADVANCED_APP_PORT}/"
         return RedirectResponse(url=app_url, status_code=307)
 
-    @app.get("/image", summary="Latest rendered PNG")
+    @app.get("/image", summary="Latest rendered JPEG")
     async def image(
         panel: str = Query(default=default_panel, description="Panel name to view"),
     ) -> Response:
@@ -834,7 +834,7 @@ class HttpViewerOutput:
         _log.info("HTTP server stopped.")
 
     def set_latest_image(self, panel: str, image: Image.Image) -> None:
-        """Store latest rendered PIL Image for one panel (no PNG encode here)."""
+        """Store latest rendered PIL Image for one panel (JPEG-encoded on demand)."""
         assert isinstance(image, Image.Image)
         self._frame_store.set(panel, image)
 
