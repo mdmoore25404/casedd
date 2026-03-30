@@ -22,6 +22,8 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from casedd.config import RotationSkipCondition
+
 
 class WidgetType(StrEnum):
     """All supported widget type identifiers."""
@@ -346,6 +348,10 @@ class Template(BaseModel):
     refresh_rate: float | None = Field(default=None, gt=0)
     grid: GridConfig
     widgets: dict[str, WidgetConfig]
+    # Template-level skip conditions.  Used as fallback when a rotation entry
+    # for this template has no entry-level skip_if.  Rotation-level conditions
+    # always take priority over these template-level defaults.
+    skip_if: list[RotationSkipCondition] = Field(default_factory=list)
 
     @field_validator("aspect_ratio")
     @classmethod

@@ -17,6 +17,7 @@ import threading
 
 from watchfiles import Change, awatch
 
+from casedd.config import RotationSkipCondition
 from casedd.template.loader import TemplateError, load_template
 from casedd.template.models import Template
 
@@ -111,6 +112,24 @@ class TemplateRegistry:
                     raise
         with self._lock:
             return self._cache[name]
+
+    def get_template_skip_if(self, name: str) -> list[RotationSkipCondition]:
+        """Return the ``skip_if`` conditions from the named template.
+
+        Returns the cached template's ``skip_if`` list without triggering a
+        reload.  Returns an empty list when the template is not yet cached.
+
+        Args:
+            name: Template name (without ``.casedd`` extension).
+
+        Returns:
+            List of :class:`~casedd.config.RotationSkipCondition` objects.
+        """
+        with self._lock:
+            template = self._cache.get(name)
+        if template is None:
+            return []
+        return list(template.skip_if)
 
     def preload_all(self) -> None:
         """Attempt to load all .casedd files in the templates directory.

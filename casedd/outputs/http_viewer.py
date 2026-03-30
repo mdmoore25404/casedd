@@ -12,6 +12,7 @@ Provides:
 - Simulation endpoints for replay/randomized test data
 - Data store snapshot endpoint ``GET /api/data``
 - Render buffer inspection endpoint ``GET /api/debug/render-state``
+- Rotation documentation endpoint ``GET /api/docs/rotation``
 """
 
 from __future__ import annotations
@@ -49,6 +50,10 @@ _log = logging.getLogger(__name__)
 _TEMPLATE_FORCE_PREFIX = "casedd.template.force."
 _TEMPLATE_CURRENT_PREFIX = "casedd.template.current."
 _TEST_MODE_STORE_KEY = "casedd.test_mode"
+
+# Directory holding user-facing markdown documentation.
+# Served read-only through dedicated endpoints — never user-path-controlled.
+_DOCS_DIR = Path("docs")
 
 
 class UpdateRequest(BaseModel):
@@ -845,6 +850,15 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     @app.get("/api/debug/render-state", summary="Inspect renderer history buffers")
     async def debug_render_state() -> dict[str, object]:
         return history_provider()
+
+    @app.get("/api/docs/rotation", summary="Rotation documentation (Markdown)")
+    async def get_rotation_docs() -> Response:
+        """Return the user-facing rotation documentation as Markdown text."""
+        path = _DOCS_DIR / "rotation.md"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Rotation docs not found")
+        content = path.read_text(encoding="utf-8")
+        return Response(content=content, media_type="text/markdown; charset=utf-8")
 
     # Mount the production-built React SPA last so it never shadows API routes.
     # When web/dist/index.html exists (i.e. ``npm run build`` was run), the SPA

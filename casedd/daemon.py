@@ -616,6 +616,7 @@ class Daemon:
                 trigger_rules=trigger_rules,
                 force_store_key=force_key,
                 rotation_entries=rotation_entries,
+                template_resolver=registry.get_template_skip_if,
             )
 
             fb_device = panel.fb_device if panel.fb_device is not None else self._cfg.fb_device

@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { marked } from "marked";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBolt,
   faCirclePlay,
+  faCircleQuestion,
   faDatabase,
   faExpand,
   faFileArrowDown,
@@ -460,6 +462,8 @@ export function App() {
   const [rotationEntries, setRotationEntries] = useState([]);
   const [rotationInterval, setRotationInterval] = useState(30);
   const [rotationDirty, setRotationDirty] = useState(false);
+  const [showRotationHelp, setShowRotationHelp] = useState(false);
+  const [rotationDocsHtml, setRotationDocsHtml] = useState("");
   const [dataStore, setDataStore] = useState({ count: 0, data: {} });
   const [dataStoreFilter, setDataStoreFilter] = useState("");
   const importInputRef = useRef(null);
@@ -925,6 +929,19 @@ export function App() {
     await refreshStatus();
   }
 
+  async function handleOpenRotationHelp() {
+    if (!rotationDocsHtml) {
+      try {
+        const response = await fetch("/api/docs/rotation");
+        const md = await response.text();
+        setRotationDocsHtml(String(marked.parse(md)));
+      } catch (_err) {
+        setRotationDocsHtml("<p>Could not load rotation documentation.</p>");
+      }
+    }
+    setShowRotationHelp(true);
+  }
+
   function handleGridAreaCellClick(areaName) {
     setSelectedWidget(areaName);
     if (!widgetNames.includes(areaName)) {
@@ -1038,6 +1055,13 @@ export function App() {
             <div className="card-body">
               <h5 className="card-title d-flex align-items-center gap-2">
                 <FontAwesomeIcon icon={faShuffle} /> Template Rotation
+                <button
+                  className="btn btn-outline-secondary btn-sm ms-auto py-0 px-2"
+                  title="How rotation works — open documentation"
+                  onClick={() => void handleOpenRotationHelp()}
+                >
+                  <FontAwesomeIcon icon={faCircleQuestion} />
+                </button>
               </h5>
               <p className="small text-body-secondary mb-2">
                 Templates cycle in order. Set per-entry dwell time and optional skip conditions.
@@ -1782,6 +1806,30 @@ export function App() {
           </div>
         </div>
       ) : null}
+
+      {showRotationHelp ? (
+        <div className="json-modal-backdrop" onClick={() => setShowRotationHelp(false)}>
+          <div className="rotation-docs-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="d-flex align-items-center justify-content-between mb-3">
+              <h5 className="mb-0">
+                <FontAwesomeIcon icon={faShuffle} className="me-2" />
+                Template Rotation — How it works
+              </h5>
+              <button
+                className="btn btn-sm btn-outline-light"
+                onClick={() => setShowRotationHelp(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div
+              className="rotation-docs-content"
+              dangerouslySetInnerHTML={{ __html: rotationDocsHtml }}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
+

@@ -7,6 +7,14 @@ layout_mode: fit
 background: "#0b1118"
 refresh_rate: 2.0
 
+# Template-level skip condition: hide the htop view when the system is idle.
+# This fallback is used by the rotation engine unless the rotation entry for
+# this template defines its own skip_if (which would override this).
+skip_if:
+  - source: cpu.percent
+    operator: lte
+    value: 10
+
 grid:
   template_areas: |
     procs

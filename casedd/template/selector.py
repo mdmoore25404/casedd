@@ -14,6 +14,7 @@ Public API:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
 import time as monotonic_time
@@ -58,6 +59,7 @@ class TemplateSelector:
         trigger_rules: list[TemplateTriggerRule],
         force_store_key: str | None = None,
         rotation_entries: list[RotationEntry] | None = None,
+        template_resolver: Callable[[str], list[RotationSkipCondition]] | None = None,
     ) -> None:
         """Initialise the selector and state used across render ticks.
 
@@ -70,8 +72,13 @@ class TemplateSelector:
             force_store_key: Optional data-store key that overrides selection.
             rotation_entries: Full ordered rotation entry list with per-entry
                 dwell times and skip conditions. Overrides ``rotation_templates``.
+            template_resolver: Callable that returns a template's built-in
+                ``skip_if`` conditions by name.  Used as fallback when a
+                rotation entry has no entry-level skip conditions.  Rotation-
+                level conditions always take priority.
         """
         self._base_template = base_template
+        self._template_resolver = template_resolver
         self._rotation_entries = self._build_rotation_entries(
             base_template, rotation_templates, rotation_entries
         )
@@ -331,13 +338,17 @@ class TemplateSelector:
             legacy_seen.add(name)
         return ordered
 
-    @staticmethod
-    def _should_skip(entry: RotationEntry, snapshot: dict[str, StoreValue]) -> bool:
+    def _should_skip(self, entry: RotationEntry, snapshot: dict[str, StoreValue]) -> bool:
         """Return True when all skip conditions on an entry are satisfied.
 
-        An empty ``skip_if`` list means the entry is never skipped.
-        A missing source key in the data store counts as a matched condition
-        (i.e., templates are skipped when their data has never arrived).
+        Conditions are resolved in priority order:
+        1. The rotation entry's own ``skip_if`` list (rotation-level, always wins).
+        2. The template's built-in ``skip_if`` via the ``template_resolver``
+           (template-level fallback used only when the entry has none).
+
+        An empty condition list means the entry is never skipped.  A missing
+        source key in the data store counts as a matched condition (i.e.,
+        templates are skipped when their data has never arrived).
 
         Args:
             entry: Rotation entry to evaluate.
@@ -346,11 +357,14 @@ class TemplateSelector:
         Returns:
             ``True`` when the entry should be skipped this tick.
         """
-        if not entry.skip_if:
+        # Rotation-level conditions take full priority.
+        conditions = entry.skip_if
+        # Fall back to template-level conditions when rotation entry has none.
+        if not conditions and self._template_resolver is not None:
+            conditions = self._template_resolver(entry.template)
+        if not conditions:
             return False
-        return all(
-            TemplateSelector._skip_cond_match(cond, snapshot) for cond in entry.skip_if
-        )
+        return all(self._skip_cond_match(cond, snapshot) for cond in conditions)
 
     @staticmethod
     def _skip_cond_match(cond: RotationSkipCondition, snapshot: dict[str, StoreValue]) -> bool:
