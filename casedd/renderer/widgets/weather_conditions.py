@@ -124,14 +124,17 @@ class WeatherConditionsWidget(BaseWidget):
         if isinstance(cfg.font_size, int):
             body_size = max(12, int(cfg.font_size))
         else:
-            body_size = max(14, min(40, inner.h // 11))
-        temp_font = get_font(max(20, min(84, int(body_size * 1.9))))
+            body_size = max(16, min(72, inner.w // 18, inner.h // 8))
+        temp_font = get_font(max(24, min(160, int(body_size * 2.35))))
         body_font = get_font(body_size)
         accent = parse_color(cfg.color, fallback=(102, 224, 140))
-        body_line_h = int(body_font.getbbox("Ag")[3] - body_font.getbbox("Ag")[1]) + 6
+        body_line_h = int(body_font.getbbox("Ag")[3] - body_font.getbbox("Ag")[1]) + max(
+            4,
+            body_size // 5,
+        )
 
         y = inner.y + label_h + 4
-        icon_size = max(28, inner.h // 6)
+        icon_size = max(36, min(inner.h // 3, int(body_size * 2.4)))
         _draw_condition_icon(draw, inner.x + 4, y + 1, icon_size, _condition_kind(conditions))
         draw.text((inner.x + icon_size + 10, y), f"{temp_f:.1f} F", fill=accent, font=temp_font)
         temp_h = int(temp_font.getbbox("Ag")[3] - temp_font.getbbox("Ag")[1])

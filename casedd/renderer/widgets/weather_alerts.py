@@ -59,7 +59,7 @@ class WeatherAlertsWidget(BaseWidget):
         if isinstance(cfg.font_size, int):
             body_sz = max(10, int(cfg.font_size))
         else:
-            body_sz = max(12, min(34, inner.h // 12))
+            body_sz = max(12, min(52, inner.w // 24, inner.h // 8))
         count_font = get_font(max(15, min(56, int(body_sz * 1.55))))
         body_font = get_font(body_sz)
         body_line_h = int(body_font.getbbox("Ag")[3] - body_font.getbbox("Ag")[1]) + 4

@@ -13,14 +13,14 @@ grid:
     forecast    radar
     alerts      radar
   columns: 1fr 1fr
-  rows: 1.15fr 1.0fr 0.75fr
+  rows: 1.2fr 1.0fr 0.8fr
 
 widgets:
   conditions:
     type: weather_conditions
     label: "Current Conditions"
     source: weather.conditions
-    font_size: 20
+    font_size: auto
     color: "#66ddaa"
     background: "#111923"
     padding: [6, 8]
@@ -29,7 +29,7 @@ widgets:
     type: weather_forecast
     label: "Forecast"
     source: weather.forecast_table
-    font_size: 18
+    font_size: auto
     color: "#9dd4ff"
     background: "#111923"
     padding: [6, 8]
@@ -38,7 +38,7 @@ widgets:
     type: weather_alerts
     label: "Watches / Warnings"
     source: weather.alert_summary
-    font_size: 16
+    font_size: auto
     color: "#ff8a7a"
     background: "#111923"
     padding: [6, 8]
