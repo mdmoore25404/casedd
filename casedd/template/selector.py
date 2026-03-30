@@ -14,11 +14,17 @@ Public API:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
 import time as monotonic_time
 
-from casedd.config import TemplateScheduleRule, TemplateTriggerRule
+from casedd.config import (
+    RotationEntry,
+    RotationSkipCondition,
+    TemplateScheduleRule,
+    TemplateTriggerRule,
+)
 from casedd.data_store import StoreValue
 
 
@@ -36,9 +42,12 @@ class TemplateSelector:
     Args:
         base_template: Default template name.
         rotation_templates: Additional templates to rotate through.
-        rotation_interval: Seconds between rotation steps.
+        rotation_interval: Seconds between rotation steps (default dwell).
         schedule_rules: Time-window rules.
         trigger_rules: Data-value trigger rules.
+        force_store_key: Optional data-store key that overrides selection.
+        rotation_entries: Full ordered rotation entry list. Overrides
+            ``rotation_templates`` when provided.
     """
 
     def __init__(  # noqa: PLR0913 -- explicit policy args improve readability
@@ -49,26 +58,49 @@ class TemplateSelector:
         schedule_rules: list[TemplateScheduleRule],
         trigger_rules: list[TemplateTriggerRule],
         force_store_key: str | None = None,
+        rotation_entries: list[RotationEntry] | None = None,
+        template_resolver: Callable[[str], list[RotationSkipCondition]] | None = None,
+        on_trigger_activate: (
+            Callable[[TemplateTriggerRule, StoreValue | None], None] | None
+        ) = None,
     ) -> None:
         """Initialise the selector and state used across render ticks.
 
         Args:
             base_template: Default template name.
             rotation_templates: Additional templates to rotate through.
-            rotation_interval: Seconds between rotation steps.
+            rotation_interval: Seconds between rotation steps (default dwell).
             schedule_rules: Time-window rules.
             trigger_rules: Data-value trigger rules.
             force_store_key: Optional data-store key that overrides selection.
+            rotation_entries: Full ordered rotation entry list with per-entry
+                dwell times and skip conditions. Overrides ``rotation_templates``.
+            template_resolver: Callable that returns a template's built-in
+                ``skip_if`` conditions by name.  Used as fallback when a
+                rotation entry has no entry-level skip conditions.  Rotation-
+                level conditions always take priority.
+            on_trigger_activate: Optional callback invoked once when a trigger
+                rule first activates.  Receives the rule and current store
+                value (``None`` if the key was absent from the snapshot).
+                Called synchronously on the render tick; keep it non-blocking
+                (e.g. schedule an asyncio task and return).
         """
         self._base_template = base_template
-        self._rotation_templates = self._build_rotation_list(base_template, rotation_templates)
+        self._template_resolver = template_resolver
+        self._on_trigger_activate = on_trigger_activate
+        self._rotation_entries = self._build_rotation_entries(
+            base_template, rotation_templates, rotation_entries
+        )
+        # Keep a flat template-name list for the legacy rotation_templates property.
         self._rotation_interval = rotation_interval
         self._rotation_index = 0
-        self._rotation_last_step = monotonic_time.monotonic()
+        self._rotation_entry_start_ts = monotonic_time.monotonic()
 
         self._schedule_rules = schedule_rules
         indexed_triggers = [
-            _IndexedTrigger(index=i, rule=rule) for i, rule in enumerate(trigger_rules)
+            _IndexedTrigger(index=i, rule=rule)
+            for i, rule in enumerate(trigger_rules)
+            if not rule.disabled
         ]
         self._triggers = sorted(
             indexed_triggers,
@@ -79,7 +111,12 @@ class TemplateSelector:
         self._trigger_cooldown_until: dict[int, float] = {}
         self._force_store_key = force_store_key
 
-    def update_rotation(self, rotation_templates: list[str], rotation_interval: float) -> None:
+    def update_rotation(
+        self,
+        rotation_templates: list[str],
+        rotation_interval: float,
+        entries: list[RotationEntry] | None = None,
+    ) -> None:
         """Replace the rotation list and interval at runtime.
 
         Safe to call from any thread; Python's GIL guarantees atomic list
@@ -87,16 +124,18 @@ class TemplateSelector:
         from the base template.
 
         Args:
-            rotation_templates: New list of additional templates to rotate through.
-                The base template is always prepended automatically.
-            rotation_interval: New interval in seconds between rotation steps.
+            rotation_templates: New list of additional templates (legacy flat
+                format, used when ``entries`` is not provided).
+            rotation_interval: Default dwell in seconds between rotation steps.
+            entries: Full ordered rotation entry list with per-entry dwell and
+                skip conditions.  Overrides ``rotation_templates`` when given.
         """
-        self._rotation_templates = self._build_rotation_list(
-            self._base_template, rotation_templates
+        self._rotation_entries = self._build_rotation_entries(
+            self._base_template, rotation_templates, entries
         )
         self._rotation_interval = max(1.0, rotation_interval)
         self._rotation_index = 0
-        self._rotation_last_step = monotonic_time.monotonic()
+        self._rotation_entry_start_ts = monotonic_time.monotonic()
 
     @property
     def base_template(self) -> str:
@@ -104,16 +143,29 @@ class TemplateSelector:
         return self._base_template
 
     @property
+    def rotation_entries(self) -> list[RotationEntry]:
+        """Current ordered rotation entries (includes base template entry)."""
+        return list(self._rotation_entries)
+
+    @property
     def rotation_templates(self) -> list[str]:
-        """Current rotation list (excludes base if it was deduplicated)."""
+        """Current rotation template names, excluding the base template."""
         # Return without the implicit base-template prepend so callers see
-        # the same list they would configure.
-        return [t for t in self._rotation_templates if t != self._base_template]
+        # the same list they would configure (legacy compat).
+        return [e.template for e in self._rotation_entries if e.template != self._base_template]
 
     @property
     def rotation_interval(self) -> float:
-        """Current rotation interval in seconds."""
+        """Default rotation dwell interval in seconds."""
         return self._rotation_interval
+
+    @property
+    def is_trigger_held(self) -> bool:
+        """True when at least one trigger rule is currently active (holding a template).
+
+        Used by the render loop to apply the alert border overlay.
+        """
+        return bool(self._trigger_active_since)
 
     def select_template(self, snapshot: dict[str, StoreValue]) -> str:
         """Return the active template name for the current tick.
@@ -142,7 +194,7 @@ class TemplateSelector:
         if schedule_template is not None:
             return schedule_template
 
-        return self._select_by_rotation(now_ts)
+        return self._select_by_rotation(now_ts, snapshot)
 
     def _select_by_triggers(
         self,
@@ -182,6 +234,8 @@ class TemplateSelector:
                 cooldown_until = self._trigger_cooldown_until.get(idx, 0.0)
                 if now_ts >= true_since + rule.duration and now_ts >= cooldown_until:
                     self._trigger_active_since[idx] = now_ts
+                    if self._on_trigger_activate is not None and rule.notify:
+                        self._on_trigger_activate(rule, value)
                     return rule.template
             else:
                 self._trigger_true_since.pop(idx, None)
@@ -208,45 +262,159 @@ class TemplateSelector:
                 return rule.template
         return None
 
-    def _select_by_rotation(self, now_ts: float) -> str:
-        """Rotate through configured templates at a fixed interval.
+    def _select_by_rotation(self, now_ts: float, snapshot: dict[str, StoreValue]) -> str:
+        """Rotate through configured entries using per-entry dwell and skip logic.
+
+        Skip conditions are evaluated on every call; if the current entry
+        becomes skippable mid-dwell, rotation advances immediately.  When all
+        entries are skippable the current entry is held to avoid an empty state.
 
         Args:
             now_ts: Current monotonic timestamp.
+            snapshot: Current data-store snapshot for skip evaluation.
 
         Returns:
-            Rotated template name (or base template when rotation is disabled).
+            Template name of the active rotation entry.
         """
-        if len(self._rotation_templates) == 1:
-            return self._rotation_templates[0]
+        if len(self._rotation_entries) == 1:
+            return self._rotation_entries[0].template
 
-        elapsed = now_ts - self._rotation_last_step
-        if elapsed >= self._rotation_interval:
-            steps = int(elapsed // self._rotation_interval)
-            self._rotation_index = (self._rotation_index + steps) % len(self._rotation_templates)
-            self._rotation_last_step += steps * self._rotation_interval
+        current = self._rotation_entries[self._rotation_index]
 
-        return self._rotation_templates[self._rotation_index]
+        # Immediately advance if the current entry is now skippable.
+        if self._should_skip(current, snapshot):
+            self._advance_rotation(now_ts, snapshot)
+            return self._rotation_entries[self._rotation_index].template
+
+        # Check whether the per-entry dwell time has elapsed.
+        dwell = current.seconds if current.seconds is not None else self._rotation_interval
+        if now_ts - self._rotation_entry_start_ts >= dwell:
+            self._advance_rotation(now_ts, snapshot)
+
+        return self._rotation_entries[self._rotation_index].template
+
+    def _advance_rotation(self, now_ts: float, snapshot: dict[str, StoreValue]) -> None:
+        """Advance to the next non-skipped entry, wrapping around as needed.
+
+        If every entry is skippable the index stays on the current entry so
+        the display always shows something.
+
+        Args:
+            now_ts: Current monotonic timestamp.
+            snapshot: Current data-store snapshot for skip evaluation.
+        """
+        count = len(self._rotation_entries)
+        original_index = self._rotation_index
+        for _ in range(count):
+            self._rotation_index = (self._rotation_index + 1) % count
+            candidate = self._rotation_entries[self._rotation_index]
+            if not self._should_skip(candidate, snapshot):
+                self._rotation_entry_start_ts = now_ts
+                return
+        # All entries are skippable — hold on the original entry.
+        self._rotation_index = original_index
+        self._rotation_entry_start_ts = now_ts
 
     @staticmethod
-    def _build_rotation_list(base_template: str, templates: list[str]) -> list[str]:
-        """Build an ordered unique list containing base + rotation templates.
+    def _build_rotation_entries(
+        base_template: str,
+        rotation_templates: list[str],
+        entries: list[RotationEntry] | None,
+    ) -> list[RotationEntry]:
+        """Build the ordered rotation entry list.
+
+        When ``entries`` is provided it is used directly (with the base
+        template prepended if absent).  Otherwise an entry list is synthesised
+        from the legacy flat ``rotation_templates`` list.
 
         Args:
             base_template: Default template from config.
-            templates: User-provided rotation list.
+            rotation_templates: Legacy flat rotation list.
+            entries: Full entry list with per-entry dwell/skip settings.
 
         Returns:
-            Ordered unique template list.
+            Ordered, deduplicated list of :class:`RotationEntry` objects.
         """
-        ordered: list[str] = [base_template]
-        seen: set[str] = {base_template}
-        for item in templates:
-            if item in seen:
+        if entries is not None:
+            # Ensure base template leads; deduplicate by template name.
+            template_names = [e.template for e in entries]
+            if base_template not in template_names:
+                return [RotationEntry(template=base_template), *entries]
+            seen: set[str] = set()
+            out: list[RotationEntry] = []
+            for entry in entries:
+                if entry.template in seen:
+                    continue
+                out.append(entry)
+                seen.add(entry.template)
+            return out
+
+        # Legacy path: synthesise plain entries from a flat template-name list.
+        ordered: list[RotationEntry] = [RotationEntry(template=base_template)]
+        legacy_seen: set[str] = {base_template}
+        for name in rotation_templates:
+            if name in legacy_seen:
                 continue
-            ordered.append(item)
-            seen.add(item)
+            ordered.append(RotationEntry(template=name))
+            legacy_seen.add(name)
         return ordered
+
+    def _should_skip(self, entry: RotationEntry, snapshot: dict[str, StoreValue]) -> bool:
+        """Return True when all skip conditions on an entry are satisfied.
+
+        Conditions are resolved in priority order:
+        1. The rotation entry's own ``skip_if`` list (rotation-level, always wins).
+        2. The template's built-in ``skip_if`` via the ``template_resolver``
+           (template-level fallback used only when the entry has none).
+
+        An empty condition list means the entry is never skipped.  A missing
+        source key in the data store counts as a matched condition (i.e.,
+        templates are skipped when their data has never arrived).
+
+        Args:
+            entry: Rotation entry to evaluate.
+            snapshot: Current data-store snapshot.
+
+        Returns:
+            ``True`` when the entry should be skipped this tick.
+        """
+        # Rotation-level conditions take full priority.
+        conditions = entry.skip_if
+        # Fall back to template-level conditions when rotation entry has none.
+        if not conditions and self._template_resolver is not None:
+            conditions = self._template_resolver(entry.template)
+        if not conditions:
+            return False
+        return all(self._skip_cond_match(cond, snapshot) for cond in conditions)
+
+    @staticmethod
+    def _skip_cond_match(cond: RotationSkipCondition, snapshot: dict[str, StoreValue]) -> bool:
+        """Evaluate one skip condition against the current store snapshot.
+
+        A missing key evaluates to ``True`` so that templates whose data has
+        never arrived are hidden.
+
+        Args:
+            cond: Skip condition to evaluate.
+            snapshot: Current data-store snapshot.
+
+        Returns:
+            ``True`` when the condition matches (i.e. the entry should be skipped).
+        """
+        value = snapshot.get(cond.source)
+        if value is None:
+            # Key not present → treat as satisfied (skip the template)
+            return True
+        value_num = _to_float(value)
+        target_num = _to_float(cond.value)
+        if value_num is not None and target_num is not None:
+            return _compare(value_num, target_num, cond.operator)
+        # Non-numeric fallback for eq/neq comparisons on string states.
+        if cond.operator == "eq":
+            return str(value) == str(cond.value)
+        if cond.operator == "neq":
+            return str(value) != str(cond.value)
+        return False
 
     @staticmethod
     def _trigger_match(value: StoreValue | None, rule: TemplateTriggerRule) -> bool:

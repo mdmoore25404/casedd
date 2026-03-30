@@ -10,7 +10,9 @@ Provides:
 - Template rotation endpoints ``GET/PUT /api/panels/{name}/rotation``
 - Global test-mode endpoints ``GET/POST /api/test-mode``
 - Simulation endpoints for replay/randomized test data
+- Data store snapshot endpoint ``GET /api/data``
 - Render buffer inspection endpoint ``GET /api/debug/render-state``
+- Rotation documentation endpoint ``GET /api/docs/rotation``
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 import contextlib
+from datetime import UTC, datetime
 import io
 import logging
 import os
@@ -37,6 +40,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 import uvicorn
 import yaml
 
+from casedd.config import RotationEntry
 from casedd.data_store import DataStore, StoreValue
 from casedd.template.loader import TemplateError, load_template
 from casedd.template.models import Template
@@ -46,6 +50,10 @@ _log = logging.getLogger(__name__)
 _TEMPLATE_FORCE_PREFIX = "casedd.template.force."
 _TEMPLATE_CURRENT_PREFIX = "casedd.template.current."
 _TEST_MODE_STORE_KEY = "casedd.test_mode"
+
+# Directory holding user-facing markdown documentation.
+# Served read-only through dedicated endpoints — never user-path-controlled.
+_DOCS_DIR = Path("docs")
 
 
 class UpdateRequest(BaseModel):
@@ -96,13 +104,18 @@ class RotationUpdateRequest(BaseModel):
     Attributes:
         rotation_templates: Ordered list of template names to rotate through
             (excluding the base template, which always leads the cycle).
-        rotation_interval: Seconds to display each template before advancing.
+            Only used when ``rotation_entries`` is not provided.
+        rotation_interval: Default dwell in seconds per template.
+        rotation_entries: Full ordered rotation entry list with per-entry
+            dwell times and skip conditions.  When provided,
+            ``rotation_templates`` is ignored.
     """
 
     model_config = ConfigDict(strict=True, frozen=True)
 
     rotation_templates: list[str] = Field(default_factory=list)
     rotation_interval: float = Field(default=30.0, gt=0)
+    rotation_entries: list[dict[str, object]] = Field(default_factory=list)
 
 
 class ReplayRecord(BaseModel):
@@ -273,6 +286,28 @@ class _SimulationController:
                 payload[field.key] = round(next_value, 4)
             self._store.update(payload)
             await asyncio.sleep(request.interval)
+
+
+_SPEEDTEST_NS = "speedtest."
+_SPEEDTEST_LAST_RUN_KEY = "speedtest.last_run"
+
+
+def _inject_speedtest_timestamp(payload: dict[str, StoreValue]) -> None:
+    """Auto-add ``speedtest.last_run`` when any speedtest key is present but missing.
+
+    Convenient for pushing machines that don't bother including a timestamp.
+    The injected value is the server's current local time in
+    ``YYYY-MM-DD HH:MM:SS`` format.
+
+    Args:
+        payload: Flat data-store payload being ingested.
+    """
+    if _SPEEDTEST_LAST_RUN_KEY in payload:
+        return
+    if any(k.startswith(_SPEEDTEST_NS) for k in payload):
+        payload[_SPEEDTEST_LAST_RUN_KEY] = (
+            datetime.now(UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        )
 
 
 _LIGHT_VIEWER_HTML = """\
@@ -488,7 +523,7 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     history_provider: Callable[[], dict[str, object]],
     simulation: _SimulationController,
     rotation_provider: Callable[[str], dict[str, object]],
-    rotation_updater: Callable[[str, list[str], float], None],
+    rotation_updater: Callable[[str, list[str], float, list[RotationEntry] | None], None],
 ) -> FastAPI:
     """Build and configure FastAPI app for viewer and control APIs."""
     app = FastAPI(
@@ -590,6 +625,7 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         if not payload:
             msg = "update payload has no valid primitive values"
             raise HTTPException(status_code=422, detail=msg)
+        _inject_speedtest_timestamp(payload)
         store.update(payload)
 
     @app.post("/update", status_code=204, include_in_schema=False)
@@ -598,6 +634,7 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         if not payload:
             msg = "update payload has no valid primitive values"
             raise HTTPException(status_code=422, detail=msg)
+        _inject_speedtest_timestamp(payload)
         store.update(payload)
 
     @app.get(
@@ -617,13 +654,37 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         if name not in panel_names:
             raise HTTPException(status_code=404, detail=f"Unknown panel '{name}'")
         available_templates = {path.stem for path in templates_dir.glob("*.casedd")}
-        unknown = [t for t in body.rotation_templates if t not in available_templates]
-        if unknown:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Unknown template(s): {', '.join(sorted(unknown))}",
-            )
-        rotation_updater(name, list(body.rotation_templates), body.rotation_interval)
+
+        # Parse and validate entries when provided.
+        parsed_entries: list[RotationEntry] | None = None
+        if body.rotation_entries:
+            try:
+                parsed_entries = [RotationEntry.model_validate(e) for e in body.rotation_entries]
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid rotation entry: {exc}",
+                ) from exc
+            unknown_in_entries = [
+                e.template for e in parsed_entries if e.template not in available_templates
+            ]
+            if unknown_in_entries:
+                unknown_str = ", ".join(sorted(unknown_in_entries))
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown template(s) in entries: {unknown_str}",
+                )
+        else:
+            unknown = [t for t in body.rotation_templates if t not in available_templates]
+            if unknown:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Unknown template(s): {', '.join(sorted(unknown))}",
+                )
+
+        rotation_updater(
+            name, list(body.rotation_templates), body.rotation_interval, parsed_entries
+        )
         return rotation_provider(name)
 
     @app.post("/api/template/override", summary="Set/clear per-panel template override")
@@ -776,9 +837,28 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     async def sim_status() -> dict[str, object]:
         return simulation.status()
 
+    @app.get("/api/data", summary="Snapshot of current data store")
+    async def get_data_snapshot(
+        prefix: str = Query(default="", description="Optional key prefix filter"),
+    ) -> dict[str, object]:
+        raw = store.snapshot()
+        data: dict[str, object] = {
+            k: v for k, v in raw.items() if not prefix or k.startswith(prefix)
+        }
+        return {"count": len(data), "data": data}
+
     @app.get("/api/debug/render-state", summary="Inspect renderer history buffers")
     async def debug_render_state() -> dict[str, object]:
         return history_provider()
+
+    @app.get("/api/docs/rotation", summary="Rotation documentation (Markdown)")
+    async def get_rotation_docs() -> Response:
+        """Return the user-facing rotation documentation as Markdown text."""
+        path = _DOCS_DIR / "rotation.md"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Rotation docs not found")
+        content = path.read_text(encoding="utf-8")
+        return Response(content=content, media_type="text/markdown; charset=utf-8")
 
     # Mount the production-built React SPA last so it never shadows API routes.
     # When web/dist/index.html exists (i.e. ``npm run build`` was run), the SPA
@@ -808,7 +888,9 @@ class HttpViewerOutput:
         templates_dir: Path,
         history_provider: Callable[[], dict[str, object]],
         rotation_provider: Callable[[str], dict[str, object]] | None = None,
-        rotation_updater: Callable[[str, list[str], float], None] | None = None,
+        rotation_updater: (
+            Callable[[str, list[str], float, list[RotationEntry] | None], None] | None
+        ) = None,
     ) -> None:
         """Initialize HTTP viewer output."""
         self._host = host
@@ -817,8 +899,8 @@ class HttpViewerOutput:
         self._simulation = _SimulationController(store)
         # Provide no-op stubs if rotation callables are not wired (e.g. tests).
         _rot_provider: Callable[[str], dict[str, object]] = rotation_provider or (lambda _n: {})
-        _rot_updater: Callable[[str, list[str], float], None] = (
-            rotation_updater or (lambda _n, _t, _i: None)
+        _rot_updater: Callable[[str, list[str], float, list[RotationEntry] | None], None] = (
+            rotation_updater or (lambda _n, _t, _i, _e: None)
         )
         self._app = _build_app(
             store=store,

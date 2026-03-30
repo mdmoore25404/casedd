@@ -18,6 +18,13 @@ refresh_rate: 2.0
 # Disable framebuffer output entirely (HTTP/WebSocket viewers still work).
 # no_fb: false
 
+# Color of the border drawn around the display when a trigger is active.
+# Any CSS color (hex, named, rgb()) is accepted.  Defaults to bright red.
+# Use a different color if red is not accessible in your environment.
+# trigger_border_color: "#dc1e1e"       # bright red (default)
+# trigger_border_color: "#ff00ff"       # magenta / fuchsia
+# trigger_border_color: "#ff8c00"       # dark orange
+
 # Rotation applies when no trigger or schedule rule is active.
 template_rotation:
   - fans
@@ -32,6 +39,9 @@ template_schedule:
     days: [0, 1, 2, 3, 4, 5, 6]
 
 # Trigger rules have highest priority.
+# Multiple rules targeting the same template act as OR logic — any one
+# matching activates that template.  Use 'disabled: true' to suppress a
+# rule temporarily without deleting it.
 template_triggers:
   - source: cpu.percent
     operator: gte
@@ -43,6 +53,62 @@ template_triggers:
     clear_value: 70
     cooldown: 30
     priority: 10
+    # Send a Pushover notification when this trigger first activates.
+    # Requires CASEDD_PUSHOVER_WEBHOOK_URL to be configured.
+    notify: true
+    notify_title: "High CPU Alert"
+    notify_message: "CPU usage exceeded 90% — switched to system_stats view."
+
+  # GPU OR group: any one of these three rules activates nvidia_detail.
+  # Set disabled: true on individual rules to suppress a condition while
+  # keeping the config in place (e.g. during development or testing).
+  - source: nvidia.percent
+    operator: gte
+    value: 50
+    template: nvidia_detail
+    duration: 5
+    hold_for: 30
+    clear_operator: lt
+    clear_value: 40
+    cooldown: 60
+    priority: 20
+    notify: true
+    notify_title: "GPU Load Alert"
+    notify_message: "GPU utilisation exceeded 50%."
+
+  - source: nvidia.memory_percent
+    operator: gte
+    # Raise this if you cache LLM models in VRAM — e.g. 97 when ~83% is
+    # normal steady-state so the alert only fires on genuine pressure.
+    value: 90
+    template: nvidia_detail
+    duration: 5
+    hold_for: 30
+    clear_operator: lt
+    # Set clear_value above your normal idle VRAM usage (e.g. 88 if idle ~83%)
+    # so the trigger view doesn't re-activate immediately after clearing.
+    clear_value: 80
+    cooldown: 60
+    priority: 20
+    notify: true
+    notify_title: "GPU VRAM Alert"
+    notify_message: "GPU VRAM usage exceeded 90%."
+    # Uncomment to disable this rule without removing it:
+    # disabled: true
+
+  - source: nvidia.temperature
+    operator: gte
+    value: 80
+    template: nvidia_detail
+    duration: 5
+    hold_for: 30
+    clear_operator: lt
+    clear_value: 70
+    cooldown: 60
+    priority: 20
+    notify: true
+    notify_title: "GPU Temperature Alert"
+    notify_message: "GPU temperature exceeded 80°C."
 
   - source: fans.cpu.max_rpm
     operator: gte
@@ -53,4 +119,5 @@ template_triggers:
     clear_operator: lte
     clear_value: 1400
     cooldown: 30
-    priority: 20
+    priority: 30
+
