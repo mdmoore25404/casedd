@@ -27,6 +27,7 @@ LOG_FILE="$REPO_ROOT/logs/casedd.log"
 DEV_PID_FILE="$REPO_ROOT/run/casedd-dev.pid"
 DEV_LOG_FILE="$REPO_ROOT/logs/casedd-dev.log"
 DEV_SOCKET_FILE="$REPO_ROOT/run/casedd-dev.sock"
+DEV_FB_PREF_FILE="$REPO_ROOT/run/casedd-dev-use-fb.pref"
 WEB_DIR="$REPO_ROOT/web"
 WEB_PID_FILE="$REPO_ROOT/run/casedd-web.pid"
 WEB_LOG_FILE="$REPO_ROOT/logs/casedd-web.log"
@@ -105,6 +106,18 @@ _is_running() {
 
 _is_web_running() {
     [[ -f "$WEB_PID_FILE" ]] && kill -0 "$(cat "$WEB_PID_FILE")" 2>/dev/null
+}
+
+_save_fb_pref() {
+    echo "1" > "$DEV_FB_PREF_FILE"
+}
+
+_clear_fb_pref() {
+    rm -f "$DEV_FB_PREF_FILE"
+}
+
+_should_use_fb() {
+    [[ -f "$DEV_FB_PREF_FILE" ]] && [[ $(cat "$DEV_FB_PREF_FILE") == "1" ]]
 }
 
 _cleanup_web_processes() {
@@ -235,6 +248,16 @@ cmd_start() {
     export CASEDD_LOG_LEVEL="${CASEDD_DEV_LOG_LEVEL:-DEBUG}"
     export CASEDD_DEBUG_FRAME_LOGS="${CASEDD_DEV_DEBUG_FRAME_LOGS:-1}"
     export CASEDD_NO_FB="${CASEDD_DEV_NO_FB:-1}"
+
+    # Check if user previously ran with -fb; if so, try to honor it again.
+    if _should_use_fb && ! _prod_service_active; then
+        export CASEDD_DEV_NO_FB=0
+    else
+        # Clear preference if production is blocking us or user didn't request fb.
+        if _prod_service_active || [[ "${CASEDD_DEV_NO_FB:-1}" == "1" ]]; then
+            _clear_fb_pref
+        fi
+    fi
     export CASEDD_PID_FILE="${CASEDD_DEV_PID_FILE:-$DEV_PID_FILE}"
     export CASEDD_LOG_DIR="${CASEDD_DEV_LOG_DIR:-$REPO_ROOT/logs}"
 
@@ -292,6 +315,8 @@ cmd_start_fb() {
         exit 1
     fi
 
+    _ensure_dirs
+    _save_fb_pref
     export CASEDD_DEV_NO_FB=0
     echo "Production service is not active; starting dev mode with framebuffer enabled"
     cmd_start
@@ -331,6 +356,7 @@ cmd_stop() {
 cmd_restart() {
     cmd_stop
     sleep 1
+    # Restart will respect the stored framebuffer preference (if safe)
     cmd_start
 }
 
