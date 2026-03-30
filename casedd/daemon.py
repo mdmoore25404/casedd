@@ -81,6 +81,26 @@ _TEMPLATE_CURRENT_PREFIX = "casedd.template.current."
 # Directory that holds per-panel rotation state files (survives restarts).
 _ROTATION_STATE_DIR = Path("run")
 
+# Visual indicator painted over trigger-held frames so the viewer knows
+# the template is being forced by an out-of-spec condition.
+_TRIGGER_BORDER_COLOR: tuple[int, int, int] = (220, 30, 30)  # bright red
+_TRIGGER_BORDER_WIDTH: int = 6
+
+
+def _draw_trigger_border(image: Image.Image) -> None:
+    """Paint a red border on *image* in-place to flag trigger-held frames.
+
+    Args:
+        image: The PIL RGB image to annotate.  Modified in place.
+    """
+    w, h = image.size
+    draw = ImageDraw.Draw(image)
+    for offset in range(_TRIGGER_BORDER_WIDTH):
+        draw.rectangle(
+            (offset, offset, w - 1 - offset, h - 1 - offset),
+            outline=_TRIGGER_BORDER_COLOR,
+        )
+
 
 def _rotation_state_path(panel_name: str) -> Path:
     """Return the path for a panel's persisted rotation state file."""
@@ -758,6 +778,9 @@ class Daemon:
                 )
                 if image is None:
                     continue
+
+                if panel.selector.is_trigger_held:
+                    await asyncio.to_thread(_draw_trigger_border, image)
 
                 await asyncio.to_thread(panel.framebuffer.write, image)
                 context.http_output.set_latest_image(panel.name, image)

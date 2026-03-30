@@ -1,0 +1,140 @@
+# nvidia_detail.casedd — Detailed NVIDIA GPU dashboard
+#
+# Shown automatically when a GPU trigger fires (use, VRAM, or temperature).
+# Displays all nvidia-smi metrics: utilisation, temperature, VRAM, and power.
+
+name: nvidia_detail
+description: >
+  Full-detail NVIDIA GPU view triggered when GPU is under stress.
+  Shows utilisation, temperature, VRAM usage, and power draw with
+  colour-coded sparklines and gauges.
+aspect_ratio: "5:3"
+layout_mode: fit
+refresh_rate: 2.0
+background: "#0a0f14"
+
+grid:
+  # 4 columns, 3 rows:
+  # Row 1 (largest): GPU use sparkline | GPU temp sparkline | VRAM gauge | Power value
+  # Row 2 (medium):  GPU use history   | GPU temp history  | VRAM bar   | Power sparkline
+  # Row 3 (small):   VRAM MB used (span 2)                 | VRAM total | Power label
+  template_areas: |
+    gpu_use    gpu_use    gpu_temp   gpu_temp   vram_gauge   power_val
+    gpu_use    gpu_use    gpu_temp   gpu_temp   vram_bar     power_hist
+    vram_used  vram_used  vram_total vram_total gpu_count    power_hist
+  columns: 1fr 1fr 1fr 1fr 1fr 1fr
+  rows: 1.6fr 1fr 0.8fr
+
+widgets:
+  gpu_use:
+    type: sparkline
+    label: GPU Utilisation (%)
+    source: nvidia.percent
+    padding: [6, 8]
+    precision: 1
+    unit: "%"
+    min: 0
+    max: 100
+    samples: 120
+    window_seconds: 120
+    color_stops:
+      - [0,  "#22cc44"]
+      - [50, "#ffcc00"]
+      - [75, "#ff8800"]
+      - [90, "#ff2222"]
+
+  gpu_temp:
+    type: sparkline
+    label: GPU Temp (°C)
+    source: nvidia.temperature
+    padding: [6, 8]
+    unit: "°C"
+    precision: 1
+    min: 20
+    max: 100
+    samples: 180
+    window_seconds: 300
+    color_stops:
+      - [30, "#22aaff"]
+      - [65, "#ffcc00"]
+      - [80, "#ff8800"]
+      - [90, "#ff2222"]
+
+  vram_gauge:
+    type: gauge
+    label: VRAM Used
+    source: nvidia.memory_percent
+    padding: [6, 4]
+    min: 0
+    max: 100
+    unit: "%"
+    arc_start: 180
+    arc_end: 360
+    color_stops:
+      - [0,  "#22aaff"]
+      - [70, "#ffcc00"]
+      - [90, "#ff2222"]
+
+  power_val:
+    type: value
+    label: Power Draw
+    source: nvidia.power_w
+    padding: [4, 6]
+    precision: 0
+    unit: "W"
+    color: "#f0a040"
+    font_size: auto
+
+  vram_bar:
+    type: bar
+    label: VRAM %
+    source: nvidia.memory_percent
+    padding: [4, 8]
+    min: 0
+    max: 100
+    unit: "%"
+    color_stops:
+      - [0,  "#22aaff"]
+      - [70, "#ffcc00"]
+      - [90, "#ff2222"]
+
+  power_hist:
+    type: sparkline
+    label: Power (W)
+    source: nvidia.power_w
+    padding: [4, 8]
+    precision: 0
+    unit: "W"
+    min: 0
+    samples: 60
+    window_seconds: 120
+    color: "#f0a040"
+
+  vram_used:
+    type: value
+    label: VRAM Used
+    source: nvidia.memory_used_mb
+    padding: [2, 8]
+    precision: 0
+    unit: "MB"
+    color: "#5daaff"
+    font_size: auto
+
+  vram_total:
+    type: value
+    label: VRAM Total
+    source: nvidia.memory_total_mb
+    padding: [2, 8]
+    precision: 0
+    unit: "MB"
+    color: "#8888aa"
+    font_size: auto
+
+  gpu_count:
+    type: value
+    label: GPU Count
+    source: nvidia.gpu_count
+    padding: [2, 8]
+    precision: 0
+    color: "#aaaacc"
+    font_size: auto

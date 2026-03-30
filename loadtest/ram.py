@@ -21,7 +21,6 @@ import os
 import sys
 import time
 
-
 # Default chunk size kept small enough to give visible allocation progress
 # but large enough to amortise the os.urandom overhead.
 _DEFAULT_CHUNK_MB = 64.0
@@ -102,7 +101,7 @@ def main() -> None:
             flush=True,
         )
         time.sleep(args.seconds)
-        print(f"[ram] Hold complete.", flush=True)
+        print("[ram] Hold complete.", flush=True)
 
     except KeyboardInterrupt:
         print("\n[ram] Interrupted — releasing memory…", flush=True)

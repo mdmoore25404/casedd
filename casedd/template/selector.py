@@ -157,6 +157,14 @@ class TemplateSelector:
         """Default rotation dwell interval in seconds."""
         return self._rotation_interval
 
+    @property
+    def is_trigger_held(self) -> bool:
+        """True when at least one trigger rule is currently active (holding a template).
+
+        Used by the render loop to apply the alert border overlay.
+        """
+        return bool(self._trigger_active_since)
+
     def select_template(self, snapshot: dict[str, StoreValue]) -> str:
         """Return the active template name for the current tick.
 

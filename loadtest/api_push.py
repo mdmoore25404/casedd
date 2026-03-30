@@ -29,7 +29,6 @@ import time
 import urllib.error
 import urllib.request
 
-
 _DEFAULT_URL = "http://localhost:8080"
 
 
@@ -50,7 +49,7 @@ def _post(base_url: str, update: dict[str, float]) -> bool:
         data=body,
         headers={"Content-Type": "application/json"},
         method="POST",
-    )
+    )  # URL is always the local CASEDD HTTP server
     try:
         with urllib.request.urlopen(req, timeout=5) as resp:
             return resp.status < 300

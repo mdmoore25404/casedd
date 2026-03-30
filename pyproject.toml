@@ -63,6 +63,8 @@ force-sort-within-sections = true
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S", "ARG"]   # security and unused-arg rules relaxed in tests
+"scripts/**" = ["S", "ARG", "SIM", "PLR", "PLW", "E501", "PTH"]  # legacy admin/test scripts
+"loadtest/**" = ["S", "T20"]  # security + print() OK in manual stress scripts
 
 # ---------------------------------------------------------------------------
 # mypy — strict static type checking

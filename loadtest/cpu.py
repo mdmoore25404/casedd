@@ -22,7 +22,6 @@ import signal
 import sys
 import time
 
-
 # ---------------------------------------------------------------------------
 # Worker (runs in a child process)
 # ---------------------------------------------------------------------------
@@ -31,7 +30,7 @@ def _worker(target_pct: float, duration_s: float, interval: float = 0.05) -> Non
     """Busy-loop at *target_pct*% per duty-cycle *interval* for *duration_s* s.
 
     Args:
-        target_pct: Target CPU utilisation per core (0–100).
+        target_pct: Target CPU utilisation per core (0-100).
         duration_s: How long to run in seconds.
         interval: Duty-cycle window in seconds (default 50 ms).
     """
@@ -88,7 +87,7 @@ def main() -> None:
         type=float,
         default=90.0,
         metavar="N",
-        help="Target CPU %% per core, 1–100 (default: 90)",
+        help="Target CPU %% per core, 1-100 (default: 90)",
     )
     parser.add_argument(
         "-c", "--cores",
