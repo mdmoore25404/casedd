@@ -63,7 +63,7 @@ from casedd.usb_display import (
 _log = logging.getLogger(__name__)
 
 # Bind host for both WS and HTTP servers (all interfaces)
-_BIND_HOST = "0.0.0.0"
+_BIND_HOST = "0.0.0.0"  # noqa: S104  # string compare, not bind
 _GETTER_SYNC_INTERVAL_SEC = 5.0
 _TEST_MODE_STORE_KEY = "casedd.test_mode"
 _TEMPLATE_FORCE_PREFIX = "casedd.template.force."
@@ -91,6 +91,18 @@ class _PanelRuntime:
     current_template: str = ""
 
 
+@dataclass
+class _RenderLoopContext:
+    """Input parameters for the render loop."""
+
+    registry: TemplateRegistry
+    panel_runtimes: list[_PanelRuntime]
+    ws_output: WebSocketOutput
+    http_output: HttpViewerOutput
+    getters_by_name: dict[str, BaseGetter]
+    getter_tasks: dict[str, asyncio.Task[None]]
+
+
 class Daemon:
     """Top-level CASEDD coordinator."""
 
@@ -109,17 +121,79 @@ class Daemon:
 
     async def run(self) -> None:
         """Start all subsystems and run the main render loop until shutdown."""
-        panel_runtimes: list[_PanelRuntime] = []
-        ws_output: WebSocketOutput | None = None
-        http_output: HttpViewerOutput | None = None
-        unix_ingestion: UnixSocketIngestion | None = None
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, self._shutdown.set)
 
         self._store.set(_TEST_MODE_STORE_KEY, 1 if self._cfg.test_mode else 0)
+        self._setup_framebuffer_detection()
 
-        # Startup inventory: enumerate all framebuffer devices and capabilities.
+        getters = self._create_getters()
+        getters_by_name = {type(getter).__name__: getter for getter in getters}
+        getter_tasks: dict[str, asyncio.Task[None]] = {}
+
+        registry = TemplateRegistry(Path(self._cfg.templates_dir))
+        await registry.start()
+
+        panel_runtimes = self._build_panel_runtimes(registry)
+
+        ws_output, http_output, unix_ingestion = self._setup_outputs_and_ingestion(
+            panel_runtimes
+        )
+
+        await ws_output.start()
+        await http_output.start()
+        await unix_ingestion.start()
+
+        active_templates = {
+            panel.current_template
+            for panel in panel_runtimes
+            if panel.current_template
+        }
+        await self._sync_getter_tasks(
+            registry,
+            panel_runtimes,
+            active_templates,
+            getters_by_name,
+            getter_tasks,
+        )
+
+        await self._show_startup_frame(panel_runtimes, ws_output, http_output)
+
+        _log.info(
+            "CASEDD daemon started. Panels: %d | Refresh: %.1f Hz",
+            len(panel_runtimes),
+            self._cfg.refresh_rate,
+        )
+
+        context = _RenderLoopContext(
+            registry=registry,
+            panel_runtimes=panel_runtimes,
+            ws_output=ws_output,
+            http_output=http_output,
+            getters_by_name=getters_by_name,
+            getter_tasks=getter_tasks,
+        )
+
+        try:
+            await self._render_loop(context)
+        finally:
+            _log.info("Shutting down CASEDD daemon…")
+            for getter in getters:
+                getter.stop()
+            for task in getter_tasks.values():
+                task.cancel()
+            await asyncio.gather(*getter_tasks.values(), return_exceptions=True)
+            if panel_runtimes and ws_output is not None and http_output is not None:
+                await self._show_shutdown_frame(panel_runtimes, ws_output, http_output)
+            await unix_ingestion.stop()
+            await ws_output.stop()
+            await http_output.stop()
+            await registry.stop()
+            _log.info("Daemon shutdown complete.")
+
+    def _setup_framebuffer_detection(self) -> None:
+        """Detect framebuffers and handle display claiming if configured."""
         detected_fbs = find_framebuffers()
         if detected_fbs:
             for fb_info in detected_fbs:
@@ -140,11 +214,6 @@ class Daemon:
                     "fb_auto_detect enabled but no USB framebuffer displays found."
                 )
 
-        # If requested, claim the primary framebuffer at boot only when no
-        # local keyboard or mouse is attached. We implement this by creating
-        # the keep-unblank file used by the existing fb-unblank daemon so
-        # CASEDD's frames remain visible without a separate manager taking
-        # over the display.
         if self._cfg.fb_claim_on_no_input:
             try:
                 if not has_local_keyboard_or_mouse():
@@ -157,16 +226,11 @@ class Daemon:
             except Exception:
                 _log.exception("Failed to evaluate/claim primary display")
 
-        getters = self._create_getters()
-        getters_by_name = {type(getter).__name__: getter for getter in getters}
-        getter_tasks: dict[str, asyncio.Task[None]] = {}
-
-        registry = TemplateRegistry(Path(self._cfg.templates_dir))
-        await registry.start()
-
-        panel_runtimes = self._build_panel_runtimes(registry)
-
-        ws_output = WebSocketOutput(_BIND_HOST, self._cfg.ws_port)
+    def _setup_outputs_and_ingestion(
+        self,
+        panel_runtimes: list[_PanelRuntime],
+    ) -> tuple[WebSocketOutput, HttpViewerOutput, UnixSocketIngestion]:
+        """Create and configure WebSocket, HTTP, and Unix socket subsystems."""
 
         def _rotation_provider(panel_name: str) -> dict[str, object]:
             runtime = next((r for r in panel_runtimes if r.name == panel_name), None)
@@ -178,13 +242,17 @@ class Daemon:
                 "rotation_interval": runtime.selector.rotation_interval,
             }
 
-        def _rotation_updater(panel_name: str, templates: list[str], interval: float) -> None:
+        def _rotation_updater(
+            panel_name: str, templates: list[str], interval: float
+        ) -> None:
             runtime = next((r for r in panel_runtimes if r.name == panel_name), None)
             if runtime is None:
                 return
             runtime.selector.update_rotation(templates, interval)
             runtime.rotation_templates = templates
             runtime.rotation_interval = interval
+
+        ws_output = WebSocketOutput(_BIND_HOST, self._cfg.ws_port)
 
         http_output = HttpViewerOutput(
             self._store,
@@ -215,57 +283,7 @@ class Daemon:
 
         unix_ingestion = UnixSocketIngestion(Path(self._cfg.socket_path), self._store)
 
-        await ws_output.start()
-        await http_output.start()
-        await unix_ingestion.start()
-
-        active_templates = {
-            panel.current_template
-            for panel in panel_runtimes
-            if panel.current_template
-        }
-        await self._sync_getter_tasks(
-            registry,
-            panel_runtimes,
-            active_templates,
-            getters_by_name,
-            getter_tasks,
-        )
-
-        await self._show_startup_frame(panel_runtimes, ws_output, http_output)
-
-        _log.info(
-            "CASEDD daemon started. Panels: %d | Refresh: %.1f Hz",
-            len(panel_runtimes),
-            self._cfg.refresh_rate,
-        )
-
-        try:
-            await self._render_loop(
-                registry,
-                panel_runtimes,
-                ws_output,
-                http_output,
-                getters_by_name,
-                getter_tasks,
-            )
-        finally:
-            _log.info("Shutting down CASEDD daemon…")
-            for getter in getters:
-                getter.stop()
-            for task in getter_tasks.values():
-                task.cancel()
-            await asyncio.gather(*getter_tasks.values(), return_exceptions=True)
-            if panel_runtimes and ws_output is not None and http_output is not None:
-                await self._show_shutdown_frame(panel_runtimes, ws_output, http_output)
-            if unix_ingestion is not None:
-                await unix_ingestion.stop()
-            if ws_output is not None:
-                await ws_output.stop()
-            if http_output is not None:
-                await http_output.stop()
-            await registry.stop()
-            _log.info("Daemon shutdown complete.")
+        return ws_output, http_output, unix_ingestion
 
     def _build_status_frame(
         self,
@@ -593,15 +611,7 @@ class Daemon:
 
         return runtimes
 
-    async def _render_loop(
-        self,
-        registry: TemplateRegistry,
-        panel_runtimes: list[_PanelRuntime],
-        ws_output: WebSocketOutput,
-        http_output: HttpViewerOutput,
-        getters_by_name: dict[str, BaseGetter],
-        getter_tasks: dict[str, asyncio.Task[None]],
-    ) -> None:
+    async def _render_loop(self, context: _RenderLoopContext) -> None:
         """Drive render/output cycle at configured refresh rate."""
         interval = 1.0 / self._cfg.refresh_rate
         last_getter_sync = 0.0
@@ -611,7 +621,7 @@ class Daemon:
             snapshot = self._store.snapshot()
             active_templates: set[str] = set()
 
-            for panel in panel_runtimes:
+            for panel in context.panel_runtimes:
                 selected = panel.selector.select_template(snapshot)
                 active_templates.add(selected)
                 if selected != panel.current_template:
@@ -621,7 +631,7 @@ class Daemon:
 
                 image = await asyncio.to_thread(
                     self._render_one,
-                    registry,
+                    context.registry,
                     panel.engine,
                     selected,
                 )
@@ -629,16 +639,16 @@ class Daemon:
                     continue
 
                 await asyncio.to_thread(panel.framebuffer.write, image)
-                http_output.set_latest_image(panel.name, image)
-                await ws_output.broadcast(image, panel=panel.name)
+                context.http_output.set_latest_image(panel.name, image)
+                await context.ws_output.broadcast(image, panel=panel.name)
 
             if tick_start - last_getter_sync >= _GETTER_SYNC_INTERVAL_SEC:
                 await self._sync_getter_tasks(
-                    registry,
-                    panel_runtimes,
+                    context.registry,
+                    context.panel_runtimes,
                     active_templates,
-                    getters_by_name,
-                    getter_tasks,
+                    context.getters_by_name,
+                    context.getter_tasks,
                 )
                 last_getter_sync = tick_start
 

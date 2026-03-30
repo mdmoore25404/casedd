@@ -14,12 +14,11 @@ from __future__ import annotations
 
 import glob
 import os
+from pathlib import Path
 import select
 import signal
 import sys
 import time
-from pathlib import Path
-from typing import Dict, List
 
 FB_BLANK_PATH = Path(os.environ.get("FB_BLANK_PATH", "/sys/class/graphics/fb0/blank"))
 IDLE_SECONDS = int(os.environ.get("IDLE_SECONDS", "60"))
@@ -42,9 +41,9 @@ def _set_blank(val: int) -> None:
         print(f"Failed to write {FB_BLANK_PATH}: {exc}", file=sys.stderr)
 
 
-def _open_input_devices() -> Dict[int, object]:
+def _open_input_devices() -> dict[int, object]:
     """Open input event devices and return mapping fd -> file object."""
-    devs: Dict[int, object] = {}
+    devs: dict[int, object] = {}
     for path in glob.glob(INPUT_GLOB):
         try:
             fh = open(path, "rb", buffering=0)
@@ -73,7 +72,7 @@ def _write_vt_cursor(show: bool) -> None:
             continue
 
 
-def _close_input_devices(devs: Dict[int, object]) -> None:
+def _close_input_devices(devs: dict[int, object]) -> None:
     for fh in list(devs.values()):
         try:
             fh.close()
@@ -180,7 +179,7 @@ def main() -> int:
                     is_blank = True
 
             # periodic device refresh: unregister and reopen any dead fds
-            dead_fds: List[int] = [fd for fd, fh in devs.items() if fh.closed]
+            dead_fds: list[int] = [fd for fd, fh in devs.items() if fh.closed]
             for fd in dead_fds:
                 try:
                     poller.unregister(fd)

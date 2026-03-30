@@ -288,7 +288,7 @@ class Config:
     net_interfaces: list[str] = Field(default_factory=list)
     nasa_api_key: str | None = Field(default=None)
     apod_interval: float = Field(default=3600.0, gt=0)
-    apod_cache_dir: str = Field(default="assets/apod")
+    apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data
     template_rotation: list[str] = Field(default_factory=list)
     template_rotation_interval: float = Field(default=30.0)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
@@ -742,7 +742,7 @@ def load_config() -> Config:
         ],
         nasa_api_key=str(_get("CASEDD_NASA_API_KEY", "nasa_api_key", "")).strip() or None,
         apod_interval=float(str(_get("CASEDD_APOD_INTERVAL", "apod_interval", 3600.0))),
-        apod_cache_dir=str(_get("CASEDD_APOD_CACHE_DIR", "apod_cache_dir", "assets/apod")),
+        apod_cache_dir=str(_get("CASEDD_APOD_CACHE_DIR", "apod_cache_dir", "/tmp/casedd-apod")),  # noqa: S108
         template_rotation=_get_rotation_templates(),
         template_rotation_interval=float(
             str(_get("CASEDD_TEMPLATE_ROTATION_INTERVAL", "template_rotation_interval", 30.0))

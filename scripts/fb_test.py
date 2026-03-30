@@ -10,14 +10,15 @@ to write /dev/fb0 (video group or root).
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
+import random
 import sys
 import time
-import random
-from pathlib import Path
+
 from PIL import Image, ImageDraw
 
-from casedd.usb_display import probe_framebuffer
 from casedd.outputs.framebuffer import FramebufferOutput
+from casedd.usb_display import probe_framebuffer
 
 DEV = Path("/dev/fb0")
 

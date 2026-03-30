@@ -143,11 +143,13 @@ def _render_title_overlay(
         title: Title string to render.
         color: Accent colour for the title text.
     """
-    font = get_font(12)
+    # Scale font based on widget width; cap for readability.
+    font_sz = max(9, min(16, rect.w // 40))
+    font = get_font(font_sz)
     draw = ImageDraw.Draw(img)
     bb = draw.textbbox((0, 0), title, font=font)
     text_h = int(bb[3] - bb[1])
-    bar_h = text_h + 8
+    bar_h = text_h + 6
     bar_top = rect.y + rect.h - bar_h
 
     # Semi-transparent dark bar — composite onto the existing image.
