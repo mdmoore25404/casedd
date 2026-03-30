@@ -10,6 +10,7 @@ Provides:
 - Template rotation endpoints ``GET/PUT /api/panels/{name}/rotation``
 - Global test-mode endpoints ``GET/POST /api/test-mode``
 - Simulation endpoints for replay/randomized test data
+- Data store snapshot endpoint ``GET /api/data``
 - Render buffer inspection endpoint ``GET /api/debug/render-state``
 """
 
@@ -775,6 +776,16 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     @app.get("/api/sim/status", summary="Get simulation status")
     async def sim_status() -> dict[str, object]:
         return simulation.status()
+
+    @app.get("/api/data", summary="Snapshot of current data store")
+    async def get_data_snapshot(
+        prefix: str = Query(default="", description="Optional key prefix filter"),
+    ) -> dict[str, object]:
+        raw = store.snapshot()
+        data: dict[str, object] = {
+            k: v for k, v in raw.items() if not prefix or k.startswith(prefix)
+        }
+        return {"count": len(data), "data": data}
 
     @app.get("/api/debug/render-state", summary="Inspect renderer history buffers")
     async def debug_render_state() -> dict[str, object]:

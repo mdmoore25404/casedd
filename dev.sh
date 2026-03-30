@@ -276,7 +276,9 @@ cmd_start() {
     _prepare_socket_dir
 
     echo "Starting casedd..."
-    nohup python -m casedd >> "$DEV_LOG_FILE" 2>&1 &
+    # cd to REPO_ROOT so `python -m casedd` resolves the package regardless of
+    # the caller's working directory.
+    nohup sh -c "cd '$REPO_ROOT' && exec python -m casedd" >> "$DEV_LOG_FILE" 2>&1 &
     local launcher_pid=$!
 
     # The daemon writes CASEDD_PID_FILE itself; wait briefly for that file

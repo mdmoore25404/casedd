@@ -77,6 +77,14 @@ export async function getSimulationStatus() {
   return readJson(response);
 }
 
+export async function fetchDataStore(prefix = "") {
+  const url = prefix
+    ? `${API_ROOT}/api/data?prefix=${encodeURIComponent(prefix)}`
+    : `${API_ROOT}/api/data`;
+  const response = await fetch(url, { cache: "no-store" });
+  return readJson(response);
+}
+
 export async function fetchTemplates() {
   const response = await fetch(`${API_ROOT}/api/templates`, { cache: "no-store" });
   return readJson(response);

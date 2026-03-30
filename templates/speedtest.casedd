@@ -59,33 +59,25 @@ widgets:
   ping_jitter:
     type: panel
     padding: [4, 6]
+    direction: column
     children:
-      grid:
-        template_areas: |
-          ping
-          jitter
-        columns: 1fr
-        rows: 1fr 1fr
-      widgets:
-        ping:
-          type: value
-          label: "Ping (ms)"
-          source: speedtest.ping_ms
-          unit: ms
-          precision: 1
-          font_size: auto
-          color: "#22aaff"
-          padding: [2, 4]
+      - type: value
+        label: "Ping (ms)"
+        source: speedtest.ping_ms
+        unit: ms
+        precision: 1
+        font_size: auto
+        color: "#22aaff"
+        padding: [2, 4]
 
-        jitter:
-          type: value
-          label: "Jitter (ms)"
-          source: speedtest.jitter_ms
-          unit: ms
-          precision: 1
-          font_size: auto
-          color: "#ffaa22"
-          padding: [2, 4]
+      - type: value
+        label: "Jitter (ms)"
+        source: speedtest.jitter_ms
+        unit: ms
+        precision: 1
+        font_size: auto
+        color: "#ffaa22"
+        padding: [2, 4]
 
   summary:
     type: text

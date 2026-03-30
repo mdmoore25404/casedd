@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBolt,
   faCirclePlay,
+  faDatabase,
   faExpand,
   faFileArrowDown,
   faFileArrowUp,
@@ -20,6 +21,7 @@ import {
 
 import {
   exportTemplateFile,
+  fetchDataStore,
   fetchRotation,
   fetchTemplate,
   fetchTemplates,
@@ -412,6 +414,8 @@ export function App() {
   const [rotationText, setRotationText] = useState("");
   const [rotationInterval, setRotationInterval] = useState(30);
   const [rotationDirty, setRotationDirty] = useState(false);
+  const [dataStore, setDataStore] = useState({ count: 0, data: {} });
+  const [dataStoreFilter, setDataStoreFilter] = useState("");
   const importInputRef = useRef(null);
   const selectedPanelRef = useRef("");
 
@@ -438,9 +442,15 @@ export function App() {
     }
   }, [selectedTemplate]);
 
+  const refreshDataStore = useCallback(async () => {
+    const payload = await fetchDataStore();
+    setDataStore(payload);
+  }, []);
+
   usePolling(refreshPanels, 2000);
   usePolling(refreshStatus, 1500);
   usePolling(refreshTemplates, 5000);
+  usePolling(refreshDataStore, 3000);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -488,6 +498,16 @@ export function App() {
   const updateJsonState = useMemo(() => parseJson(updateJson, "update"), [updateJson]);
   const randomJsonState = useMemo(() => parseJson(randomJson, "random simulation"), [randomJson]);
   const replayJsonState = useMemo(() => parseJson(replayJson, "replay"), [replayJson]);
+
+  const filteredDataStore = useMemo(() => {
+    const filter = dataStoreFilter.trim().toLowerCase();
+    if (!filter) {
+      return dataStore.data;
+    }
+    return Object.fromEntries(
+      Object.entries(dataStore.data).filter(([k]) => k.toLowerCase().includes(filter)),
+    );
+  }, [dataStore.data, dataStoreFilter]);
 
   const sourceListValue = useMemo(() => {
     if (!selectedWidgetConfig?.sources || !Array.isArray(selectedWidgetConfig.sources)) {
@@ -1518,6 +1538,35 @@ export function App() {
               >
                 <FontAwesomeIcon icon={faExpand} className="me-1" /> Large Editor
               </button>
+            </div>
+          </div>
+
+          <div className="card border-secondary bg-dark-subtle mt-3">
+            <div className="card-body">
+              <h5 className="card-title d-flex align-items-center gap-2">
+                <FontAwesomeIcon icon={faDatabase} /> Data Store
+              </h5>
+              <p className="small text-body-secondary mb-2">
+                Live snapshot of all data store keys. Auto-refreshes every 3 s.
+                {" "}<span className="badge bg-secondary">{dataStore.count} total keys</span>
+              </p>
+              <input
+                className="form-control form-control-sm mb-2"
+                placeholder="Filter by key substring…"
+                value={dataStoreFilter}
+                onChange={(event) => setDataStoreFilter(event.target.value)}
+              />
+              {dataStoreFilter.trim() && (
+                <div className="small text-body-secondary mb-1">
+                  Showing {Object.keys(filteredDataStore).length} of {dataStore.count} keys
+                </div>
+              )}
+              <pre
+                className="font-monospace small bg-black text-success rounded p-2 mb-0"
+                style={{ maxHeight: "420px", overflowY: "auto", margin: 0 }}
+              >
+                {prettyJson(filteredDataStore)}
+              </pre>
             </div>
           </div>
 
