@@ -170,6 +170,17 @@ function inferNumericRange(key, widget) {
   if (token.includes("rpm")) {
     return { min: 500, max: 2400 };
   }
+  // Speedtest raw throughput keys — realistic Mbps ranges.
+  if (token.includes("download_mbps") || token.includes("upload_mbps")) {
+    return { min: 0, max: 2000 };
+  }
+  // Speedtest latency keys — realistic ms ranges.
+  if (token.includes("ping_ms") || (token.includes("ping") && token.includes("ms"))) {
+    return { min: 5, max: 80 };
+  }
+  if (token.includes("jitter") && !token.includes("mbps")) {
+    return { min: 1, max: 20 };
+  }
   if (token.includes("mbps") || token.includes("speed") || token.includes("read") || token.includes("write")) {
     return { min: 0, max: 300 };
   }
@@ -205,7 +216,8 @@ function collectSourceEntries(template) {
   }
 
   const byKey = new Map();
-  Object.values(template.widgets).forEach((widget) => {
+
+  function collectFromWidget(widget) {
     if (typeof widget?.source === "string" && widget.source.trim()) {
       byKey.set(widget.source, widget);
     }
@@ -216,8 +228,16 @@ function collectSourceEntries(template) {
         }
       });
     }
-  });
+    // Recurse into panel children so nested value/text sources are collected.
+    if (Array.isArray(widget?.children)) {
+      widget.children.forEach(collectFromWidget);
+    }
+    if (widget?.children_named && typeof widget.children_named === "object") {
+      Object.values(widget.children_named).forEach(collectFromWidget);
+    }
+  }
 
+  Object.values(template.widgets).forEach(collectFromWidget);
   return Array.from(byKey.entries()).map(([key, widget]) => ({ key, widget }));
 }
 
@@ -312,6 +332,22 @@ function generateScenarioData(template) {
   const updatePayload = {};
   const randomFields = [];
 
+  // Inject extra speedtest keys that the custom renderer reads directly from
+  // the store but are not referenced as widget sources in the template.
+  const hasSpeedtest = entries.some(({ key }) => key.startsWith("speedtest."));
+  if (hasSpeedtest) {
+    [
+      { key: "speedtest.download_mbps", widget: { type: "value" } },
+      { key: "speedtest.upload_mbps", widget: { type: "value" } },
+      { key: "speedtest.download_status", widget: { type: "text" } },
+      { key: "speedtest.upload_status", widget: { type: "text" } },
+    ].forEach(({ key, widget }) => {
+      if (!entries.some((entry) => entry.key === key)) {
+        entries.push({ key, widget });
+      }
+    });
+  }
+
   entries.forEach(({ key, widget }) => {
     if (widget?.type === "htop") {
       if (key.endsWith(".rows")) {
@@ -331,6 +367,16 @@ function generateScenarioData(template) {
       }
     }
 
+    // Speedtest status keys must be specific strings to drive status coloring.
+    if (key.endsWith(".download_status") || key.endsWith(".upload_status")) {
+      updatePayload[key] = "good";
+      return;
+    }
+    // Speedtest summary — set a coherent placeholder matching the mbps values.
+    if (key.endsWith(".simple_summary")) {
+      updatePayload[key] = "1000 / 1000 Mb/s";
+      return;
+    }
     if (isBooleanMetric(key)) {
       const token = key.toLowerCase();
       updatePayload[key] = !token.endsWith(".on_battery");

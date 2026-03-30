@@ -21,7 +21,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from casedd.data_store import DataStore
 from casedd.renderer.color import parse_color
-from casedd.renderer.fonts import get_font
+from casedd.renderer.fonts import fit_font, get_font
 from casedd.renderer.widgets.base import (
     BaseWidget,
     choose_font_for_box,
@@ -173,6 +173,11 @@ class TextWidget(BaseWidget):
     ) -> bool:
         """Draw speedtest summary as down/up segments with independent status colors.
 
+        Uses ``getlength`` (not ``getbbox``) for inter-segment x advancement so
+        that whitespace characters in the separator " / " are correctly accounted
+        for.  Falls back to ``fit_font`` to shrink the font if the full text
+        exceeds the available width at any font size.
+
         Args:
             draw: PIL draw context.
             rect: Widget bounding box.
@@ -203,29 +208,46 @@ class TextWidget(BaseWidget):
         down_text = f"{down:.0f}"
         mid_text = " / "
         up_text = f"{up:.0f} Mb/s"
+        full_text = down_text + mid_text + up_text
 
         fallback_color = parse_color(cfg.color, fallback=(200, 200, 200))
         down_color = _STATUS_COLORS.get(down_status, fallback_color)
         up_color = _STATUS_COLORS.get(up_status, fallback_color)
         mid_color = parse_color(cfg.color, fallback=(185, 185, 185))
 
-        down_bbox = font.getbbox(down_text)
-        mid_bbox = font.getbbox(mid_text)
-        up_bbox = font.getbbox(up_text)
-        down_w = down_bbox[2] - down_bbox[0]
-        mid_w = mid_bbox[2] - mid_bbox[0]
-        up_w = up_bbox[2] - up_bbox[0]
-        total_w = down_w + mid_w + up_w
+        def _advance(fnt: ImageFont.FreeTypeFont | ImageFont.ImageFont, s: str) -> int:
+            """Return the full advance width of ``s``, including whitespace."""
+            # getlength gives the true typographic advance (incl. leading/trailing
+            # spaces) whereas getbbox trims invisible ink regions — critical for
+            # the " / " separator whose leading space would be silently dropped.
+            if isinstance(fnt, ImageFont.FreeTypeFont):
+                return int(fnt.getlength(s))
+            bb = fnt.getbbox(s)
+            return int(bb[2] - bb[0])
 
+        available_w = rect.w - 8
         available_h = rect.h - label_h
-        line_bbox = font.getbbox("Ag")
-        line_h = line_bbox[3] - line_bbox[1]
-        y = rect.y + label_h + max(0, (available_h - line_h) // 2)
-        x = rect.x + max(0, (rect.w - total_w) // 2)
 
-        draw.text((x, y), down_text, fill=down_color, font=font)
-        x += down_w
-        draw.text((x, y), mid_text, fill=mid_color, font=font)
-        x += mid_w
-        draw.text((x, y), up_text, fill=up_color, font=font)
+        # Shrink to the largest font where the full single-line text fits.
+        current_font: ImageFont.FreeTypeFont | ImageFont.ImageFont = font
+        if _advance(font, full_text) > available_w:
+            current_font = fit_font(full_text, available_w, max(1, available_h - 4))
+
+        total_advance = _advance(current_font, full_text)
+
+        ref_bbox = current_font.getbbox("Ag")
+        line_h = int(ref_bbox[3] - ref_bbox[1])
+        # Subtract ref_bbox[1] to correct for the font origin offset so glyphs
+        # visually centre within the available area (see anti-pattern blacklist).
+        y = rect.y + label_h + max(0, (available_h - line_h) // 2) - int(ref_bbox[1])
+        x = rect.x + max(0, (rect.w - total_advance) // 2)
+
+        for seg_text, seg_color in [
+            (down_text, down_color),
+            (mid_text, mid_color),
+            (up_text, up_color),
+        ]:
+            draw.text((x, y), seg_text, fill=seg_color, font=current_font)
+            x += _advance(current_font, seg_text)
+
         return True
