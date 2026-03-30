@@ -26,6 +26,27 @@ class _ForecastRow:
     condition: str
 
 
+@dataclass(frozen=True)
+class _ForecastLayout:
+    """Computed layout knobs for rendering forecast rows."""
+
+    body_font: FreeTypeFont | ImageFont
+    text_color: tuple[int, int, int]
+    muted_color: tuple[int, int, int]
+    y_start: int
+    row_h: int
+    icon_size: int
+    icon_y_offset: int
+    day_x: int
+    right_lohi: int
+    right_pcp: int
+    right_wind: int
+    show_wind: bool
+    show_precip: bool
+    tiny_mode: bool
+    visible_rows: int
+
+
 class WeatherForecastWidget(BaseWidget):
     """Render compact daily forecast rows."""
 
@@ -61,43 +82,8 @@ class WeatherForecastWidget(BaseWidget):
                 _ForecastRow("SUN", "44", "62", "5%", "8mph S", "Cloudy"),
             ]
 
-        if isinstance(cfg.font_size, int):
-            body_sz = max(10, int(cfg.font_size))
-        else:
-            body_sz = max(12, min(56, inner.w // 24, inner.h // 10))
-        body_font = get_font(body_sz)
-        text_color = (224, 230, 236)
-        muted_color = (186, 196, 206)
-
-        y = inner.y + label_h + 3
-        text_h = int(body_font.getbbox("Ag")[3] - body_font.getbbox("Ag")[1])
-        row_h = max(text_h + 8, inner.h // 8)
-        icon_size = max(14, min(row_h - 4, 36))
-        icon_y_offset = max(0, (row_h - icon_size) // 2)
-        day_x = inner.x + icon_size + 12
-
-        right_lohi = inner.x + int(inner.w * 0.43)
-        right_pcp = inner.x + int(inner.w * 0.60)
-        right_wind = inner.x + inner.w - 6
-
-        for row in rows[:5]:
-            if y + row_h > inner.y + inner.h:
-                break
-            _draw_tiny_icon(
-                draw,
-                inner.x + 4,
-                y + icon_y_offset,
-                _condition_kind(row.condition),
-                size=icon_size,
-            )
-            draw.text((day_x, y), f"{row.day:>3}", fill=text_color, font=body_font)
-
-            lo_hi_text = f"{row.low:>2}/{row.high:>2}"
-            rd = _RightDraw(draw=draw, font=body_font, y=y)
-            rd.emit(right_lohi, lo_hi_text, text_color)
-            rd.emit(right_pcp, f"{row.precip:>3}", muted_color)
-            rd.emit(right_wind, row.wind[:11], text_color)
-            y += row_h
+        layout = _compute_layout(cfg, inner, label_h, len(rows))
+        _paint_rows(draw, inner, rows, layout)
 
 
 @dataclass(frozen=True)
@@ -113,6 +99,84 @@ class _RightDraw:
         bbox = self.draw.textbbox((0, 0), text, font=self.font)
         width = bbox[2] - bbox[0]
         self.draw.text((right_x - width, self.y), text, fill=fill, font=self.font)
+
+
+def _compute_layout(
+    cfg: WidgetConfig,
+    inner: Rect,
+    label_h: int,
+    row_count: int,
+) -> _ForecastLayout:
+    """Compute responsive forecast layout settings for current widget rect."""
+    requested = max(9, int(cfg.font_size)) if isinstance(cfg.font_size, int) else 9
+    min_dim = max(1, min(inner.w, inner.h))
+    auto_body = max(9, min(40, min_dim // 14, inner.w // 28, inner.h // 10))
+    body_sz = max(9, min(max(requested, auto_body), inner.w // 20, inner.h // 6))
+    body_font = get_font(body_sz)
+
+    y_start = inner.y + label_h + 3
+    text_h = int(body_font.getbbox("Ag")[3] - body_font.getbbox("Ag")[1])
+    available_h = max(16, inner.h - label_h - 6)
+    tiny_mode = inner.w < 210 or available_h < 54
+    compact_mode = inner.w < 280 or available_h < 84
+    max_rows = 2 if tiny_mode else (3 if compact_mode else 5)
+    visible_rows = max(1, min(max_rows, row_count))
+    row_h = max(text_h + 5, available_h // visible_rows)
+    icon_size = max(10, min(row_h - 4, 36))
+
+    return _ForecastLayout(
+        body_font=body_font,
+        text_color=(224, 230, 236),
+        muted_color=(186, 196, 206),
+        y_start=y_start,
+        row_h=row_h,
+        icon_size=icon_size,
+        icon_y_offset=max(0, (row_h - icon_size) // 2),
+        day_x=inner.x + (6 if tiny_mode else icon_size + 12),
+        right_lohi=inner.x + int(inner.w * 0.48),
+        right_pcp=inner.x + int(inner.w * 0.64),
+        right_wind=inner.x + inner.w - 6,
+        show_wind=(not compact_mode and inner.w >= 320),
+        show_precip=(not tiny_mode and inner.w >= 250),
+        tiny_mode=tiny_mode,
+        visible_rows=visible_rows,
+    )
+
+
+def _paint_rows(
+    draw: ImageDraw.ImageDraw,
+    inner: Rect,
+    rows: list[_ForecastRow],
+    layout: _ForecastLayout,
+) -> None:
+    """Paint forecast rows using a precomputed layout plan."""
+    y = layout.y_start
+    for row in rows[: layout.visible_rows]:
+        if y + layout.row_h > inner.y + inner.h:
+            break
+        if not layout.tiny_mode:
+            _draw_tiny_icon(
+                draw,
+                inner.x + 4,
+                y + layout.icon_y_offset,
+                _condition_kind(row.condition),
+                size=layout.icon_size,
+            )
+        draw.text(
+            (layout.day_x, y),
+            f"{row.day:>3}",
+            fill=layout.text_color,
+            font=layout.body_font,
+        )
+
+        lo_hi_text = f"{row.low:>2}/{row.high:>2}"
+        rd = _RightDraw(draw=draw, font=layout.body_font, y=y)
+        rd.emit(layout.right_lohi, lo_hi_text, layout.text_color)
+        if layout.show_precip:
+            rd.emit(layout.right_pcp, f"{row.precip:>3}", layout.muted_color)
+        if layout.show_wind:
+            rd.emit(layout.right_wind, row.wind[:11], layout.text_color)
+        y += layout.row_h
 
 
 def _parse_rows(table: str) -> list[_ForecastRow]:
