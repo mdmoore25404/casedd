@@ -4,8 +4,6 @@
 
 name: slideshow
 description: Fullscreen slideshow cycling images from assets/slideshow.
-width: 800
-height: 480
 refresh_rate: 2.0
 
 grid:

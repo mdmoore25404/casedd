@@ -17,11 +17,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 from dataclasses import dataclass
+from datetime import UTC, datetime
 import logging
 from pathlib import Path
 import signal
 
-from PIL import Image
+from PIL import Image, ImageDraw
 import psutil
 
 from casedd.config import Config, PanelConfig, TemplateScheduleRule, TemplateTriggerRule
@@ -43,20 +44,26 @@ from casedd.getters.system import SystemGetter
 from casedd.getters.ups import UpsGetter
 from casedd.getters.weather import WeatherGetter
 from casedd.ingestion.unix_socket import UnixSocketIngestion
+from casedd.input_detect import has_local_keyboard_or_mouse
 from casedd.outputs.framebuffer import FramebufferOutput
 from casedd.outputs.http_viewer import HttpViewerOutput
 from casedd.outputs.websocket import WebSocketOutput
 from casedd.renderer.engine import RenderEngine
+from casedd.renderer.fonts import get_font
 from casedd.template.models import Template, WidgetConfig
 from casedd.template.registry import TemplateRegistry
 from casedd.template.selector import TemplateSelector
-from casedd.usb_display import FramebufferInfo, find_usb_framebuffers
-from casedd.input_detect import has_local_keyboard_or_mouse
+from casedd.usb_display import (
+    FramebufferInfo,
+    find_framebuffers,
+    find_usb_framebuffers,
+    probe_framebuffer,
+)
 
 _log = logging.getLogger(__name__)
 
 # Bind host for both WS and HTTP servers (all interfaces)
-_BIND_HOST = "0.0.0.0"  # noqa: S104 — intentional; CASEDD is a local display server
+_BIND_HOST = "0.0.0.0"
 _GETTER_SYNC_INTERVAL_SEC = 5.0
 _TEST_MODE_STORE_KEY = "casedd.test_mode"
 _TEMPLATE_FORCE_PREFIX = "casedd.template.force."
@@ -79,6 +86,8 @@ class _PanelRuntime:
     selector: TemplateSelector
     engine: RenderEngine
     framebuffer: FramebufferOutput
+    fb_device: Path
+    rotation: int
     current_template: str = ""
 
 
@@ -96,14 +105,27 @@ class Daemon:
         self._shutdown = asyncio.Event()
         # Populated by USB display auto-detection when fb_auto_detect=True.
         self._auto_detected_fb: FramebufferInfo | None = None
+        self._status_logo_path = Path(self._cfg.assets_dir) / "casedd-logo.png"
 
     async def run(self) -> None:
         """Start all subsystems and run the main render loop until shutdown."""
+        panel_runtimes: list[_PanelRuntime] = []
+        ws_output: WebSocketOutput | None = None
+        http_output: HttpViewerOutput | None = None
+        unix_ingestion: UnixSocketIngestion | None = None
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, self._shutdown.set)
 
         self._store.set(_TEST_MODE_STORE_KEY, 1 if self._cfg.test_mode else 0)
+
+        # Startup inventory: enumerate all framebuffer devices and capabilities.
+        detected_fbs = find_framebuffers()
+        if detected_fbs:
+            for fb_info in detected_fbs:
+                _log.info("Detected framebuffer: %s", fb_info.describe())
+        else:
+            _log.warning("No framebuffer devices detected under /dev/fb*")
 
         if self._cfg.fb_auto_detect:
             usb_displays = find_usb_framebuffers()
@@ -210,6 +232,8 @@ class Daemon:
             getter_tasks,
         )
 
+        await self._show_startup_frame(panel_runtimes, ws_output, http_output)
+
         _log.info(
             "CASEDD daemon started. Panels: %d | Refresh: %.1f Hz",
             len(panel_runtimes),
@@ -232,11 +256,204 @@ class Daemon:
             for task in getter_tasks.values():
                 task.cancel()
             await asyncio.gather(*getter_tasks.values(), return_exceptions=True)
-            await unix_ingestion.stop()
-            await ws_output.stop()
-            await http_output.stop()
+            if panel_runtimes and ws_output is not None and http_output is not None:
+                await self._show_shutdown_frame(panel_runtimes, ws_output, http_output)
+            if unix_ingestion is not None:
+                await unix_ingestion.stop()
+            if ws_output is not None:
+                await ws_output.stop()
+            if http_output is not None:
+                await http_output.stop()
             await registry.stop()
             _log.info("Daemon shutdown complete.")
+
+    def _build_status_frame(
+        self,
+        width: int,
+        height: int,
+        title: str,
+        lines: list[str],
+    ) -> Image.Image:
+        """Build a branded centered status frame.
+
+        Args:
+            width: Output width in pixels.
+            height: Output height in pixels.
+            title: Primary heading text.
+            lines: Body lines to render below the title.
+
+        Returns:
+            PIL RGB image for display.
+        """
+        image = Image.new("RGB", (width, height), (10, 13, 16))
+        draw = ImageDraw.Draw(image)
+
+        # Subtle top-to-bottom wash for depth without adding complexity.
+        for y in range(height):
+            mix = y / max(1, height - 1)
+            r = int(10 + (28 - 10) * mix)
+            g = int(13 + (18 - 13) * mix)
+            b = int(16 + (28 - 16) * mix)
+            draw.line((0, y, width, y), fill=(r, g, b))
+
+        margin = max(18, min(width, height) // 24)
+        panel_radius = max(12, min(width, height) // 36)
+        panel_box = (margin, margin, width - margin, height - margin)
+        draw.rounded_rectangle(
+            panel_box,
+            radius=panel_radius,
+            fill=(18, 23, 29),
+            outline=(58, 70, 82),
+            width=2,
+        )
+
+        accent_h = max(6, height // 120)
+        draw.rounded_rectangle(
+            (panel_box[0], panel_box[1], panel_box[2], panel_box[1] + accent_h + 6),
+            radius=panel_radius,
+            fill=(208, 96, 44),
+        )
+
+        logo_area_h = max(height // 3, 120)
+        logo_max_w = max(width // 3, 140)
+        logo_max_h = max(logo_area_h - margin, 120)
+        logo_center_y = panel_box[1] + margin + logo_area_h // 2
+        self._paste_status_logo(image, logo_max_w, logo_max_h, width // 2, logo_center_y)
+
+        title_font = get_font(max(20, min(height // 10, 60)))
+        body_font = get_font(max(12, min(height // 30, 26)))
+        footer_font = get_font(max(10, min(height // 38, 20)))
+
+        title_bbox = draw.textbbox((0, 0), title, font=title_font)
+        title_w = int(title_bbox[2] - title_bbox[0])
+        title_h = int(title_bbox[3] - title_bbox[1])
+        title_x = max(panel_box[0], (width - title_w) // 2)
+        title_y = panel_box[1] + logo_area_h + max(12, height // 36)
+        draw.text((title_x, title_y), title, fill=(240, 243, 247), font=title_font)
+
+        line_y = title_y + title_h + max(14, height // 42)
+        line_gap = max(6, height // 56)
+        for line in lines:
+            line_bbox = draw.textbbox((0, 0), line, font=body_font)
+            line_w = int(line_bbox[2] - line_bbox[0])
+            line_h = int(line_bbox[3] - line_bbox[1])
+            line_x = max(panel_box[0] + margin, (width - line_w) // 2)
+            draw.text((line_x, line_y), line, fill=(179, 188, 198), font=body_font)
+            line_y += line_h + line_gap
+
+        footer = "casedd"
+        footer_bbox = draw.textbbox((0, 0), footer, font=footer_font)
+        footer_w = int(footer_bbox[2] - footer_bbox[0])
+        footer_h = int(footer_bbox[3] - footer_bbox[1])
+        footer_x = width - margin - footer_w
+        footer_y = height - margin - footer_h
+        draw.text((footer_x, footer_y), footer, fill=(110, 122, 136), font=footer_font)
+
+        return image
+
+    def _paste_status_logo(
+        self,
+        image: Image.Image,
+        max_width: int,
+        max_height: int,
+        center_x: int,
+        center_y: int,
+    ) -> None:
+        """Paste the CASEDD logo scaled to fit within the target bounds."""
+        if not self._status_logo_path.exists():
+            return
+
+        try:
+            logo = Image.open(self._status_logo_path).convert("RGBA")
+        except OSError:
+            return
+
+        src_w, src_h = logo.size
+        if src_w <= 0 or src_h <= 0:
+            return
+
+        scale = min(max_width / src_w, max_height / src_h)
+        if scale <= 0:
+            return
+
+        out_w = max(1, int(src_w * scale))
+        out_h = max(1, int(src_h * scale))
+        resized = logo.resize((out_w, out_h), Image.Resampling.LANCZOS)
+
+        shadow = Image.new("RGBA", (out_w + 18, out_h + 18), (0, 0, 0, 0))
+        shadow_draw = ImageDraw.Draw(shadow)
+        shadow_draw.rounded_rectangle(
+            (8, 8, out_w + 10, out_h + 10),
+            radius=max(12, out_h // 8),
+            fill=(0, 0, 0, 80),
+        )
+
+        paste_x = center_x - out_w // 2
+        paste_y = center_y - out_h // 2
+        image.paste(shadow.convert("RGB"), (paste_x - 8, paste_y - 8), shadow)
+        image.paste(resized.convert("RGB"), (paste_x, paste_y), resized)
+
+    async def _display_panel_frame(
+        self,
+        panel: _PanelRuntime,
+        image: Image.Image,
+        ws_output: WebSocketOutput,
+        http_output: HttpViewerOutput,
+    ) -> None:
+        """Write one image to framebuffer, HTTP viewer, and websocket clients."""
+        await asyncio.to_thread(panel.framebuffer.write, image)
+        http_output.set_latest_image(panel.name, image)
+        await ws_output.broadcast(image, panel=panel.name)
+
+    async def _show_startup_frame(
+        self,
+        panel_runtimes: list[_PanelRuntime],
+        ws_output: WebSocketOutput,
+        http_output: HttpViewerOutput,
+    ) -> None:
+        """Display a startup splash while getters warm up."""
+        if self._cfg.startup_frame_seconds <= 0.0:
+            return
+
+        now_str = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+        for panel in panel_runtimes:
+            lines = [
+                f"Panel: {panel.display_name}",
+                f"Framebuffer: {panel.fb_device}",
+                f"Resolution: {panel.width}x{panel.height}",
+                f"Template: {panel.base_template}",
+                f"Refresh: {self._cfg.refresh_rate:.1f} Hz",
+                f"Time: {now_str}",
+                f"Waiting {self._cfg.startup_frame_seconds:.0f}s for initial data...",
+            ]
+            image = self._build_status_frame(panel.width, panel.height, "CASEDD starting", lines)
+            await self._display_panel_frame(panel, image, ws_output, http_output)
+
+        _log.info("Displaying startup frame for %.1f seconds", self._cfg.startup_frame_seconds)
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(
+                asyncio.shield(self._shutdown.wait()),
+                timeout=self._cfg.startup_frame_seconds,
+            )
+
+    async def _show_shutdown_frame(
+        self,
+        panel_runtimes: list[_PanelRuntime],
+        ws_output: WebSocketOutput,
+        http_output: HttpViewerOutput,
+    ) -> None:
+        """Display a final shutdown splash before outputs are closed."""
+        now_str = datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
+        _log.info("Displaying shutdown frame")
+        for panel in panel_runtimes:
+            lines = [
+                f"Panel: {panel.display_name}",
+                f"Framebuffer: {panel.fb_device}",
+                f"Time: {now_str}",
+                "Shutting down cleanly.",
+            ]
+            image = self._build_status_frame(panel.width, panel.height, "CASEDD stopping", lines)
+            await self._display_panel_frame(panel, image, ws_output, http_output)
 
     def _build_panel_runtimes(self, registry: TemplateRegistry) -> list[_PanelRuntime]:
         """Create panel runtimes from config or legacy single-panel settings.
@@ -253,8 +470,10 @@ class Daemon:
                 display_name="Primary",
                 fb_device=self._cfg.fb_device,
                 no_fb=self._cfg.no_fb,
-                width=self._cfg.width,
-                height=self._cfg.height,
+                # Keep unset for legacy single-panel mode so width/height can
+                # be auto-detected from the framebuffer when available.
+                width=None,
+                height=None,
                 template=self._cfg.template,
                 template_rotation=self._cfg.template_rotation,
                 template_rotation_interval=self._cfg.template_rotation_interval,
@@ -267,8 +486,8 @@ class Daemon:
         for panel in panel_cfgs:
             panel_name = panel.name
             display_name = panel.display_name or panel.name
-            width = panel.width if panel.width is not None else self._cfg.width
-            height = panel.height if panel.height is not None else self._cfg.height
+            width = panel.width if panel.width is not None else 0
+            height = panel.height if panel.height is not None else 0
             base_template = panel.template if panel.template is not None else self._cfg.template
             rotation_templates = list(panel.template_rotation)
             schedule_rules = list(panel.template_schedule)
@@ -295,12 +514,12 @@ class Daemon:
             # Probe the configured framebuffer device (if present) to inherit
             # its resolution when per-panel width/height are not set.
             try:
-                if fb_device.exists():
-                    probe_fb = FramebufferOutput(fb_device, disabled=no_fb)
-                    if (panel.width is None) and getattr(probe_fb, "_fb_w", 0) > 0:
-                        width = probe_fb._fb_w
-                    if (panel.height is None) and getattr(probe_fb, "_fb_h", 0) > 0:
-                        height = probe_fb._fb_h
+                probe_info = probe_framebuffer(fb_device)
+                if probe_info is not None:
+                    if (panel.width is None) and probe_info.width > 0:
+                        width = probe_info.width
+                    if (panel.height is None) and probe_info.height > 0:
+                        height = probe_info.height
             except Exception:
                 _log.debug("Could not probe framebuffer %s for dimensions", fb_device)
 
@@ -326,6 +545,13 @@ class Daemon:
             ):
                 height = self._auto_detected_fb.height
 
+            # Final fallback to configured defaults when resolution is still
+            # unknown (e.g., missing sysfs virtual_size).
+            if width <= 0:
+                width = self._cfg.width
+            if height <= 0:
+                height = self._cfg.height
+
             # Determine rotation: per-panel override wins, otherwise global
             rot = panel.rotation if panel.rotation is not None else self._cfg.fb_rotation
             framebuffer = FramebufferOutput(fb_device, disabled=no_fb, rotation=rot)
@@ -344,8 +570,22 @@ class Daemon:
                 schedule_rules=schedule_rules,
                 trigger_rules=trigger_rules,
                 selector=selector,
-                engine=RenderEngine(width, height),
+                engine=RenderEngine(
+                    width,
+                    height,
+                    debug_frame_logs=self._cfg.debug_frame_logs,
+                ),
                 framebuffer=framebuffer,
+                fb_device=fb_device,
+                rotation=rot,
+            )
+            _log.info(
+                "Panel '%s' configured: fb=%s size=%dx%d rotation=%d",
+                panel_name,
+                fb_device,
+                width,
+                height,
+                rot,
             )
             runtime.current_template = runtime.selector.select_template(self._store.snapshot())
             self._store.set(f"{_TEMPLATE_CURRENT_PREFIX}{panel_name}", runtime.current_template)
@@ -353,7 +593,7 @@ class Daemon:
 
         return runtimes
 
-    async def _render_loop(  # noqa: PLR0913 -- explicit orchestrator dependencies
+    async def _render_loop(
         self,
         registry: TemplateRegistry,
         panel_runtimes: list[_PanelRuntime],
@@ -447,6 +687,7 @@ class Daemon:
             SpeedtestGetter(
                 self._store,
                 interval=self._cfg.speedtest_interval,
+                startup_delay=self._cfg.speedtest_startup_delay,
                 binary=self._cfg.speedtest_binary,
                 server_id=self._cfg.speedtest_server_id,
                 advertised_down_mbps=self._cfg.speedtest_advertised_down_mbps,

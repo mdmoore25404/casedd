@@ -56,8 +56,13 @@ class WeatherAlertsWidget(BaseWidget):
         watch_warning = str(data.get(f"{root}.watch_warning") or summary)
         alert_level = str(data.get(f"{root}.alert_level") or "none").lower()
 
-        count_font = get_font(max(15, inner.h // 7))
-        body_font = get_font(max(11, inner.h // 15))
+        if isinstance(cfg.font_size, int):
+            body_sz = max(10, int(cfg.font_size))
+        else:
+            body_sz = max(12, min(34, inner.h // 12))
+        count_font = get_font(max(15, min(56, int(body_sz * 1.55))))
+        body_font = get_font(body_sz)
+        body_line_h = int(body_font.getbbox("Ag")[3] - body_font.getbbox("Ag")[1]) + 4
 
         has_alerts = count > 0
         tone = _alert_tone(cfg.color, has_alerts, alert_level)
@@ -82,9 +87,9 @@ class WeatherAlertsWidget(BaseWidget):
         wrapped = _wrap_lines(body_font, watch_warning, max_width=inner.w - 8)
         for line in wrapped[:2]:
             draw.text((inner.x + 4, y), line, fill=body_color, font=body_font)
-            y += 14
+            y += body_line_h
 
-        if summary and summary != watch_warning and y + 14 < inner.y + inner.h:
+        if summary and summary != watch_warning and y + body_line_h < inner.y + inner.h:
             draw.text((inner.x + 4, y), summary[:72], fill=(172, 182, 192), font=body_font)
 
 

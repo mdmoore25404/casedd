@@ -121,9 +121,14 @@ class WeatherConditionsWidget(BaseWidget):
         humidity = _to_float(data.get(f"{root}.humidity_percent"))
         forecast_short = str(data.get(f"{root}.forecast_short") or "")
 
-        temp_font = get_font(max(20, inner.h // 5))
-        body_font = get_font(max(12, inner.h // 14))
+        if isinstance(cfg.font_size, int):
+            body_size = max(12, int(cfg.font_size))
+        else:
+            body_size = max(14, min(40, inner.h // 11))
+        temp_font = get_font(max(20, min(84, int(body_size * 1.9))))
+        body_font = get_font(body_size)
         accent = parse_color(cfg.color, fallback=(102, 224, 140))
+        body_line_h = int(body_font.getbbox("Ag")[3] - body_font.getbbox("Ag")[1]) + 6
 
         y = inner.y + label_h + 4
         icon_size = max(28, inner.h // 6)
@@ -133,17 +138,17 @@ class WeatherConditionsWidget(BaseWidget):
         y += temp_h + 2
 
         draw.text((inner.x + 4, y), conditions, fill=(225, 230, 235), font=body_font)
-        y += 16
+        y += body_line_h
         draw.text(
             (inner.x + 4, y),
             f"Wind {wind:.1f} mph   Humidity {humidity:.0f}%",
             fill=(190, 198, 208),
             font=body_font,
         )
-        y += 16
+        y += body_line_h
         draw.text((inner.x + 4, y), location, fill=(170, 178, 186), font=body_font)
-        if forecast_short and y + 16 < inner.y + inner.h - 16:
-            y += 16
+        if forecast_short and y + body_line_h < inner.y + inner.h - body_line_h:
+            y += body_line_h
             draw.text(
                 (inner.x + 4, y),
                 f"Next: {forecast_short[:54]}",

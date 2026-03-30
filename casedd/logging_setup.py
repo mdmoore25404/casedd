@@ -1,9 +1,12 @@
 """Logging setup for CASEDD.
 
-Configures two handlers:
+Configures two handlers when logging is enabled:
 - **Console** (stderr): colored output, respects ``log_level``.
-- **Rotating file** (``logs/casedd.log``): plain text, always at DEBUG level
-  so the full trace is preserved on disk regardless of console verbosity.
+- **Rotating file** (``logs/casedd.log``): plain text, also respects
+    ``log_level`` to avoid high overhead from debug-level hot-path logs.
+
+When ``log_level`` is ``NONE``, all handlers are removed and logging is
+disabled for maximum runtime performance.
 
 Public API:
     - :func:`setup_logging` — must be called once at daemon startup.
@@ -61,6 +64,17 @@ def setup_logging(log_level: str, log_dir: Path) -> None:
         log_level: stdlib log level name (DEBUG, INFO, WARNING, ERROR, CRITICAL).
         log_dir: Directory where ``casedd.log`` will be written. Created if absent.
     """
+    root = logging.getLogger()
+    for handler in list(root.handlers):
+        root.removeHandler(handler)
+        handler.close()
+
+    if log_level.upper() == "NONE":
+        logging.disable(logging.CRITICAL)
+        root.setLevel(logging.CRITICAL + 1)
+        return
+
+    logging.disable(logging.NOTSET)
     log_dir.mkdir(parents=True, exist_ok=True)
     log_path = log_dir / "casedd.log"
 
@@ -71,14 +85,14 @@ def setup_logging(log_level: str, log_dir: Path) -> None:
     console_handler.setLevel(numeric_level)
     console_handler.setFormatter(_ColorFormatter())
 
-    # Rotating file handler -- always DEBUG, 5 MB x 5 files
+    # Rotating file handler -- respect configured level, 5 MB x 5 files
     file_handler = logging.handlers.RotatingFileHandler(
         log_path,
         maxBytes=5 * 1024 * 1024,  # 5 MB per file
         backupCount=5,
         encoding="utf-8",
     )
-    file_handler.setLevel(logging.DEBUG)
+    file_handler.setLevel(numeric_level)
     file_handler.setFormatter(
         logging.Formatter(
             fmt="%(asctime)s [%(levelname)-8s] %(name)s: %(message)s",
@@ -86,7 +100,6 @@ def setup_logging(log_level: str, log_dir: Path) -> None:
         )
     )
 
-    root = logging.getLogger()
-    root.setLevel(logging.DEBUG)  # root must be DEBUG so file handler sees everything
+    root.setLevel(numeric_level)
     root.addHandler(console_handler)
     root.addHandler(file_handler)

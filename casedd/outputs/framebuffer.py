@@ -198,11 +198,11 @@ class FramebufferOutput:
             img = image
             if self._rotation in (90, 180, 270):
                 if self._rotation == 90:
-                    img = img.transpose(Image.ROTATE_90)
+                    img = img.transpose(Image.Transpose.ROTATE_90)
                 elif self._rotation == 180:
-                    img = img.transpose(Image.ROTATE_180)
+                    img = img.transpose(Image.Transpose.ROTATE_180)
                 elif self._rotation == 270:
-                    img = img.transpose(Image.ROTATE_270)
+                    img = img.transpose(Image.Transpose.ROTATE_270)
             self._write_unsafe(img)
         except OSError as exc:
             _log.error("Framebuffer write error: %s — disabling output.", exc)
@@ -219,7 +219,11 @@ class FramebufferOutput:
 
         # Resize to match framebuffer resolution if needed
         if img.size != (self._fb_w, self._fb_h):
-            img = img.resize((self._fb_w, self._fb_h), Image.LANCZOS)  # type: ignore[attr-defined]
+            # Prefer a faster resampler than LANCZOS for real-time dashboards.
+            img = img.resize(
+                (self._fb_w, self._fb_h),
+                Image.Resampling.BILINEAR,
+            )
 
         raw_bytes = self._rgb_to_rgb565(img) if self._bpp == 16 else self._rgb_to_xrgb8888(img)
 
@@ -266,10 +270,6 @@ class FramebufferOutput:
         Returns:
             Raw bytes suitable for writing to a 32-bpp framebuffer.
         """
-        pixels: list[tuple[int, int, int]] = list(img.getdata())
-        buf = bytearray(len(pixels) * 4)
-        offset = 0
-        for r, g, b in pixels:
-            struct.pack_into("<BBBB", buf, offset, b, g, r, 0xFF)
-            offset += 4
-        return bytes(buf)
+        # Use Pillow's C-level raw exporter instead of a Python pixel loop.
+        # This is significantly faster for large framebuffers (e.g. 4K).
+        return img.tobytes("raw", "BGRX")

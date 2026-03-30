@@ -2,8 +2,8 @@
 
 name: net_ports
 description: Netstat-style table of currently listening TCP/UDP ports.
-width: 800
-height: 480
+aspect_ratio: "5:3"
+layout_mode: fit
 background: "#0b1118"
 refresh_rate: 5.0
 

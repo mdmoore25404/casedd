@@ -88,6 +88,13 @@ class BorderStyle(StrEnum):
     OUTSET = "outset"
 
 
+class TemplateLayoutMode(StrEnum):
+    """How a template layout maps into the active output canvas."""
+
+    STRETCH = "stretch"
+    FIT = "fit"
+
+
 # A color stop is a 2-element list: [threshold, hex_color]
 # We validate this as a tuple after parsing.
 ColorStop = tuple[float, str]
@@ -316,8 +323,11 @@ class Template(BaseModel):
     Attributes:
         name: Unique template name.
         description: Human-readable description.
-        width: Canvas width in pixels.
-        height: Canvas height in pixels.
+        width: Optional legacy design width in pixels.
+        height: Optional legacy design height in pixels.
+        aspect_ratio: Optional logical layout aspect ratio, e.g. ``"5:3"``.
+        layout_mode: Whether the layout stretches to the full output or fits
+            inside it while preserving aspect ratio.
         background: Canvas background color.
         refresh_rate: Override render rate in Hz (``None`` uses daemon default).
         grid: Top-level CSS grid layout.
@@ -328,12 +338,41 @@ class Template(BaseModel):
 
     name: str
     description: str = ""
-    width: int = Field(default=800, gt=0)
-    height: int = Field(default=480, gt=0)
+    width: int | None = Field(default=None, gt=0)
+    height: int | None = Field(default=None, gt=0)
+    aspect_ratio: str | None = None
+    layout_mode: TemplateLayoutMode = TemplateLayoutMode.STRETCH
     background: str = "#000000"
     refresh_rate: float | None = Field(default=None, gt=0)
     grid: GridConfig
     widgets: dict[str, WidgetConfig]
+
+    @field_validator("aspect_ratio")
+    @classmethod
+    def _validate_aspect_ratio(cls, value: str | None) -> str | None:
+        """Validate optional top-level aspect ratio syntax."""
+        if value is None:
+            return None
+        cleaned = value.strip()
+        if not cleaned:
+            return None
+        if ":" in cleaned:
+            parts = cleaned.split(":", maxsplit=1)
+            try:
+                left = float(parts[0])
+                right = float(parts[1])
+            except ValueError as exc:
+                raise ValueError("aspect_ratio must look like '5:3' or '1.777'") from exc
+            if left <= 0 or right <= 0:
+                raise ValueError("aspect_ratio values must be > 0")
+            return cleaned
+        try:
+            ratio = float(cleaned)
+        except ValueError as exc:
+            raise ValueError("aspect_ratio must look like '5:3' or '1.777'") from exc
+        if ratio <= 0:
+            raise ValueError("aspect_ratio must be > 0")
+        return cleaned
 
     @model_validator(mode="after")
     def _check_widget_names(self) -> Template:

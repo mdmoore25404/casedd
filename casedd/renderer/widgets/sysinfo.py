@@ -72,7 +72,7 @@ class SysinfoWidget(BaseWidget):
             body_sz = cfg.font_size
         else:
             auto_sz = avail_h // max(1, num_rows + 1)
-            body_sz = min(18, max(10, auto_sz))
+            body_sz = min(42, max(12, auto_sz))
 
         body_font = get_font(body_sz)
         sample_bb = draw.textbbox((0, 0), "Ag", font=body_font)

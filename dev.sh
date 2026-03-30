@@ -23,6 +23,9 @@ VENV="$REPO_ROOT/.venv"
 ENV_FILE="$REPO_ROOT/.env"
 PID_FILE="$REPO_ROOT/run/casedd.pid"
 LOG_FILE="$REPO_ROOT/logs/casedd.log"
+DEV_PID_FILE="$REPO_ROOT/run/casedd-dev.pid"
+DEV_LOG_FILE="$REPO_ROOT/logs/casedd-dev.log"
+DEV_SOCKET_FILE="$REPO_ROOT/run/casedd-dev.sock"
 WEB_DIR="$REPO_ROOT/web"
 WEB_PID_FILE="$REPO_ROOT/run/casedd-web.pid"
 WEB_LOG_FILE="$REPO_ROOT/logs/casedd-web.log"
@@ -55,6 +58,18 @@ _ensure_dirs() {
     mkdir -p "$REPO_ROOT/run" "$REPO_ROOT/logs"
 }
 
+_prod_service_active() {
+    if [[ "${CASEDD_DEV_FORCE_PROD_ISOLATION:-0}" == "1" ]]; then
+        return 0
+    fi
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        return 1
+    fi
+
+    systemctl is-active --quiet casedd.service
+}
+
 _prepare_socket_dir() {
     local socket_dir
     socket_dir="$(dirname "$CASEDD_SOCKET_PATH")"
@@ -84,7 +99,7 @@ _prepare_socket_dir() {
 }
 
 _is_running() {
-    [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+    [[ -f "$DEV_PID_FILE" ]] && kill -0 "$(cat "$DEV_PID_FILE")" 2>/dev/null
 }
 
 _is_web_running() {
@@ -204,7 +219,7 @@ _stop_web() {
 
 cmd_start() {
     if _is_running; then
-        echo "casedd is already running (PID $(cat "$PID_FILE"))"
+        echo "casedd is already running (PID $(cat "$DEV_PID_FILE"))"
         return 0
     fi
 
@@ -212,15 +227,33 @@ cmd_start() {
     _load_env
     _ensure_dirs
 
+    # Development profile:
+    # - force verbose logging for active debugging
+    # - disable framebuffer output by default so UI iteration uses the web viewer
+    # Production/systemd runs should not use this script.
+    export CASEDD_LOG_LEVEL="${CASEDD_DEV_LOG_LEVEL:-DEBUG}"
+    export CASEDD_DEBUG_FRAME_LOGS="${CASEDD_DEV_DEBUG_FRAME_LOGS:-1}"
+    export CASEDD_NO_FB="${CASEDD_DEV_NO_FB:-1}"
+    export CASEDD_PID_FILE="${CASEDD_DEV_PID_FILE:-$DEV_PID_FILE}"
+    export CASEDD_LOG_DIR="${CASEDD_DEV_LOG_DIR:-$REPO_ROOT/logs}"
+
+    # If a production systemd instance is alive, isolate dev mode so it does
+    # not fight for the framebuffer or bind to the same viewer ports.
+    if _prod_service_active; then
+        echo "Production casedd.service detected — isolating dev runtime"
+        export CASEDD_NO_FB=1
+        export CASEDD_HTTP_PORT="${CASEDD_DEV_HTTP_PORT:-18080}"
+        export CASEDD_WS_PORT="${CASEDD_DEV_WS_PORT:-18765}"
+    fi
+
     # In local dev, default to a repo-local Unix socket to avoid requiring
     # write access to /run/casedd. Deployments can override via .env.
-    export CASEDD_SOCKET_PATH="${CASEDD_SOCKET_PATH:-$REPO_ROOT/run/casedd.sock}"
-    export CASEDD_PID_FILE="${CASEDD_PID_FILE:-$PID_FILE}"
+    export CASEDD_SOCKET_PATH="${CASEDD_DEV_SOCKET_PATH:-$DEV_SOCKET_FILE}"
 
     _prepare_socket_dir
 
     echo "Starting casedd..."
-    nohup python -m casedd >> "$LOG_FILE" 2>&1 &
+    nohup python -m casedd >> "$DEV_LOG_FILE" 2>&1 &
     local launcher_pid=$!
 
     # The daemon writes CASEDD_PID_FILE itself; wait briefly for that file
@@ -238,13 +271,13 @@ cmd_start() {
     done
 
     if _is_running; then
-        echo "casedd started (PID $(cat "$PID_FILE"))"
-        echo "Log: $LOG_FILE"
+        echo "casedd started (PID $(cat "$DEV_PID_FILE"))"
+        echo "Log: $DEV_LOG_FILE"
         echo "Web viewer: http://localhost:${CASEDD_HTTP_PORT:-8080}"
         _start_web
     else
-        echo "ERROR: casedd failed to start — check $LOG_FILE" >&2
-        rm -f "$PID_FILE"
+        echo "ERROR: casedd failed to start — check $DEV_LOG_FILE" >&2
+        rm -f "$DEV_PID_FILE"
         exit 1
     fi
 }
@@ -255,12 +288,12 @@ cmd_stop() {
 
     if ! _is_running; then
         echo "casedd is not running"
-        rm -f "$PID_FILE"
+        rm -f "$DEV_PID_FILE"
         return 0
     fi
 
     local pid
-    pid=$(cat "$PID_FILE")
+    pid=$(cat "$DEV_PID_FILE")
     echo "Stopping casedd (PID $pid)..."
     kill "$pid"
 
@@ -276,7 +309,7 @@ cmd_stop() {
         kill -9 "$pid" 2>/dev/null || true
     fi
 
-    rm -f "$PID_FILE"
+    rm -f "$DEV_PID_FILE"
     echo "casedd stopped"
 }
 
@@ -288,7 +321,7 @@ cmd_restart() {
 
 cmd_status() {
     if _is_running; then
-        echo "casedd is RUNNING (PID $(cat "$PID_FILE"))"
+        echo "casedd is RUNNING (PID $(cat "$DEV_PID_FILE"))"
     else
         echo "casedd is STOPPED"
     fi
@@ -300,9 +333,9 @@ cmd_status() {
     fi
 
     echo ""
-    if [[ -f "$LOG_FILE" ]]; then
+    if [[ -f "$DEV_LOG_FILE" ]]; then
         echo "--- Last 20 log lines ---"
-        tail -n 20 "$LOG_FILE"
+        tail -n 20 "$DEV_LOG_FILE"
     else
         echo "(no log file yet)"
     fi
@@ -317,11 +350,11 @@ cmd_status() {
 }
 
 cmd_logs() {
-    if [[ ! -f "$LOG_FILE" ]]; then
-        echo "No log file found at $LOG_FILE"
+    if [[ ! -f "$DEV_LOG_FILE" ]]; then
+        echo "No log file found at $DEV_LOG_FILE"
         exit 1
     fi
-    tail -f "$LOG_FILE"
+    tail -f "$DEV_LOG_FILE"
 }
 
 cmd_lint() {

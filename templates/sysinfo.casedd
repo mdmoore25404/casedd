@@ -2,8 +2,8 @@
 
 name: sysinfo
 description: System information dashboard in neofetch style.
-width: 800
-height: 480
+aspect_ratio: "5:3"
+layout_mode: fit
 background: "#0b1118"
 refresh_rate: 30.0
 
@@ -18,6 +18,7 @@ widgets:
     type: sysinfo
     label: "System Info"
     source: sysinfo.rows
+    font_size: 18
     color: "#60e6a5"
     background: "#101822"
     padding: [8, 10]

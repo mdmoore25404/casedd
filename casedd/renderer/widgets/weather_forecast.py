@@ -61,7 +61,11 @@ class WeatherForecastWidget(BaseWidget):
                 _ForecastRow("SUN", "44", "62", "5%", "8mph S", "Cloudy"),
             ]
 
-        body_font = get_font(max(11, inner.h // 12))
+        if isinstance(cfg.font_size, int):
+            body_sz = max(10, int(cfg.font_size))
+        else:
+            body_sz = max(11, min(36, inner.h // 12))
+        body_font = get_font(body_sz)
         text_color = (224, 230, 236)
         muted_color = (186, 196, 206)
 

@@ -56,6 +56,7 @@ class SpeedtestGetter(BaseGetter):
         reference_up_mbps: Optional effective uplink baseline in Mb/s.
         marginal_ratio: Ratio below which status becomes ``marginal``.
         critical_ratio: Ratio below which status becomes ``critical``.
+        startup_delay: Seconds to wait before first speedtest run.
     """
 
     def __init__(  # noqa: PLR0913 -- explicit config args keep callsites clear
@@ -70,6 +71,7 @@ class SpeedtestGetter(BaseGetter):
         reference_up_mbps: float | None = None,
         marginal_ratio: float = 0.9,
         critical_ratio: float = 0.7,
+        startup_delay: float = 0.0,
     ) -> None:
         """Initialise the speedtest getter.
 
@@ -84,6 +86,7 @@ class SpeedtestGetter(BaseGetter):
             reference_up_mbps: Optional effective uplink baseline.
             marginal_ratio: Marginal status threshold ratio.
             critical_ratio: Critical status threshold ratio.
+            startup_delay: Delay before first run in seconds.
         """
         super().__init__(store, interval)
         self._binary = binary
@@ -94,6 +97,7 @@ class SpeedtestGetter(BaseGetter):
         self._reference_up_mbps = reference_up_mbps
         self._marginal_ratio = marginal_ratio
         self._critical_ratio = critical_ratio
+        self._startup_delay = startup_delay
         self._enabled = shutil.which(binary) is not None or binary.startswith("/")
 
         if self._enabled:
@@ -108,6 +112,30 @@ class SpeedtestGetter(BaseGetter):
                 "Speedtest binary '%s' not found; speedtest getter disabled.",
                 binary,
             )
+
+    async def run(self) -> None:
+        """Run speedtest polling loop with optional startup delay.
+
+        Returns:
+            None
+        """
+        self._running = True
+        name = type(self).__name__
+        _log.info("Getter started: %s (interval=%.1fs)", name, self._interval)
+
+        if self._enabled and self._startup_delay > 0.0:
+            _log.info("Speedtest first run delayed by %.0fs", self._startup_delay)
+            await asyncio.sleep(self._startup_delay)
+
+        while self._running:
+            try:
+                data = await self.fetch()
+                if data:
+                    self._store.update(data)
+            except Exception:
+                _log.warning("Getter %s raised an exception:", name, exc_info=True)
+
+            await asyncio.sleep(self._interval)
 
     async def fetch(self) -> dict[str, StoreValue]:
         """Run one speedtest sample.

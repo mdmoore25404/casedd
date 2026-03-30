@@ -24,9 +24,9 @@ from PIL import Image, ImageDraw
 
 from casedd.data_store import DataStore
 from casedd.renderer.color import interpolate_color_stops, parse_color
-from casedd.renderer.fonts import get_font
 from casedd.renderer.widgets.base import (
     BaseWidget,
+    choose_font_for_box,
     content_rect,
     draw_label,
     fill_background,
@@ -112,7 +112,13 @@ class BarWidget(BaseWidget):
 
         # Draw value text inside / below the bar
         pct_text = f"{value:.0f}%"
-        font = get_font(max(9, bar_h - 4))
+        font = choose_font_for_box(
+            pct_text,
+            max(16, bar_w - 8),
+            max(10, bar_h - 4),
+            "auto",
+            min_size=9,
+        )
         bbox = font.getbbox(pct_text)
         tw = bbox[2] - bbox[0]
         th = bbox[3] - bbox[1]

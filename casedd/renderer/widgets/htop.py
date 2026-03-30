@@ -131,9 +131,11 @@ class HtopWidget(BaseWidget):
             entries.sort(key=lambda e: (e.cpu, e.mem), reverse=True)
 
         accent = parse_color(cfg.color, fallback=(96, 210, 132))
-        body_sz = (
-            cfg.font_size if isinstance(cfg.font_size, int) else max(10, min(16, inner.h // 17))
-        )
+        if isinstance(cfg.font_size, int):
+            body_sz = cfg.font_size
+        else:
+            target_rows = max(8, min(max(1, len(entries)) + 3, 18))
+            body_sz = max(12, min(44, inner.h // target_rows))
         body_font = get_font(body_sz)
         header_font = get_font(body_sz + 1)
 

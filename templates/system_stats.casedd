@@ -3,9 +3,9 @@
 # Reference template covering gauges, bars, sparklines, value text, and clock.
 
 name: system_stats
-description: Full system statistics grid for 800x480 displays.
-width: 800
-height: 480
+description: Full system statistics grid that scales to the active display.
+aspect_ratio: "5:3"
+layout_mode: fit
 refresh_rate: 2.0
 
 grid:
@@ -225,7 +225,7 @@ widgets:
     label: "Active Ollama"
     source: ollama.active_compact
     padding: [2, 6]
-    font_size: 22
+    font_size: auto
     color: "#ffffff"
 
   speed_meta:
@@ -233,7 +233,7 @@ widgets:
     label: "Last Speedtest"
     source: speedtest.simple_summary
     padding: [2, 6]
-    font_size: 22
+    font_size: auto
     color: "#b3b9c5"
 
   mascot:
@@ -252,6 +252,6 @@ widgets:
     source: outside_temp_f
     unit: "F"
     precision: 1
-    font_size: 30
+    font_size: auto
     color: "#22cc88"
     padding: [2, 6]

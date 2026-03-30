@@ -142,8 +142,8 @@ Quick example:
 
 ```yaml
 name: simple_stats
-width: 800
-height: 480
+aspect_ratio: "5:3"
+layout_mode: fit
 background: "#1a1a2e"
 refresh_rate: 2.0
 
@@ -291,9 +291,18 @@ plan-relative percentages, status, and summary text.
 ### systemd
 
 ```bash
-sudo deploy/install/install.sh   # copies service file, enables + starts
+sudo ./deploy/install/install.sh
 sudo systemctl status casedd
+sudo ./deploy/install/uninstall.sh
 ```
+
+Notes:
+- The installer uses the clone you run it from; it does not copy the repo into `/opt`.
+- It creates or updates the repo-local `.venv`, installs `/etc/casedd/casedd.env` if needed, and
+  renders `/etc/systemd/system/casedd.service` with the current repo path.
+- If you move the repository later, rerun `sudo ./deploy/install/install.sh` from the new path.
+- Uninstall preserves `/etc/casedd/casedd.env`, logs, and the repo `.venv` by default. Use
+  `sudo ./deploy/install/uninstall.sh --purge-env --purge-logs --remove-venv` for a full cleanup.
 
 ### Docker Compose
 
@@ -360,6 +369,7 @@ Speedtest polling and threshold behavior can be tuned via environment variables:
 
 ```bash
 CASEDD_SPEEDTEST_INTERVAL=1800
+CASEDD_SPEEDTEST_STARTUP_DELAY=0
 CASEDD_SPEEDTEST_BINARY=speedtest
 CASEDD_SPEEDTEST_ADVERTISED_DOWN_MBPS=2000
 CASEDD_SPEEDTEST_ADVERTISED_UP_MBPS=200
@@ -371,6 +381,54 @@ CASEDD_OLLAMA_TIMEOUT=3
 CASEDD_UPS_COMMAND=
 CASEDD_UPS_INTERVAL=5
 CASEDD_UPS_UPSC_TARGET=ups@localhost
+```
+
+Notes:
+- `CASEDD_SPEEDTEST_STARTUP_DELAY` delays the first speedtest after startup.
+  Set this to `60`-`300` in production to avoid startup-time network/CPU spikes.
+
+## Framebuffer performance and debug flags
+
+```bash
+CASEDD_FB_DEVICE=/dev/fb0
+CASEDD_FB_ROTATION=0
+CASEDD_FB_CLAIM_ON_NO_INPUT=1
+CASEDD_DEBUG_FRAME_LOGS=0
+CASEDD_LOG_LEVEL=INFO
+CASEDD_STARTUP_FRAME_SECONDS=5
+```
+
+Notes:
+- Keep `CASEDD_DEBUG_FRAME_LOGS=0` for production; enable only while debugging.
+- `CASEDD_FB_CLAIM_ON_NO_INPUT=1` enables inputless display takeover behavior.
+- `CASEDD_FB_ROTATION` supports `0`, `90`, `180`, `270`.
+- `CASEDD_STARTUP_FRAME_SECONDS` keeps a startup status frame on screen while getters warm up before live data rendering begins.
+
+## Dev vs production
+
+- The production systemd service in `deploy/casedd.service` forces:
+  - `CASEDD_LOG_LEVEL=NONE`
+  - `CASEDD_DEBUG_FRAME_LOGS=0`
+  - framebuffer output enabled
+- `deploy/casedd.service` is a template; `deploy/install/install.sh` renders it with the current
+  clone path and selected service user.
+- `./dev.sh` forces a development profile:
+  - `CASEDD_DEV_LOG_LEVEL=DEBUG` by default
+  - `CASEDD_DEV_DEBUG_FRAME_LOGS=1` by default
+  - `CASEDD_DEV_NO_FB=1` by default so iteration happens in the web UI, not on the real framebuffer
+  - if `casedd.service` is already active, dev mode automatically isolates itself by:
+    - forcing `CASEDD_NO_FB=1`
+    - switching to `CASEDD_DEV_HTTP_PORT` (default `18080`)
+    - switching to `CASEDD_DEV_WS_PORT` (default `18765`)
+
+You can override dev behavior with:
+
+```bash
+CASEDD_DEV_LOG_LEVEL=INFO
+CASEDD_DEV_DEBUG_FRAME_LOGS=0
+CASEDD_DEV_NO_FB=0
+CASEDD_DEV_HTTP_PORT=18080
+CASEDD_DEV_WS_PORT=18765
 ```
 
 ## Template rotation, schedule, and triggers

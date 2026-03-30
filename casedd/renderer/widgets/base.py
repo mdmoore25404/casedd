@@ -10,11 +10,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from casedd.data_store import DataStore, StoreValue
 from casedd.renderer.color import RGBTuple, parse_color
-from casedd.renderer.fonts import fit_font, get_font
+from casedd.renderer.fonts import fit_font
 from casedd.template.grid import Rect
 from casedd.template.models import BorderStyle, WidgetConfig
 
@@ -75,7 +75,7 @@ def draw_label(
     rect: Rect,
     label: str,
     color: RGBTuple,
-    label_size: int = 11,
+    label_size: int | None = None,
 ) -> int:
     """Draw a small label string at the top edge of ``rect``.
 
@@ -84,18 +84,60 @@ def draw_label(
         rect: Bounding box for the widget.
         label: Label text to draw.
         color: Label text color.
-        label_size: Font size for the label (default: 11).
+        label_size: Optional explicit minimum font size for the label.
 
     Returns:
         Height of the label in pixels (so callers can reduce available height).
     """
-    font = get_font(label_size)
+    label_max_h = max(12, min(42, rect.h // 8))
+    label_min_size = 11 if label_size is None else max(8, label_size)
+    font = fit_font(
+        label,
+        max(1, rect.w - 8),
+        label_max_h,
+        min_size=min(label_min_size, label_max_h),
+        max_size=max(label_min_size, label_max_h),
+    )
     bbox = font.getbbox(label)
     lw = bbox[2] - bbox[0]
     lh = bbox[3] - bbox[1]
     x = rect.x + (rect.w - lw) // 2  # horizontally centered
-    draw.text((x, rect.y + 2), label, fill=color, font=font)
-    return int(lh) + 4  # 2px top padding + 2px bottom gap
+    top_pad = max(2, label_max_h // 8)
+    bottom_gap = max(2, label_max_h // 8)
+    draw.text((x, rect.y + top_pad), label, fill=color, font=font)
+    return int(lh) + top_pad + bottom_gap
+
+
+def choose_font_for_box(
+    text: str,
+    max_w: int,
+    max_h: int,
+    font_size: int | str,
+    *,
+    min_size: int = 8,
+) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    """Choose the largest font that fits a bounding box.
+
+    Numeric ``font_size`` values are treated as a minimum preferred size,
+    allowing responsive up-scaling on larger outputs while still respecting a
+    floor for smaller layouts.
+
+    Args:
+        text: Text to fit.
+        max_w: Maximum box width in pixels.
+        max_h: Maximum box height in pixels.
+        font_size: Requested size or ``"auto"``.
+        min_size: Smallest allowed font size.
+
+    Returns:
+        A PIL font object sized to fit the box.
+    """
+    safe_w = max(1, max_w)
+    safe_h = max(1, max_h)
+    lower = min_size if font_size == "auto" else max(min_size, int(font_size))
+    lower = min(lower, safe_h)
+    upper = max(lower, safe_h)
+    return fit_font(text, safe_w, safe_h, min_size=lower, max_size=upper)
 
 
 def draw_value_text(  # noqa: PLR0913 — helper genuinely needs all parameters; a config dataclass would add ceremony without benefit
@@ -119,10 +161,13 @@ def draw_value_text(  # noqa: PLR0913 — helper genuinely needs all parameters;
     available_h = rect.h - label_offset
     available_w = rect.w - 8  # 4px left + 4px right padding
 
-    if font_size == "auto":
-        font = fit_font(text, available_w, available_h - 4)
-    else:
-        font = get_font(int(font_size))
+    font = choose_font_for_box(
+        text,
+        available_w,
+        max(1, available_h - 4),
+        font_size,
+        min_size=10,
+    )
 
     bbox = font.getbbox(text)
     tw = bbox[2] - bbox[0]
