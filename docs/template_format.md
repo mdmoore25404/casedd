@@ -353,6 +353,50 @@ logo:
 
 Additional fields: `path` (string, required), `scale` (`fit`|`fill`|`stretch`)
 
+#### Metric-driven image selection (`tiers`)
+
+The `image` widget can automatically swap its image based on live data-store
+values.  This is useful for mascot images or status icons that should escalate
+visually as load increases.
+
+```yaml
+mascot:
+  type: image
+  path: assets/mascot-calm.png     # shown when no tier fires
+  scale: fit
+  tiers:
+    - path: assets/mascot-stressed.png
+      when:
+        - { source: cpu.percent,    operator: gte, value: 50 }
+        - { source: memory.percent, operator: gte, value: 60 }
+    - path: assets/mascot-angry.png
+      when:
+        - { source: cpu.percent,    operator: gte, value: 75 }
+        - { source: memory.percent, operator: gte, value: 82 }
+    - path: assets/mascot-fire.png
+      when:
+        - { source: cpu.percent,    operator: gte, value: 90 }
+        - { source: memory.percent, operator: gte, value: 92 }
+```
+
+**Evaluation rules:**
+
+- Tiers are listed in **ascending severity** (lowest first).
+- The engine evaluates from **highest tier to lowest**; the first matching tier wins.
+- Within a tier's `when` list, semantics are **OR** — any single condition firing
+  is enough to activate that tier.
+- A data key **absent from the store** evaluates to `False` — the tier stays
+  inactive until data arrives.
+- The base `path` is used when **no tier fires** (calm / idle state).
+
+**`tiers[].when` condition fields:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `source` | string | required | Dotted data-store key (e.g. `cpu.percent`) |
+| `operator` | string | `gte` | `gt`, `gte`, `lt`, `lte`, `eq`, `neq` |
+| `value` | number \| string | `0` | Threshold to compare against |
+
 ---
 
 ### `slideshow`

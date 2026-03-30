@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 import re
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -118,6 +119,43 @@ class GridConfig(BaseModel):
     rows: str = "1fr"
 
 
+class ImageTierCondition(BaseModel):
+    """One condition for metric-driven image tier selection.
+
+    The condition fires when the named data-store key satisfies the comparison.
+    A missing key evaluates to ``False`` (the tier stays inactive).
+
+    Attributes:
+        source: Dotted data-store key to inspect (e.g. ``cpu.percent``).
+        operator: Comparison operator; default ``gte`` (≥) suits threshold checks.
+        value: Numeric or string threshold to compare against.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source: str
+    operator: Literal["gt", "gte", "lt", "lte", "eq", "neq"] = "gte"
+    value: float | int | str = 0.0
+
+
+class ImageTier(BaseModel):
+    """One image tier for metric-driven image selection.
+
+    A tier is active when **any** condition in ``when`` fires (OR semantics).
+    Tiers are listed in ascending order of severity; the highest-matching tier
+    wins.  The base ``path`` on the parent widget is shown when no tier fires.
+
+    Attributes:
+        path: File path of the image to display when this tier is active.
+        when: Conditions evaluated with OR semantics; one match activates the tier.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str
+    when: list[ImageTierCondition]
+
+
 class WidgetConfig(BaseModel):
     """Configuration for a single widget.
 
@@ -139,6 +177,9 @@ class WidgetConfig(BaseModel):
         max: Maximum value for ranged widgets.
         color_stops: Gradient color stops as list of [threshold, color].
         path: File path for image widget.
+        tiers: Metric-driven image tiers for the image widget.  Listed in
+            ascending severity; the highest matching tier's image is shown.
+            Falls back to ``path`` when no tier fires.
         paths: List of file/dir paths for slideshow widget.
         scale: Image scale mode.
         interval: Slideshow seconds per image.
@@ -192,6 +233,7 @@ class WidgetConfig(BaseModel):
 
     # Image widget
     path: str | None = None
+    tiers: list[ImageTier] = Field(default_factory=list)
     scale: ScaleMode = ScaleMode.FIT
     zoom: float = Field(default=1.0, ge=1.0, le=8.0)
 
