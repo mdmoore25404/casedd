@@ -99,6 +99,9 @@ class TemplateTriggerRule(BaseModel):
         notify: Send a Pushover webhook notification when this trigger activates.
         notify_title: Optional custom notification title (default: source key name).
         notify_message: Optional custom notification body (default: auto-generated).
+        disabled: When true the rule is parsed but never evaluated.  Use this
+            to temporarily suppress a trigger without removing it from the
+            config file.
     """
 
     model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
@@ -116,6 +119,7 @@ class TemplateTriggerRule(BaseModel):
     notify: bool = False
     notify_title: str | None = None
     notify_message: str | None = None
+    disabled: bool = False
 
     @model_validator(mode="after")
     def _validate_clear_rule(self) -> "TemplateTriggerRule":
@@ -287,6 +291,11 @@ class Config:
         template_rotation_interval: Seconds spent on each rotated template.
         template_schedule: Local-time schedule rules overriding rotation.
         template_triggers: Data-value trigger rules overriding schedule/rotation.
+        trigger_border_color: Border color painted around trigger-held frames.
+            Any CSS color string accepted by the renderer (hex, named, rgb()).
+            Defaults to bright red (``"#dc1e1e"``).  Override if red is not
+            accessible for your display environment (e.g. ``"#ff00ff"`` for
+            magenta / fuchsia).
         panels: Optional per-panel output/runtime definitions.
         always_collect_prefixes: Namespaces that are always sampled.
         pushover_webhook_url: Pushover webhook URL for trigger notifications.
@@ -356,6 +365,7 @@ class Config:
     template_rotation_interval: float = Field(default=30.0)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
+    trigger_border_color: str = Field(default="#dc1e1e")
     panels: list[PanelConfig] = Field(default_factory=list)
     always_collect_prefixes: list[str] = Field(default_factory=list)
     test_mode: bool = Field(default=False)
@@ -820,6 +830,9 @@ def load_config() -> Config:
         template_triggers=cast(
             "list[TemplateTriggerRule]",
             _get_yaml_list("template_triggers"),
+        ),
+        trigger_border_color=str(
+            _get("CASEDD_TRIGGER_BORDER_COLOR", "trigger_border_color", "#dc1e1e")
         ),
         panels=cast("list[PanelConfig]", _get_yaml_list("panels")),
         always_collect_prefixes=_get_always_collect_prefixes(),

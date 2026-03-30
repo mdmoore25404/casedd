@@ -98,7 +98,9 @@ class TemplateSelector:
 
         self._schedule_rules = schedule_rules
         indexed_triggers = [
-            _IndexedTrigger(index=i, rule=rule) for i, rule in enumerate(trigger_rules)
+            _IndexedTrigger(index=i, rule=rule)
+            for i, rule in enumerate(trigger_rules)
+            if not rule.disabled
         ]
         self._triggers = sorted(
             indexed_triggers,

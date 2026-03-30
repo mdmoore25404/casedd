@@ -57,6 +57,7 @@ from casedd.notifications.pushover import send_pushover_webhook
 from casedd.outputs.framebuffer import FramebufferOutput
 from casedd.outputs.http_viewer import HttpViewerOutput
 from casedd.outputs.websocket import WebSocketOutput
+from casedd.renderer.color import parse_color
 from casedd.renderer.engine import RenderEngine
 from casedd.renderer.fonts import get_font
 from casedd.template.models import Template, WidgetConfig
@@ -83,22 +84,25 @@ _ROTATION_STATE_DIR = Path("run")
 
 # Visual indicator painted over trigger-held frames so the viewer knows
 # the template is being forced by an out-of-spec condition.
-_TRIGGER_BORDER_COLOR: tuple[int, int, int] = (220, 30, 30)  # bright red
 _TRIGGER_BORDER_WIDTH: int = 6
 
 
-def _draw_trigger_border(image: Image.Image) -> None:
-    """Paint a red border on *image* in-place to flag trigger-held frames.
+def _draw_trigger_border(
+    image: Image.Image,
+    color: tuple[int, int, int],
+) -> None:
+    """Paint a colored border on *image* in-place to flag trigger-held frames.
 
     Args:
         image: The PIL RGB image to annotate.  Modified in place.
+        color: Border color as an ``(r, g, b)`` tuple.
     """
     w, h = image.size
     draw = ImageDraw.Draw(image)
     for offset in range(_TRIGGER_BORDER_WIDTH):
         draw.rectangle(
             (offset, offset, w - 1 - offset, h - 1 - offset),
-            outline=_TRIGGER_BORDER_COLOR,
+            outline=color,
         )
 
 
@@ -780,7 +784,8 @@ class Daemon:
                     continue
 
                 if panel.selector.is_trigger_held:
-                    await asyncio.to_thread(_draw_trigger_border, image)
+                    border_color = parse_color(self._cfg.trigger_border_color)
+                    await asyncio.to_thread(_draw_trigger_border, image, border_color)
 
                 await asyncio.to_thread(panel.framebuffer.write, image)
                 context.http_output.set_latest_image(panel.name, image)
@@ -932,6 +937,14 @@ class Daemon:
             template_names.update(e.template for e in panel.rotation_entries)
             template_names.update(rule.template for rule in panel.schedule_rules)
             template_names.update(rule.template for rule in panel.trigger_rules)
+
+            # The trigger condition source (e.g. "nvidia.percent") needs its
+            # getter running even when that namespace isn't used by the target
+            # template's widgets (e.g. a cpu.temperature trigger → apod template).
+            for rule in panel.trigger_rules:
+                getter_name = self._getter_name_for_source(rule.source)
+                if getter_name is not None:
+                    names.add(getter_name)
 
             forced = self._store.get(f"{_TEMPLATE_FORCE_PREFIX}{panel.name}")
             if isinstance(forced, str) and forced.strip() and forced.strip().lower() != "auto":

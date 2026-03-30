@@ -476,3 +476,109 @@ color_stops:
 | `system.load_1` | float | 1-minute load average |
 
 External data pushed via Unix socket or REST POST uses the same dotted key namespace.
+
+---
+
+## Template triggers (casedd.yaml)
+
+Trigger rules are defined in `casedd.yaml` (not inside `.casedd` template files).
+When a trigger activates, CASEDD switches to the target template and draws an
+alert border around the frame to indicate the forced condition.
+
+### Trigger rule fields
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `source` | string | yes | — | Dotted data-store key to watch (e.g. `cpu.percent`) |
+| `operator` | string | no | `gte` | Comparison: `gt`, `gte`, `lt`, `lte`, `eq`, `neq` |
+| `value` | number/string | yes | — | Threshold to compare against |
+| `template` | string | yes | — | Template to activate when condition is met |
+| `duration` | float | no | `0` | Seconds condition must stay true before activating |
+| `hold_for` | float | no | `0` | Minimum seconds to keep template active once triggered |
+| `clear_operator` | string | no | — | Explicit operator for the clear condition (must set together with `clear_value`) |
+| `clear_value` | number | no | — | Threshold to release the trigger (default: inverts the activate condition) |
+| `cooldown` | float | no | `0` | Seconds before the same rule may fire again after clearing |
+| `priority` | int 0–1000 | no | `100` | Lower = higher priority; wins when multiple triggers fire at once |
+| `notify` | bool | no | `false` | Send a Pushover notification when the trigger first activates |
+| `notify_title` | string | no | auto | Custom notification title |
+| `notify_message` | string | no | auto | Custom notification body |
+| `disabled` | bool | no | `false` | When `true`, rule is ignored without being deleted — use to toggle rules temporarily |
+
+### OR-logic (multiple rules → same template)
+
+Defining multiple rules that all target the same `template` creates OR semantics:
+any one rule activating switches to that template. Each rule manages its own
+`hold_for` / `clear` / `cooldown` state independently.
+
+```yaml
+# Any of these three conditions activates the nvidia_detail view.
+template_triggers:
+  - source: nvidia.percent
+    operator: gte
+    value: 50
+    template: nvidia_detail
+    duration: 5
+    hold_for: 30
+    clear_operator: lt
+    clear_value: 40
+    cooldown: 60
+    priority: 10
+
+  - source: nvidia.memory_percent
+    operator: gte
+    value: 90
+    template: nvidia_detail
+    duration: 5
+    hold_for: 30
+    clear_operator: lt
+    clear_value: 80
+    cooldown: 60
+    priority: 10
+
+  - source: nvidia.temperature
+    operator: gte
+    value: 80
+    template: nvidia_detail
+    duration: 5
+    hold_for: 30
+    clear_operator: lt
+    clear_value: 70
+    cooldown: 60
+    priority: 10
+    # Disable this individual rule without removing it:
+    disabled: true
+```
+
+### Disabling a trigger rule
+
+Set `disabled: true` on any rule to pause it without deleting the config entry.
+Useful when debugging, testing, or temporarily suppressing a noisy trigger:
+
+```yaml
+template_triggers:
+  - source: cpu.percent
+    operator: gte
+    value: 80
+    template: htop
+    hold_for: 20
+    cooldown: 60
+    priority: 10
+    disabled: true   # paused — rule is validated but never evaluated
+```
+
+### Alert border color
+
+When a trigger holds the display, CASEDD draws a border around the frame.
+Configure the color globally in `casedd.yaml`:
+
+```yaml
+# Default: bright red.  Any CSS color string is accepted.
+trigger_border_color: "#dc1e1e"
+
+# Alternatives:
+# trigger_border_color: "#ff00ff"   # magenta / fuchsia (red-green colorblind safe)
+# trigger_border_color: "#ff8c00"   # dark orange
+# trigger_border_color: "rgb(0, 180, 255)"  # bright blue
+```
+
+The environment variable `CASEDD_TRIGGER_BORDER_COLOR` is also supported.
