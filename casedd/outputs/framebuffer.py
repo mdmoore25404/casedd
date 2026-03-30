@@ -19,11 +19,30 @@ from __future__ import annotations
 import logging
 import mmap
 from pathlib import Path
+import re
 import struct
 
 from PIL import Image
 
 _log = logging.getLogger(__name__)
+
+# Framebuffer mode string pattern: TYPE:WxH[p|i]-HZ, e.g. "U:800x480p-60".
+_MODE_RE = re.compile(r"^[A-Z]:(\d+)x(\d+)[pi]-(\d+(?:\.\d+)?)$")
+
+
+def _read_sysfs_str(path: Path) -> str | None:
+    """Read text from a sysfs pseudo-file.
+
+    Args:
+        path: Sysfs file path.
+
+    Returns:
+        Stripped text, or ``None`` on any read error.
+    """
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
 
 
 def _read_sysfs_int(path: Path, default: int) -> int:
@@ -36,10 +55,34 @@ def _read_sysfs_int(path: Path, default: int) -> int:
     Returns:
         The integer value, or ``default`` on any error.
     """
-    try:
-        return int(path.read_text(encoding="utf-8").strip())
-    except (OSError, ValueError):
+    raw = _read_sysfs_str(path)
+    if raw is None:
         return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+def _parse_fb_modes(sysfs_fb: Path) -> tuple[list[str], list[float]]:
+    """Parse supported video modes from the sysfs ``modes`` file.
+
+    Args:
+        sysfs_fb: Sysfs directory for the framebuffer device.
+
+    Returns:
+        Tuple of (list of raw mode strings, sorted list of Hz values).
+    """
+    raw = _read_sysfs_str(sysfs_fb / "modes")
+    if not raw:
+        return [], []
+    modes = [line.strip() for line in raw.splitlines() if line.strip()]
+    hz_set: set[float] = set()
+    for mode in modes:
+        m = _MODE_RE.match(mode)
+        if m:
+            hz_set.add(float(m.group(3)))
+    return modes, sorted(hz_set)
 
 
 class FramebufferOutput:
@@ -52,7 +95,7 @@ class FramebufferOutput:
         disabled: When ``True``, all write calls are silent no-ops.
     """
 
-    def __init__(self, device: Path, *, disabled: bool = False) -> None:
+    def __init__(self, device: Path, *, disabled: bool = False, rotation: int = 0) -> None:
         """Initialise the framebuffer output.
 
         Probes device availability and pixel format. If the device is not
@@ -64,6 +107,10 @@ class FramebufferOutput:
         """
         self._device = device
         self._enabled = False
+        # Initialised to empty; populated when the device is successfully opened.
+        self._supported_modes: list[str] = []
+        self._supported_hz: list[float] = []
+        self._rotation = int(rotation) if rotation is not None else 0
 
         if disabled:
             _log.info("Framebuffer output disabled (CASEDD_NO_FB=1).")
@@ -96,11 +143,42 @@ class FramebufferOutput:
         self._bytes_per_pixel = self._bpp // 8
         self._frame_size = fb_w * fb_h * self._bytes_per_pixel
 
+        self._supported_modes, self._supported_hz = _parse_fb_modes(sysfs_base)
+
         _log.info(
             "Framebuffer: %s %dx%d %dbpp (%d bytes/frame)",
             device, fb_w, fb_h, self._bpp, self._frame_size,
         )
+        if self._supported_modes:
+            _log.info(
+                "Framebuffer modes: %s",
+                ", ".join(self._supported_modes),
+            )
+        if self._supported_hz:
+            hz_str = ", ".join(f"{h:.0f} Hz" for h in self._supported_hz)
+            _log.info("Framebuffer supported refresh rates: %s", hz_str)
         self._enabled = True
+
+    @property
+    def supported_modes(self) -> list[str]:
+        """Supported video mode strings as reported by sysfs.
+
+        Returns:
+            List of mode strings (e.g. ``["U:800x480p-60"]``), or an
+            empty list when the framebuffer is disabled or modes are not
+            advertised by the driver.
+        """
+        return list(self._supported_modes)
+
+    @property
+    def supported_hz(self) -> list[float]:
+        """Supported refresh rates in Hz, sorted ascending.
+
+        Returns:
+            List of distinct Hz values parsed from ``supported_modes``,
+            or an empty list when unavailable.
+        """
+        return list(self._supported_hz)
 
     def write(self, image: Image.Image) -> None:
         """Write a PIL image to the framebuffer.
@@ -115,7 +193,17 @@ class FramebufferOutput:
             return
 
         try:
-            self._write_unsafe(image)
+            # Apply rotation if required before writing. Use transpose for
+            # 90/180/270-degree rotations to preserve pixel integrity.
+            img = image
+            if self._rotation in (90, 180, 270):
+                if self._rotation == 90:
+                    img = img.transpose(Image.Transpose.ROTATE_90)
+                elif self._rotation == 180:
+                    img = img.transpose(Image.Transpose.ROTATE_180)
+                elif self._rotation == 270:
+                    img = img.transpose(Image.Transpose.ROTATE_270)
+            self._write_unsafe(img)
         except OSError as exc:
             _log.error("Framebuffer write error: %s — disabling output.", exc)
             self._enabled = False
@@ -131,7 +219,11 @@ class FramebufferOutput:
 
         # Resize to match framebuffer resolution if needed
         if img.size != (self._fb_w, self._fb_h):
-            img = img.resize((self._fb_w, self._fb_h), Image.LANCZOS)  # type: ignore[attr-defined]
+            # Prefer a faster resampler than LANCZOS for real-time dashboards.
+            img = img.resize(
+                (self._fb_w, self._fb_h),
+                Image.Resampling.BILINEAR,
+            )
 
         raw_bytes = self._rgb_to_rgb565(img) if self._bpp == 16 else self._rgb_to_xrgb8888(img)
 
@@ -178,10 +270,6 @@ class FramebufferOutput:
         Returns:
             Raw bytes suitable for writing to a 32-bpp framebuffer.
         """
-        pixels: list[tuple[int, int, int]] = list(img.getdata())
-        buf = bytearray(len(pixels) * 4)
-        offset = 0
-        for r, g, b in pixels:
-            struct.pack_into("<BBBB", buf, offset, b, g, r, 0xFF)
-            offset += 4
-        return bytes(buf)
+        # Use Pillow's C-level raw exporter instead of a Python pixel loop.
+        # This is significantly faster for large framebuffers (e.g. 4K).
+        return img.tobytes("raw", "BGRX")

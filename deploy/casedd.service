@@ -5,18 +5,21 @@ After=network.target
 
 [Service]
 Type=simple
-User=casedd
-Group=video
-WorkingDirectory=/opt/casedd
+User=@CASEDD_USER@
+SupplementaryGroups=video
+WorkingDirectory=@CASEDD_REPO_ROOT@
 EnvironmentFile=/etc/casedd/casedd.env
-ExecStart=/opt/casedd/.venv/bin/python -m casedd
+Environment=CASEDD_LOG_LEVEL=NONE
+Environment=CASEDD_DEBUG_FRAME_LOGS=0
+Environment=CASEDD_NO_FB=0
+ExecStart=@CASEDD_REPO_ROOT@/.venv/bin/python -m casedd
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5s
 
-# Logging — systemd captures stdout/stderr; casedd also writes its own log file
-StandardOutput=journal
-StandardError=journal
+# Production profile: no runtime logging for maximum performance.
+StandardOutput=null
+StandardError=null
 SyslogIdentifier=casedd
 
 # Runtime directory for the Unix socket
@@ -27,7 +30,7 @@ RuntimeDirectoryMode=0750
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/var/log/casedd /run/casedd
+ReadWritePaths=@CASEDD_REPO_ROOT@/run @CASEDD_REPO_ROOT@/logs /var/log/casedd /run/casedd
 CapabilityBoundingSet=
 
 [Install]

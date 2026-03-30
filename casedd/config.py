@@ -159,6 +159,16 @@ class PanelConfig(BaseModel):
     template_rotation_interval: float | None = Field(default=None, gt=0)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
+    rotation: int | None = None
+
+    @field_validator("rotation")
+    @classmethod
+    def _validate_rotation(cls, v: int | None) -> int | None:
+        if v is None:
+            return None
+        if int(v) not in {0, 90, 180, 270}:
+            raise ValueError("rotation must be one of 0, 90, 180, 270")
+        return int(v)
 
 
 @dataclass(config=ConfigDict(frozen=True))
@@ -166,13 +176,21 @@ class Config:
     """Daemon-wide configuration.
 
     Attributes:
-        log_level: Logging verbosity (DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        log_level: Logging verbosity (NONE, DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        debug_frame_logs: Enable per-frame renderer debug logs (hot path);
+            defaults to ``False`` to avoid unnecessary CPU/log overhead.
         no_fb: Disable framebuffer output entirely (dev / no-hardware mode).
         fb_device: Path to the framebuffer device file.
+        fb_auto_detect: Scan for USB framebuffer displays at startup; uses the
+            first detected USB display when the configured ``fb_device`` is
+            absent.  Resolution is derived from the display when not explicitly
+            overridden via ``width`` / ``height``.
         ws_port: WebSocket server port.
         http_port: HTTP viewer / API port.
         socket_path: Unix domain socket path for JSON data-write pushes.
         template: Active template name (no extension; relative to ``templates/``).
+        startup_frame_seconds: Seconds to display the startup splash before
+            normal rendering begins, allowing getters time to populate data.
         refresh_rate: Render frequency in Hz.
         width: Canvas width in pixels.
         height: Canvas height in pixels.
@@ -182,6 +200,7 @@ class Config:
         disk_mount: Filesystem mount point to monitor for disk metrics.
         viewer_bg: Default browser viewer page background color.
         speedtest_interval: Interval between speed tests in seconds.
+        speedtest_startup_delay: Delay before first speed test run in seconds.
         speedtest_advertised_down_mbps: Advertised download speed in Mb/s.
         speedtest_advertised_up_mbps: Advertised upload speed in Mb/s.
         speedtest_reference_down_mbps: Optional effective downlink baseline in Mb/s.
@@ -218,12 +237,20 @@ class Config:
     """
 
     log_level: str = Field(default="INFO")
+    debug_frame_logs: bool = Field(default=False)
     no_fb: bool = Field(default=False)
     fb_device: Path = Field(default=Path("/dev/fb1"))
+    fb_auto_detect: bool = Field(default=False)
+    fb_rotation: int = Field(default=0)
+    # When true, CASEDD will claim the primary display at startup if no local
+    # keyboard or mouse is attached. This avoids taking over a user's login
+    # monitor when local input is present.
+    fb_claim_on_no_input: bool = Field(default=False)
     ws_port: int = Field(default=8765)
     http_port: int = Field(default=8080)
     socket_path: Path = Field(default=Path("/run/casedd/casedd.sock"))
     template: str = Field(default="system_stats")
+    startup_frame_seconds: float = Field(default=5.0)
     refresh_rate: float = Field(default=2.0)
     width: int = Field(default=800)
     height: int = Field(default=480)
@@ -233,6 +260,7 @@ class Config:
     disk_mount: str = Field(default="/")
     viewer_bg: str = Field(default="#0d0f12")
     speedtest_interval: float = Field(default=1800.0)
+    speedtest_startup_delay: float = Field(default=0.0)
     speedtest_advertised_down_mbps: float = Field(default=2000.0)
     speedtest_advertised_up_mbps: float = Field(default=200.0)
     speedtest_reference_down_mbps: float | None = Field(default=None)
@@ -283,7 +311,7 @@ class Config:
         Raises:
             ValueError: If the level is not in the accepted set.
         """
-        valid = {"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
+        valid = {"NONE", "DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"}
         upper = v.upper()
         if upper not in valid:
             msg = f"Invalid log level '{v}'. Must be one of: {', '.join(sorted(valid))}"
@@ -309,6 +337,25 @@ class Config:
             raise ValueError(msg)
         return v
 
+    @field_validator("startup_frame_seconds")
+    @classmethod
+    def _validate_startup_frame_seconds(cls, v: float) -> float:
+        """Ensure startup splash duration is non-negative and sensible.
+
+        Args:
+            v: Startup splash duration in seconds.
+
+        Returns:
+            Validated duration.
+
+        Raises:
+            ValueError: If duration is outside accepted bounds.
+        """
+        if not (0.0 <= v <= 300.0):
+            msg = f"startup_frame_seconds must be between 0 and 300 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
     @field_validator("speedtest_interval")
     @classmethod
     def _validate_speedtest_interval(cls, v: float) -> float:
@@ -325,6 +372,25 @@ class Config:
         """
         if not (60.0 <= v <= 86400.0):
             msg = f"speedtest_interval must be between 60 and 86400 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("speedtest_startup_delay")
+    @classmethod
+    def _validate_speedtest_startup_delay(cls, v: float) -> float:
+        """Ensure startup delay is non-negative and practical.
+
+        Args:
+            v: Delay in seconds before first speedtest run.
+
+        Returns:
+            Validated delay.
+
+        Raises:
+            ValueError: If delay is outside accepted bounds.
+        """
+        if not (0.0 <= v <= 86400.0):
+            msg = f"speedtest_startup_delay must be between 0 and 86400 seconds, got {v}"
             raise ValueError(msg)
         return v
 
@@ -527,6 +593,13 @@ def load_config() -> Config:
             return None
         return float(raw)
 
+    def _get_int_with_blank_default(env_key: str, yaml_key: str, default: int) -> int:
+        """Parse an int, treating blank values as the provided default."""
+        raw = str(_get(env_key, yaml_key, default)).strip()
+        if not raw:
+            return default
+        return int(raw)
+
     def _get_rotation_templates() -> list[str]:
         """Parse template rotation list from env or YAML.
 
@@ -567,17 +640,30 @@ def load_config() -> Config:
 
     return Config(
         log_level=str(_get("CASEDD_LOG_LEVEL", "log_level", "INFO")),
+        debug_frame_logs=str(
+            _get("CASEDD_DEBUG_FRAME_LOGS", "debug_frame_logs", "0")
+        ) not in {"0", "false", "False", ""},
         no_fb=str(_get("CASEDD_NO_FB", "no_fb", "0")) not in {"0", "false", "False", ""},
         fb_device=Path(str(_get("CASEDD_FB_DEVICE", "fb_device", "/dev/fb1"))),
+        fb_auto_detect=str(
+            _get("CASEDD_FB_AUTO_DETECT", "fb_auto_detect", "0")
+        ) not in {"0", "false", "False", ""},
+        fb_rotation=_get_int_with_blank_default("CASEDD_FB_ROTATION", "fb_rotation", 0),
+        fb_claim_on_no_input=str(
+            _get("CASEDD_FB_CLAIM_ON_NO_INPUT", "fb_claim_on_no_input", "0")
+        ) not in {"0", "false", "False", ""},
         ws_port=int(str(_get("CASEDD_WS_PORT", "ws_port", 8765))),
         http_port=int(str(_get("CASEDD_HTTP_PORT", "http_port", 8080))),
         socket_path=Path(
             str(_get("CASEDD_SOCKET_PATH", "socket_path", "/run/casedd/casedd.sock"))
         ),
         template=str(_get("CASEDD_TEMPLATE", "template", "system_stats")),
+        startup_frame_seconds=float(
+            str(_get("CASEDD_STARTUP_FRAME_SECONDS", "startup_frame_seconds", 5.0))
+        ),
         refresh_rate=float(str(_get("CASEDD_REFRESH_RATE", "refresh_rate", 2.0))),
-        width=int(str(_get("CASEDD_WIDTH", "width", 800))),
-        height=int(str(_get("CASEDD_HEIGHT", "height", 480))),
+        width=_get_int_with_blank_default("CASEDD_WIDTH", "width", 800),
+        height=_get_int_with_blank_default("CASEDD_HEIGHT", "height", 480),
         templates_dir=Path(str(_get("CASEDD_TEMPLATES_DIR", "templates_dir", "templates"))),
         assets_dir=Path(str(_get("CASEDD_ASSETS_DIR", "assets_dir", "assets"))),
         procfs_path=str(_get("CASEDD_PROCFS_PATH", "procfs_path", "/proc")),
@@ -585,6 +671,9 @@ def load_config() -> Config:
         viewer_bg=str(_get("CASEDD_VIEWER_BG", "viewer_bg", "#0d0f12")),
         speedtest_interval=float(
             str(_get("CASEDD_SPEEDTEST_INTERVAL", "speedtest_interval", 1800.0))
+        ),
+        speedtest_startup_delay=float(
+            str(_get("CASEDD_SPEEDTEST_STARTUP_DELAY", "speedtest_startup_delay", 0.0))
         ),
         speedtest_advertised_down_mbps=float(
             str(

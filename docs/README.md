@@ -133,8 +133,8 @@ Quick example:
 
 ```yaml
 name: simple_stats
-width: 800
-height: 480
+aspect_ratio: "5:3"
+layout_mode: fit
 background: "#1a1a2e"
 refresh_rate: 2.0
 
@@ -250,9 +250,16 @@ plan-relative percentages, status, and summary text.
 ### systemd
 
 ```bash
-sudo deploy/install/install.sh   # copies service file, enables + starts
+sudo ./deploy/install/install.sh
 sudo systemctl status casedd
+sudo ./deploy/install/uninstall.sh
 ```
+
+Notes:
+- The installer runs CASEDD directly from the current clone path instead of copying to `/opt`.
+- It preserves an existing `/etc/casedd/casedd.env` file and only installs the template once.
+- If the repo moves, rerun `sudo ./deploy/install/install.sh` from the new location.
+- Uninstall preserves config, logs, and `.venv` unless you pass purge flags.
 
 ### Docker Compose
 
@@ -290,6 +297,7 @@ Speedtest polling and threshold behavior can be tuned via environment variables:
 
 ```bash
 CASEDD_SPEEDTEST_INTERVAL=1800
+CASEDD_SPEEDTEST_STARTUP_DELAY=0
 CASEDD_SPEEDTEST_BINARY=speedtest
 CASEDD_SPEEDTEST_ADVERTISED_DOWN_MBPS=2000
 CASEDD_SPEEDTEST_ADVERTISED_UP_MBPS=200
@@ -298,6 +306,48 @@ CASEDD_SPEEDTEST_CRITICAL_RATIO=0.7
 CASEDD_OLLAMA_API_BASE=http://localhost:11434
 CASEDD_OLLAMA_INTERVAL=10
 CASEDD_OLLAMA_TIMEOUT=3
+```
+
+Notes:
+- `CASEDD_SPEEDTEST_STARTUP_DELAY` delays the first speedtest after startup.
+  Set this to `60`-`300` in production to avoid startup-time network/CPU spikes.
+
+## Framebuffer performance and debug flags
+
+```bash
+CASEDD_FB_DEVICE=/dev/fb0
+CASEDD_FB_ROTATION=0
+CASEDD_FB_CLAIM_ON_NO_INPUT=1
+CASEDD_DEBUG_FRAME_LOGS=0
+CASEDD_LOG_LEVEL=INFO
+CASEDD_STARTUP_FRAME_SECONDS=5
+```
+
+Notes:
+- Keep `CASEDD_DEBUG_FRAME_LOGS=0` for production; enable only while debugging.
+- `CASEDD_FB_CLAIM_ON_NO_INPUT=1` enables inputless display takeover behavior.
+- `CASEDD_FB_ROTATION` supports `0`, `90`, `180`, `270`.
+- `CASEDD_STARTUP_FRAME_SECONDS` keeps a startup status frame on screen while getters warm up before live data rendering begins.
+
+## Dev vs production
+
+- The production systemd service in `deploy/casedd.service` forces:
+  - `CASEDD_LOG_LEVEL=NONE`
+  - `CASEDD_DEBUG_FRAME_LOGS=0`
+  - framebuffer output enabled
+- The install script renders the production unit from `deploy/casedd.service` using the live clone
+  path, so the checked-in unit file acts as a template.
+- `./dev.sh` forces a development profile:
+  - `CASEDD_DEV_LOG_LEVEL=DEBUG` by default
+  - `CASEDD_DEV_DEBUG_FRAME_LOGS=1` by default
+  - `CASEDD_DEV_NO_FB=1` by default so iteration happens in the web UI, not on the real framebuffer
+
+You can override dev behavior with:
+
+```bash
+CASEDD_DEV_LOG_LEVEL=INFO
+CASEDD_DEV_DEBUG_FRAME_LOGS=0
+CASEDD_DEV_NO_FB=0
 ```
 
 ## Template rotation, schedule, and triggers

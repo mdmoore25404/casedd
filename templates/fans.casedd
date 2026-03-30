@@ -4,8 +4,8 @@
 
 name: fans
 description: Fan telemetry for CPU, system/chassis, and GPU fans.
-width: 800
-height: 480
+aspect_ratio: "5:3"
+layout_mode: fit
 refresh_rate: 2.0
 
 grid:

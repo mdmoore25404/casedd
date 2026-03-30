@@ -53,11 +53,15 @@ class WeatherRadarWidget(BaseWidget):
         image_rect = Rect(inner.x + 2, inner.y + label_h + 2, inner.w - 4, inner.h - label_h - 6)
         image = self._get_cached_image(state, radar_image_url, zoom)
         if image is not None and image_rect.w > 10 and image_rect.h > 10:
-            fitted = image.copy()
-            fitted.thumbnail((image_rect.w, image_rect.h), Image.Resampling.LANCZOS)
-            x = image_rect.x + (image_rect.w - fitted.width) // 2
-            y = image_rect.y + (image_rect.h - fitted.height) // 2
-            img.paste(fitted.convert("RGB"), (x, y))
+            src_w, src_h = image.size
+            if src_w > 0 and src_h > 0:
+                scale = min(image_rect.w / src_w, image_rect.h / src_h)
+                out_w = max(1, int(src_w * scale))
+                out_h = max(1, int(src_h * scale))
+                fitted = image.resize((out_w, out_h), Image.Resampling.LANCZOS)
+                x = image_rect.x + (image_rect.w - out_w) // 2
+                y = image_rect.y + (image_rect.h - out_h) // 2
+                img.paste(fitted.convert("RGB"), (x, y))
         else:
             fallback = radar_station if radar_station else "Radar image unavailable"
             font = fit_font(fallback, max(20, image_rect.w - 8), max(16, image_rect.h - 8))

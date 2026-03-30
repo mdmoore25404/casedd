@@ -5,8 +5,8 @@
 
 name: push_demo
 description: Demo template for testing /update push ingestion from browser or curl.
-width: 800
-height: 480
+aspect_ratio: "5:3"
+layout_mode: fit
 refresh_rate: 2.0
 
 grid:
@@ -24,7 +24,7 @@ widgets:
     type: text
     content: "Push Demo: update outside_temp_f and custom.note"
     color: "#d0d0d0"
-    font_size: 24
+    font_size: auto
     padding: [2, 10]
 
   outside:
@@ -34,7 +34,7 @@ widgets:
     unit: "F"
     precision: 1
     color: "#22cc88"
-    font_size: 68
+    font_size: auto
     padding: [2, 8]
 
   note:
@@ -42,14 +42,14 @@ widgets:
     label: Note
     source: custom.note
     color: "#ffcc66"
-    font_size: 30
+    font_size: auto
     padding: [6, 10]
 
   clock:
     type: clock
     format: "%H:%M:%S"
     color: "#ffffff"
-    font_size: 58
+    font_size: auto
     padding: [2, 8]
 
   mascot:

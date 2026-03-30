@@ -23,9 +23,9 @@ from PIL import Image, ImageDraw
 
 from casedd.data_store import DataStore
 from casedd.renderer.color import parse_color
-from casedd.renderer.fonts import get_font
 from casedd.renderer.widgets.base import (
     BaseWidget,
+    choose_font_for_box,
     content_rect,
     draw_label,
     fill_background,
@@ -188,7 +188,13 @@ class SparklineWidget(BaseWidget):
         current_str = f"{current_value:.{cfg.precision}f}"
         if cfg.unit:
             current_str = f"{current_str} {cfg.unit}"
-        font = get_font(max(9, area_h // 3))
+        font = choose_font_for_box(
+            current_str,
+            max(32, (area_w * 9) // 20),
+            max(12, area_h // 4),
+            "auto",
+            min_size=10,
+        )
         bbox = font.getbbox(current_str)
         tw = bbox[2] - bbox[0]
         draw.text((area_x + area_w - tw - 2, area_y + 2), current_str, fill=color, font=font)
@@ -278,7 +284,13 @@ class SparklineWidget(BaseWidget):
 
         if legend_parts:
             legend = "  ".join(legend_parts)
-            font = get_font(max(9, area_h // 4))
+            font = choose_font_for_box(
+                legend,
+                max(32, area_w - 4),
+                max(12, area_h // 6),
+                "auto",
+                min_size=10,
+            )
             draw.text((area_x + 2, area_y + 2), legend, fill=(210, 210, 210), font=font)
 
     def _series_color(self, cfg: WidgetConfig, idx: int) -> tuple[int, int, int]:

@@ -29,6 +29,33 @@ from casedd.getters.base import BaseGetter
 _log = logging.getLogger(__name__)
 _MB = 1024 * 1024
 _MEGABIT = 1_000_000
+_VIRTUAL_INTERFACE_PREFIXES = (
+    "lo",
+    "docker",
+    "br-",
+    "veth",
+    "virbr",
+    "vboxnet",
+    "vmnet",
+    "tap",
+    "tun",
+    "tailscale",
+    "zt",
+    "wg",
+)
+
+
+def _default_interface_names() -> list[str]:
+    """Choose likely host uplink interfaces when none are configured."""
+    selected: list[str] = []
+    for name, stats in psutil.net_if_stats().items():
+        lowered = name.lower()
+        if not stats.isup:
+            continue
+        if any(lowered.startswith(prefix) for prefix in _VIRTUAL_INTERFACE_PREFIXES):
+            continue
+        selected.append(name)
+    return sorted(selected)
 
 
 class NetworkGetter(BaseGetter):
@@ -60,14 +87,19 @@ class NetworkGetter(BaseGetter):
                 falls back to the psutil aggregate across all interfaces.
         """
         super().__init__(store, interval)
-        self._interfaces: list[str] = list(interfaces) if interfaces else []
+        self._interfaces: list[str] = (
+            list(interfaces) if interfaces else _default_interface_names()
+        )
         if self._interfaces:
             _log.info(
                 "Network getter monitoring interfaces: %s",
                 ", ".join(self._interfaces),
             )
         else:
-            _log.info("Network getter monitoring all interfaces (aggregate mode).")
+            _log.info(
+                "Network getter found no eligible physical interfaces; monitoring all "
+                "interfaces (aggregate mode)."
+            )
         recv, sent = self._read_counters()
         self._last_recv: int = recv
         self._last_sent: int = sent

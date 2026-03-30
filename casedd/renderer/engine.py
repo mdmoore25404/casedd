@@ -23,13 +23,46 @@ from casedd.data_store import DataStore
 from casedd.renderer.color import parse_color
 from casedd.renderer.widgets.base import draw_widget_border
 from casedd.renderer.widgets.registry import get_widget_renderer
-from casedd.template.grid import resolve_grid
+from casedd.template.grid import Rect, resolve_grid
 from casedd.template.models import Template
 
 _log = logging.getLogger(__name__)
 
 # Re-export so external code (panel.py historically) can import from here
 __all__ = ["RenderEngine", "get_widget_renderer"]
+
+
+def _parse_aspect_ratio(template: Template) -> float | None:
+    """Resolve the template's logical aspect ratio, if any."""
+    if template.aspect_ratio:
+        raw = template.aspect_ratio.strip()
+        if ":" in raw:
+            left_raw, right_raw = raw.split(":", maxsplit=1)
+            left = float(left_raw)
+            right = float(right_raw)
+            return left / right if right > 0 else None
+        ratio = float(raw)
+        return ratio if ratio > 0 else None
+
+    if template.width and template.height and template.height > 0:
+        return template.width / template.height
+    return None
+
+
+def _fit_layout_rect(canvas_w: int, canvas_h: int, aspect_ratio: float) -> Rect:
+    """Return a centered letterboxed rect that preserves aspect ratio."""
+    canvas_ratio = canvas_w / canvas_h if canvas_h > 0 else aspect_ratio
+    if canvas_ratio > aspect_ratio:
+        viewport_h = canvas_h
+        viewport_w = max(1, round(viewport_h * aspect_ratio))
+        viewport_x = (canvas_w - viewport_w) // 2
+        viewport_y = 0
+    else:
+        viewport_w = canvas_w
+        viewport_h = max(1, round(viewport_w / aspect_ratio))
+        viewport_x = 0
+        viewport_y = (canvas_h - viewport_h) // 2
+    return Rect(viewport_x, viewport_y, viewport_w, viewport_h)
 
 
 class RenderEngine:
@@ -44,19 +77,22 @@ class RenderEngine:
         height: Canvas height in pixels.
     """
 
-    def __init__(self, width: int, height: int) -> None:
+    def __init__(self, width: int, height: int, *, debug_frame_logs: bool = False) -> None:
         """Initialise the render engine.
 
         Args:
-            width: Canvas width in pixels (from config, not template — template
-                   may override per-render).
+            width: Canvas width in pixels. When non-zero, this is the effective
+                panel/output size and takes precedence over any template-embedded
+                dimensions.
             height: Canvas height in pixels.
         """
         self._default_w = width
         self._default_h = height
+        self._debug_frame_logs = debug_frame_logs
         # widget_name → mutable state dict (history buffers, cached images, etc.)
         self._widget_states: dict[str, dict[str, object]] = {}
         self._state_lock = threading.Lock()
+        self._frame_count = 0
 
     def render(self, template: Template, data: DataStore) -> Image.Image:
         """Render one frame.
@@ -69,24 +105,42 @@ class RenderEngine:
             data: The live data store snapshot to use for this frame.
 
         Returns:
-            A PIL ``Image`` in RGB mode at the template's canvas dimensions.
+            A PIL ``Image`` in RGB mode at the active panel/output dimensions.
         """
         with self._state_lock:
-            w = template.width or self._default_w
-            h = template.height or self._default_h
+            # The panel runtime owns the real output size. Template dimensions
+            # are design-time metadata and should only act as a fallback when
+            # the engine was not constructed with an explicit panel size.
+            w = self._default_w if self._default_w > 0 else (template.width or 800)
+            h = self._default_h if self._default_h > 0 else (template.height or 480)
 
             # Create a fresh canvas with the template background color
             bg_rgb = parse_color(template.background, fallback=(0, 0, 0))
             img = Image.new("RGB", (w, h), bg_rgb)
+
+            viewport = Rect(0, 0, w, h)
+            aspect_ratio = _parse_aspect_ratio(template)
+            if aspect_ratio is not None and template.layout_mode.value == "fit":
+                viewport = _fit_layout_rect(w, h, aspect_ratio)
 
             # Resolve the CSS grid to pixel rects for all top-level widgets
             rects = resolve_grid(
                 template_areas=template.grid.template_areas,
                 columns=template.grid.columns,
                 rows=template.grid.rows,
-                canvas_w=w,
-                canvas_h=h,
+                canvas_w=viewport.w,
+                canvas_h=viewport.h,
             )
+
+            rects = {
+                name: Rect(
+                    viewport.x + rect.x,
+                    viewport.y + rect.y,
+                    rect.w,
+                    rect.h,
+                )
+                for name, rect in rects.items()
+            }
 
             # Render each widget into its allocated rect
             for name, cfg in template.widgets.items():
@@ -107,7 +161,10 @@ class RenderEngine:
                 except Exception:
                     _log.exception("Widget '%s' (%s) raised during render:", name, cfg.type)
 
-        _log.debug("Rendered frame: %dx%d, %d widgets", w, h, len(template.widgets))
+        self._frame_count += 1
+        # Avoid per-frame log spam and overhead in long-running sessions.
+        if self._debug_frame_logs and self._frame_count % 120 == 0:
+            _log.debug("Rendered frame: %dx%d, %d widgets", w, h, len(template.widgets))
         return img
 
     def debug_state_snapshot(self) -> dict[str, object]:

@@ -2,8 +2,8 @@
 
 name: ups_status
 description: UPS status card using the built-in UPS widget.
-width: 800
-height: 480
+aspect_ratio: "5:3"
+layout_mode: fit
 refresh_rate: 2.0
 
 grid:

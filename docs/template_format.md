@@ -15,6 +15,14 @@ Format: YAML
 Templates live in the `templates/` directory. The active template is selected via
 `CASEDD_TEMPLATE` (environment variable or `casedd.yaml` config key).
 
+Templates are expected to scale to the current panel or framebuffer output.
+In normal runtime operation, canvas size comes from the active output device.
+`width` and `height` are legacy optional metadata only.
+
+If you want to preserve a design aspect ratio across mismatched displays, set
+`aspect_ratio` and `layout_mode: fit`. The layout will be centered and
+letterboxed inside the active output instead of being stretched.
+
 ---
 
 ## Top-level keys
@@ -23,8 +31,10 @@ Templates live in the `templates/` directory. The active template is selected vi
 |-----|------|----------|---------|-------------|
 | `name` | string | yes | — | Unique template name (must match filename without extension) |
 | `description` | string | no | `""` | Human-readable description |
-| `width` | int | no | 800 | Canvas width in pixels |
-| `height` | int | no | 480 | Canvas height in pixels |
+| `width` | int | no | — | Optional legacy design width; runtime normally uses the active output size |
+| `height` | int | no | — | Optional legacy design height; runtime normally uses the active output size |
+| `aspect_ratio` | string | no | — | Optional logical layout aspect ratio such as `5:3` or `1.777` |
+| `layout_mode` | string | no | `stretch` | `stretch` fills the output, `fit` letterboxes to preserve aspect ratio |
 | `background` | string | no | `"#000000"` | Canvas background color (hex, rgb(), or gradient — see Color section) |
 | `refresh_rate` | float | no | config default | Render frequency in Hz (frame rate) |
 | `grid` | Grid | yes | — | Layout definition (see Grid section) |

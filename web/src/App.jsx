@@ -1102,6 +1102,32 @@ export function App() {
                           }))
                         }
                       />
+                      <label className="form-label small">Layout mode</label>
+                      <select
+                        className="form-select form-select-sm mb-2"
+                        value={templateDoc.layout_mode || "stretch"}
+                        onChange={(event) =>
+                          updateTemplate((previous) => ({
+                            ...previous,
+                            layout_mode: event.target.value,
+                          }))
+                        }
+                      >
+                        <option value="stretch">stretch (fill output)</option>
+                        <option value="fit">fit (letterbox preserve ratio)</option>
+                      </select>
+                      <label className="form-label small">Aspect ratio</label>
+                      <input
+                        className="form-control form-control-sm mb-2 font-monospace"
+                        value={templateDoc.aspect_ratio || ""}
+                        placeholder="5:3 or 1.777"
+                        onChange={(event) =>
+                          updateTemplate((previous) => ({
+                            ...previous,
+                            aspect_ratio: event.target.value.trim() || null,
+                          }))
+                        }
+                      />
                       <div className="grid-syntax-help small text-body-secondary">
                         <div className="fw-semibold text-light mb-1">How Grid Columns / Rows Work</div>
                         <div>

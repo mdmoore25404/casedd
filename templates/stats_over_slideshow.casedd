@@ -4,8 +4,6 @@
 
 name: stats_over_slideshow
 description: Slideshow background with a bottom row of live stats.
-width: 800
-height: 480
 refresh_rate: 2.0
 
 grid:

@@ -122,9 +122,11 @@ class NetPortsWidget(BaseWidget):
         entries = _parse_rows(str(rows_raw) if rows_raw is not None else "")
         accent = parse_color(cfg.color, fallback=(96, 180, 230))
 
-        body_sz = (
-            cfg.font_size if isinstance(cfg.font_size, int) else max(10, min(16, inner.h // 17))
-        )
+        if isinstance(cfg.font_size, int):
+            body_sz = cfg.font_size
+        else:
+            target_rows = max(8, min(max(1, len(entries)) + 3, 20))
+            body_sz = max(12, min(42, inner.h // target_rows))
         body_font = get_font(body_sz)
         header_font = get_font(body_sz + 1)
         sample_bb = draw.textbbox((0, 0), "Ag", font=body_font)

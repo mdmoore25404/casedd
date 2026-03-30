@@ -2,8 +2,8 @@
 
 name: weather_nws
 description: Current conditions, radar, and watch/warning feed via NWS.
-width: 800
-height: 480
+aspect_ratio: "5:3"
+layout_mode: fit
 background: "#0d1118"
 refresh_rate: 1.0
 
@@ -13,13 +13,14 @@ grid:
     forecast    radar
     alerts      radar
   columns: 1fr 1fr
-  rows: 1.05fr 0.95fr 0.55fr
+  rows: 1.2fr 1.0fr 0.8fr
 
 widgets:
   conditions:
     type: weather_conditions
     label: "Current Conditions"
     source: weather.conditions
+    font_size: auto
     color: "#66ddaa"
     background: "#111923"
     padding: [6, 8]
@@ -28,6 +29,7 @@ widgets:
     type: weather_forecast
     label: "Forecast"
     source: weather.forecast_table
+    font_size: auto
     color: "#9dd4ff"
     background: "#111923"
     padding: [6, 8]
@@ -36,6 +38,7 @@ widgets:
     type: weather_alerts
     label: "Watches / Warnings"
     source: weather.alert_summary
+    font_size: auto
     color: "#ff8a7a"
     background: "#111923"
     padding: [6, 8]

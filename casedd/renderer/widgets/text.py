@@ -24,6 +24,7 @@ from casedd.renderer.color import parse_color
 from casedd.renderer.fonts import get_font
 from casedd.renderer.widgets.base import (
     BaseWidget,
+    choose_font_for_box,
     draw_label,
     fill_background,
     resolve_value,
@@ -110,8 +111,9 @@ class TextWidget(BaseWidget):
         raw = resolve_value(cfg, data)
         text = str(raw) if raw is not None else "--"
 
-        size = cfg.font_size if isinstance(cfg.font_size, int) else 14
-        font = get_font(size)
+        available_w = rect.w - 8
+        available_h = rect.h - label_h
+        font, lines = self._fit_wrapped_font(text, available_w, available_h, cfg.font_size)
 
         if cfg.source == "speedtest.simple_summary" and self._draw_speedtest_simple(
             draw,
@@ -122,9 +124,6 @@ class TextWidget(BaseWidget):
             label_h,
         ):
             return
-
-        available_w = rect.w - 8
-        lines = _wrap_text(text, font, available_w)
 
         # Calculate total text block height to vertically center it
         line_bbox = font.getbbox("Ag")
@@ -138,6 +137,30 @@ class TextWidget(BaseWidget):
             lw = bbox[2] - bbox[0]
             x = rect.x + (rect.w - lw) // 2
             draw.text((x, y_start + i * line_h), line, fill=color, font=font)
+
+    def _fit_wrapped_font(
+        self,
+        text: str,
+        max_w: int,
+        max_h: int,
+        font_size: int | str,
+    ) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, list[str]]:
+        """Choose a responsive font size and wrapped lines for a text block."""
+        seed_font = choose_font_for_box(text or "--", max_w, max_h, font_size, min_size=10)
+        start_size = getattr(seed_font, "size", 10)
+        min_size = 8
+
+        for size in range(start_size, min_size - 1, -1):
+            candidate = get_font(size)
+            lines = _wrap_text(text, candidate, max_w)
+            line_bbox = candidate.getbbox("Ag")
+            line_h = line_bbox[3] - line_bbox[1] + 2
+            total_h = line_h * len(lines)
+            if total_h <= max_h:
+                return candidate, lines
+
+        fallback = get_font(min_size)
+        return fallback, _wrap_text(text, fallback, max_w)
 
     def _draw_speedtest_simple(  # noqa: PLR0913 -- render helper needs explicit context
         self,
