@@ -71,20 +71,27 @@ class SysinfoWidget(BaseWidget):
         if isinstance(cfg.font_size, int):
             body_sz = cfg.font_size
         else:
+            # Calculate font size based on available space
+            # Use height as primary constraint, but ensure readability
             auto_sz = avail_h // max(1, num_rows + 1)
-            body_sz = min(42, max(12, auto_sz))
+            # Cap at a maximum that keeps text readable at wide widths
+            body_sz = min(36, max(12, auto_sz))
 
         body_font = get_font(body_sz)
         sample_bb = draw.textbbox((0, 0), "Ag", font=body_font)
         row_h = int(sample_bb[3] - sample_bb[1]) + 4
 
         # Measure the widest key label to set the left column width
+        # But ensure we leave enough room for values (at least 40% of available width)
         label_widths = [
             int(draw.textbbox((0, 0), key, font=body_font)[2])
             for key, _ in pairs
         ]
         separator_w = int(draw.textbbox((0, 0), ":", font=body_font)[2])
-        label_col_w = max(label_widths, default=60) + separator_w + 4
+        key_col_w = max(label_widths, default=60)
+        # Reserve at least 40% of width for values
+        max_key_col_w = int(inner.w * 0.4)
+        label_col_w = min(key_col_w + separator_w + 4, max_key_col_w)
 
         left = inner.x + 4
         val_x = left + label_col_w
