@@ -207,7 +207,8 @@ widgets:
           - { source: cpu.percent,           operator: gte, value: 50 }
           - { source: nvidia.percent,        operator: gte, value: 50 }
           - { source: memory.percent,        operator: gte, value: 60 }
-          - { source: nvidia.memory_percent, operator: gte, value: 60 }
+          # VRAM: ~83% is normal when caching LLM models; alert from 85% up
+          - { source: nvidia.memory_percent, operator: gte, value: 85 }
           - { source: cpu.temperature,       operator: gte, value: 70 }
           - { source: nvidia.temperature,    operator: gte, value: 70 }
       - path: assets/casedd-logo-angry.png
@@ -215,7 +216,7 @@ widgets:
           - { source: cpu.percent,           operator: gte, value: 75 }
           - { source: nvidia.percent,        operator: gte, value: 75 }
           - { source: memory.percent,        operator: gte, value: 82 }
-          - { source: nvidia.memory_percent, operator: gte, value: 82 }
+          - { source: nvidia.memory_percent, operator: gte, value: 93 }
           - { source: cpu.temperature,       operator: gte, value: 85 }
           - { source: nvidia.temperature,    operator: gte, value: 85 }
       - path: assets/casedd-logo-fire.png
@@ -223,6 +224,6 @@ widgets:
           - { source: cpu.percent,           operator: gte, value: 90 }
           - { source: nvidia.percent,        operator: gte, value: 90 }
           - { source: memory.percent,        operator: gte, value: 92 }
-          - { source: nvidia.memory_percent, operator: gte, value: 92 }
+          - { source: nvidia.memory_percent, operator: gte, value: 97 }
           - { source: cpu.temperature,       operator: gte, value: 95 }
           - { source: nvidia.temperature,    operator: gte, value: 92 }
