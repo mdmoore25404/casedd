@@ -29,8 +29,7 @@ widgets:
         type: text
         content: "NZBGet"
         color: "#60e6a5"
-        font_size: 18
-        bold: true
+        font_size: 20
       version:
         type: value
         source: nzbget.version
@@ -162,8 +161,7 @@ widgets:
         type: text
         content: "Current Downloads"
         color: "#60e6a5"
-        font_size: 13
-        bold: true
+        font_size: 14
       job1:
         type: panel
         background: transparent
