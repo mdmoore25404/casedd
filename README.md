@@ -25,8 +25,8 @@ Interested in commercial use or white-label rights? Feel free to reach out.
 
 - **Dual output** — push rendered images to `/dev/fb1` (framebuffer) AND a browser via WebSocket simultaneously
 - **Custom layout engine** — declare layouts in `.casedd` YAML files using CSS Grid Template Areas syntax; widget tree supports unlimited nesting via `type: panel`
-- **11 widget types** — `value`, `text`, `bar`, `gauge`, `histogram`, `sparkline`, `image`, `slideshow`, `clock`, `panel`, `ups`
-- **Live data getters** — CPU, fan telemetry (CPU/system/GPU), NVIDIA GPU (including multi-GPU keys), RAM, disk, network, system uptime/host, speedtest, Ollama API runtime state, UPS telemetry
+- **Extended widget set** — includes system widgets plus `plex_now_playing` and `plex_recently_added` table widgets for media dashboards
+- **Live data getters** — CPU, fan telemetry (CPU/system/GPU), NVIDIA GPU (including multi-GPU keys), RAM, disk, network, system uptime/host, speedtest, Ollama API runtime state, UPS telemetry, Plex server/session/library telemetry
 - **Template policy engine** — rotate templates, schedule templates by time/day, and trigger template overrides from data-store conditions
 - **Speedtest integration** — optional Ookla CLI getter (default every 30 min) with plan-relative metrics and status keys
 - **External data push** — accept JSON updates via Unix domain socket or REST POST; values cached in RAM and used on next render
@@ -316,6 +316,44 @@ export CASEDD_TEMPLATE=htop
 ```
 
 The ``htop`` widget shows top processes sorted by CPU utilization.
+
+### Plex media dashboard template
+
+A Plex dashboard template is provided at [templates/plex_dashboard.casedd](templates/plex_dashboard.casedd).
+
+```bash
+export CASEDD_TEMPLATE=plex_dashboard
+export CASEDD_PLEX_BASE_URL=http://localhost:32400
+export CASEDD_PLEX_TOKEN=your-plex-token
+./dev.sh restart
+```
+
+Plex config variables:
+
+```bash
+CASEDD_PLEX_BASE_URL=http://localhost:32400
+CASEDD_PLEX_TOKEN=
+CASEDD_PLEX_CLIENT_IDENTIFIER=casedd
+CASEDD_PLEX_PRODUCT=CASEDD
+CASEDD_PLEX_INTERVAL=5
+CASEDD_PLEX_TIMEOUT=4
+CASEDD_PLEX_VERIFY_TLS=1
+CASEDD_PLEX_MAX_SESSIONS=6
+CASEDD_PLEX_MAX_RECENT=6
+CASEDD_PLEX_PRIVACY_FILTER_REGEX=
+CASEDD_PLEX_PRIVACY_FILTER_LIBRARIES=
+CASEDD_PLEX_PRIVACY_REDACTION_TEXT=[hidden]
+```
+
+Privacy options:
+- Set `CASEDD_PLEX_PRIVACY_FILTER_REGEX` to hide matching names/titles/libraries.
+- Set `CASEDD_PLEX_PRIVACY_FILTER_LIBRARIES` for explicit library-name redaction.
+- Set `CASEDD_PLEX_PRIVACY_REDACTION_TEXT` to control replacement text.
+- For widget-level hiding, `plex_now_playing` and `plex_recently_added` also support `filter_regex`.
+
+API references:
+- https://developer.plex.tv/
+- https://developer.plex.tv/pms/
 
 ### Weather templates (NWS + external provider example)
 

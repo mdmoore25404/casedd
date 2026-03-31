@@ -217,6 +217,69 @@ Notes:
 - This getter uses the HTTP API only and does not require the ollama command.
 - CPU/GPU percentages are parsed from optional processor text when present in API payload.
 
+## Plex getter
+
+Module: casedd/getters/plex.py
+
+API references:
+- https://developer.plex.tv/
+- https://developer.plex.tv/pms/
+
+Auth and headers:
+- Uses `X-Plex-Token` for auth when configured.
+- Sends `X-Plex-Client-Identifier` and `X-Plex-Product` for compatibility with Plex API guidance.
+
+Primary emits:
+- plex.server.name
+- plex.server.version
+- plex.server.platform
+- plex.server.reachable
+- plex.sessions.active_count
+- plex.sessions.transcoding_count
+- plex.sessions.direct_play_count
+- plex.sessions.direct_stream_count
+- plex.bandwidth.current_mbps
+- plex.library.movies_count
+- plex.library.shows_count
+- plex.library.music_albums_count
+- plex.sessions.rows
+- plex.recently_added.count
+- plex.recently_added.rows
+- plex.summary
+
+Recently-added formatting rules:
+- Movies/music keep their original media type and title.
+- TV entries (`episode`/`season`/`show`) are normalized to media type `show`.
+- TV episode titles are rendered as `Show SnnEyy` when season/episode indexes exist.
+- TV season titles are rendered as `Show Snn` when season index exists.
+- `plex.recently_added.rows` is sorted newest-first using `addedAt`.
+- Season rows are resolved to their most recently added episode when available.
+- Row format for widgets is `LIBRARY|TITLE`.
+
+Bandwidth rule:
+- `plex.bandwidth.current_mbps` excludes paused sessions so a fully paused
+    playback state reports `0.0` Mb/s.
+
+Expanded per-item emits:
+- plex.session_1.user
+- plex.session_1.title
+- plex.session_1.media_type
+- plex.session_1.progress_percent
+- plex.session_1.transcode_decision
+- ... up to `CASEDD_PLEX_MAX_SESSIONS`
+- plex.recently_added_1.title
+- plex.recently_added_1.media_type
+- plex.recently_added_1.library
+- plex.recently_added_1.added_at
+- ... up to `CASEDD_PLEX_MAX_RECENT`
+
+Privacy settings:
+- `CASEDD_PLEX_PRIVACY_FILTER_REGEX` optionally redacts matching user/title/library values.
+- `CASEDD_PLEX_PRIVACY_FILTER_LIBRARIES` redacts exact library names (comma-separated,
+  case-insensitive).
+- `CASEDD_PLEX_PRIVACY_REDACTION_TEXT` controls replacement text (default `[hidden]`).
+- Invalid regex values are ignored with a warning (getter continues running).
+
 ## Template-aware polling
 
 CASEDD runs getters required by templates that can become active under policy

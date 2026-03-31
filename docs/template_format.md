@@ -418,6 +418,58 @@ Additional fields: `paths` (list of file or directory paths), `interval` (second
 
 ---
 
+### `plex_now_playing`
+
+Compact table of active Plex sessions.
+
+Input rows must come from `plex.sessions.rows` with format:
+`USER|TITLE|MEDIA_TYPE|PROGRESS_PERCENT|TRANSCODE_DECISION`
+
+```yaml
+now:
+  type: plex_now_playing
+  label: "Now Playing"
+  source: plex.sessions.rows
+  color: "#7ce29f"
+  filter_regex: "(kids|private)"   # optional privacy filter
+```
+
+Additional fields: `filter_regex` (optional Python regex to hide matching rows)
+and `max_items` (optional row cap for displayed items)
+
+---
+
+### `plex_recently_added`
+
+Compact table of recently-added Plex media.
+
+Input rows must come from `plex.recently_added.rows` with format:
+`LIBRARY|TITLE`
+
+```yaml
+recent:
+  type: plex_recently_added
+  label: "Recently Added"
+  source: plex.recently_added.rows
+  color: "#89b7ff"
+  background: "#0f1a24"          # optional section background
+  max_items: 10                    # optional row cap
+  filter_regex: "(kids|family)"   # optional privacy filter
+```
+
+Additional fields: `filter_regex` (optional Python regex to hide matching rows)
+and `max_items` (optional row cap for displayed items)
+
+`plex_dashboard.casedd` also demonstrates template-level `skip_if` so the
+template is automatically skipped in rotation when both
+`plex.sessions.active_count` and `plex.sessions.transcoding_count` are zero.
+
+For stronger Plex branding, the dashboard header can use a nested `panel.grid`
+area with an `image` widget (`assets/plex/plex-logo.png`) so the logo scales
+within its own header cell while stat widgets keep stable space.
+
+---
+
 ### `panel`
 
 Container widget. Lays out children in a row or column. Supports its own nested `grid`

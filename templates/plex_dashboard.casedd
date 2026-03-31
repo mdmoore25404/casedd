@@ -1,0 +1,81 @@
+# plex_dashboard.casedd — Plex now-playing + recently-added dashboard
+
+name: plex_dashboard
+description: Plex server health, active sessions, and recently added media.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0b1218"
+refresh_rate: 2.0
+skip_if:
+  - source: plex.sessions.active_count
+    operator: lte
+    value: 0
+  - source: plex.sessions.transcoding_count
+    operator: lte
+    value: 0
+
+grid:
+  template_areas: |
+    "server server"
+    "now    recent"
+  columns: "1fr 1fr"
+  rows: "0.28fr 0.72fr"
+
+widgets:
+  server:
+    type: panel
+    background: "#101d29"
+    grid:
+      template_areas: |
+        "brand active transcode bandwidth summary"
+      columns: "1.5fr 1fr 1fr 1fr 1.4fr"
+      rows: "1fr"
+    padding: 8
+    children_named:
+      brand:
+        type: image
+        path: assets/plex/plex-logo.png
+        scale: fit
+      active:
+        type: value
+        source: plex.sessions.active_count
+        label: "Active"
+        color: "#74d680"
+        font_size: auto
+      transcode:
+        type: value
+        source: plex.sessions.transcoding_count
+        label: "Transcoding"
+        color: "#ff9f6f"
+        font_size: auto
+      bandwidth:
+        type: value
+        source: plex.bandwidth.current_mbps
+        label: "Bandwidth Mb/s"
+        precision: 1
+        color: "#6fa8ff"
+        font_size: auto
+      summary:
+        type: text
+        source: plex.summary
+        label: "Summary"
+        color: "#dfe7ef"
+        font_size: auto
+
+  now:
+    type: plex_now_playing
+    label: "Now Playing"
+    source: plex.sessions.rows
+    color: "#7ce29f"
+    background: "#0f1a24"
+    padding: 6
+    max_items: 6
+
+  recent:
+    type: plex_recently_added
+    label: "Recently Added"
+    source: plex.recently_added.rows
+    color: "#89b7ff"
+    background: "#0f1a24"
+    padding: 6
+    max_items: 19

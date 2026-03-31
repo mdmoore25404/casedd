@@ -48,6 +48,8 @@ class WidgetType(StrEnum):
     WEATHER_FORECAST = "weather_forecast"
     WEATHER_ALERTS = "weather_alerts"
     WEATHER_RADAR = "weather_radar"
+    PLEX_NOW_PLAYING = "plex_now_playing"
+    PLEX_RECENTLY_ADDED = "plex_recently_added"
 
 
 class ScaleMode(StrEnum):
@@ -202,7 +204,10 @@ class WidgetConfig(BaseModel):
         arc_end: Gauge arc end angle in degrees.
         gauge_ticks: Number of tick marks to draw along a gauge arc.
         sort_key: Sort column for htop widget ("cpu" or "mem").
-        filter_regex: Optional Python regex; htop rows whose process name matches are hidden.
+        filter_regex: Optional Python regex used to hide matching rows for
+            table-like widgets (htop and Plex list widgets).
+        max_items: Optional row cap for list-like widgets (htop and Plex
+            tables). When unset, widgets render as many rows as fit.
         border_style: Widget border style (none/solid/dashed/dotted/inset/outset).
         border_color: Border color string.
         border_width: Border line width in pixels.
@@ -272,6 +277,7 @@ class WidgetConfig(BaseModel):
     # Htop process table
     sort_key: str = Field(default="cpu")
     filter_regex: str | None = Field(default=None)
+    max_items: int | None = Field(default=None, ge=1, le=200)
 
     # Widget border
     border_style: BorderStyle = BorderStyle.NONE

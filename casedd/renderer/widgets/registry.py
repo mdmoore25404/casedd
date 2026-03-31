@@ -22,6 +22,8 @@ from casedd.renderer.widgets.histogram import HistogramWidget
 from casedd.renderer.widgets.htop import HtopWidget
 from casedd.renderer.widgets.image import ImageWidget
 from casedd.renderer.widgets.net_ports import NetPortsWidget
+from casedd.renderer.widgets.plex_now_playing import PlexNowPlayingWidget
+from casedd.renderer.widgets.plex_recently_added import PlexRecentlyAddedWidget
 from casedd.renderer.widgets.slideshow import SlideshowWidget
 from casedd.renderer.widgets.sparkline import SparklineWidget
 from casedd.renderer.widgets.sysinfo import SysinfoWidget
@@ -57,6 +59,8 @@ _REGISTRY: dict[WidgetType, BaseWidget] = {
     WidgetType.WEATHER_FORECAST: WeatherForecastWidget(),
     WidgetType.WEATHER_ALERTS: WeatherAlertsWidget(),
     WidgetType.WEATHER_RADAR: WeatherRadarWidget(),
+    WidgetType.PLEX_NOW_PLAYING: PlexNowPlayingWidget(),
+    WidgetType.PLEX_RECENTLY_ADDED: PlexRecentlyAddedWidget(),
 }
 
 

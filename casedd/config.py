@@ -283,6 +283,20 @@ class Config:
         ups_interval: UPS polling interval in seconds.
         ups_command: Optional custom UPS command override.
         ups_upsc_target: Target argument for ``upsc`` fallback mode.
+        plex_base_url: Plex server base URL.
+        plex_token: Plex API token for authenticated requests.
+        plex_client_identifier: Client identifier sent as X-Plex-Client-Identifier.
+        plex_product: Product name sent as X-Plex-Product.
+        plex_timeout: Plex HTTP timeout in seconds.
+        plex_verify_tls: Verify Plex HTTPS certificates when true.
+        plex_interval: Plex polling interval in seconds.
+        plex_max_sessions: Maximum now-playing rows to emit.
+        plex_max_recent: Maximum recently-added rows to emit.
+        plex_privacy_filter_regex: Optional regex used to redact media and
+            library names from Plex payloads.
+        plex_privacy_filter_libraries: Optional library names to redact,
+            matched case-insensitively.
+        plex_privacy_redaction_text: Replacement text for redacted values.
         net_interfaces: Explicit network interface names to monitor (e.g.
             ``["enp8s0"]``). Traffic from all other interfaces (Docker bridges,
             veth pairs, loopback) is excluded. Empty list falls back to the
@@ -367,6 +381,18 @@ class Config:
     ups_interval: float = Field(default=5.0)
     ups_command: str | None = Field(default=None)
     ups_upsc_target: str = Field(default="ups@localhost")
+    plex_base_url: str = Field(default="http://localhost:32400")
+    plex_token: str | None = Field(default=None, repr=False)
+    plex_client_identifier: str = Field(default="casedd")
+    plex_product: str = Field(default="CASEDD")
+    plex_timeout: float = Field(default=4.0)
+    plex_verify_tls: bool = Field(default=True)
+    plex_interval: float = Field(default=5.0)
+    plex_max_sessions: int = Field(default=6, ge=1, le=20)
+    plex_max_recent: int = Field(default=6, ge=1, le=20)
+    plex_privacy_filter_regex: str | None = Field(default=None)
+    plex_privacy_filter_libraries: list[str] = Field(default_factory=list)
+    plex_privacy_redaction_text: str = Field(default="[hidden]")
     net_interfaces: list[str] = Field(default_factory=list)
     nasa_api_key: str | None = Field(default=None, repr=False)
     apod_interval: float = Field(default=3600.0, gt=0)
@@ -606,6 +632,24 @@ class Config:
             raise ValueError(msg)
         return v
 
+    @field_validator("plex_timeout")
+    @classmethod
+    def _validate_plex_timeout(cls, v: float) -> float:
+        """Ensure Plex timeout is a positive value."""
+        if v <= 0.0:
+            msg = f"plex_timeout must be > 0, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("plex_interval")
+    @classmethod
+    def _validate_plex_interval(cls, v: float) -> float:
+        """Ensure Plex polling interval is positive and practical."""
+        if not (1.0 <= v <= 3600.0):
+            msg = f"plex_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
     @field_validator("template_rotation_interval")
     @classmethod
     def _validate_template_rotation_interval(cls, v: float) -> float:
@@ -736,6 +780,22 @@ def load_config() -> Config:
         text = str(raw)
         return [item.strip() for item in text.split(",") if item.strip()]
 
+    def _get_csv_or_list(env_key: str, yaml_key: str) -> list[str]:
+        """Parse comma-delimited or YAML-list values from env/yaml.
+
+        Args:
+            env_key: Environment key.
+            yaml_key: YAML key.
+
+        Returns:
+            Normalized list of non-empty strings.
+        """
+        raw = _get(env_key, yaml_key, [])
+        if isinstance(raw, list):
+            return [str(item).strip() for item in raw if str(item).strip()]
+        text = str(raw)
+        return [item.strip() for item in text.split(",") if item.strip()]
+
     return Config(
         log_level=str(_get("CASEDD_LOG_LEVEL", "log_level", "INFO")),
         debug_frame_logs=str(
@@ -833,11 +893,33 @@ def load_config() -> Config:
         ups_interval=float(str(_get("CASEDD_UPS_INTERVAL", "ups_interval", 5.0))),
         ups_command=str(_get("CASEDD_UPS_COMMAND", "ups_command", "")).strip() or None,
         ups_upsc_target=str(_get("CASEDD_UPS_UPSC_TARGET", "ups_upsc_target", "ups@localhost")),
-        net_interfaces=[
-            iface.strip()
-            for iface in str(_get("CASEDD_NET_INTERFACES", "net_interfaces", "")).split(",")
-            if iface.strip()
-        ],
+        plex_base_url=str(_get("CASEDD_PLEX_BASE_URL", "plex_base_url", "http://localhost:32400")),
+        plex_token=str(_get("CASEDD_PLEX_TOKEN", "plex_token", "")).strip() or None,
+        plex_client_identifier=str(
+            _get("CASEDD_PLEX_CLIENT_IDENTIFIER", "plex_client_identifier", "casedd")
+        ).strip()
+        or "casedd",
+        plex_product=str(_get("CASEDD_PLEX_PRODUCT", "plex_product", "CASEDD")).strip()
+        or "CASEDD",
+        plex_timeout=float(str(_get("CASEDD_PLEX_TIMEOUT", "plex_timeout", 4.0))),
+        plex_verify_tls=str(_get("CASEDD_PLEX_VERIFY_TLS", "plex_verify_tls", "1"))
+        not in {"0", "false", "False", ""},
+        plex_interval=float(str(_get("CASEDD_PLEX_INTERVAL", "plex_interval", 5.0))),
+        plex_max_sessions=int(str(_get("CASEDD_PLEX_MAX_SESSIONS", "plex_max_sessions", 6))),
+        plex_max_recent=int(str(_get("CASEDD_PLEX_MAX_RECENT", "plex_max_recent", 6))),
+        plex_privacy_filter_regex=str(
+            _get("CASEDD_PLEX_PRIVACY_FILTER_REGEX", "plex_privacy_filter_regex", "")
+        ).strip()
+        or None,
+        plex_privacy_filter_libraries=_get_csv_or_list(
+            "CASEDD_PLEX_PRIVACY_FILTER_LIBRARIES",
+            "plex_privacy_filter_libraries",
+        ),
+        plex_privacy_redaction_text=str(
+            _get("CASEDD_PLEX_PRIVACY_REDACTION_TEXT", "plex_privacy_redaction_text", "[hidden]")
+        ).strip()
+        or "[hidden]",
+        net_interfaces=_get_csv_or_list("CASEDD_NET_INTERFACES", "net_interfaces"),
         nasa_api_key=str(_get("CASEDD_NASA_API_KEY", "nasa_api_key", "")).strip() or None,
         apod_interval=float(str(_get("CASEDD_APOD_INTERVAL", "apod_interval", 3600.0))),
         apod_cache_dir=str(_get("CASEDD_APOD_CACHE_DIR", "apod_cache_dir", "/tmp/casedd-apod")),  # noqa: S108
