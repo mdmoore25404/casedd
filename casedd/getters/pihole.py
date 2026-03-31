@@ -95,6 +95,12 @@ class PiHoleGetter(BaseGetter):
                 return self._placeholder_sample()
             raise
 
+        version_payload = self._request_json_optional("/api/info/version")
+        top_blocked_payload = self._request_json_optional(
+            "/api/stats/top_domains?blocked=true"
+        )
+        top_clients_payload = self._request_json_optional("/api/stats/top_clients")
+
         total_queries = _first_number(
             payload,
             [
@@ -117,6 +123,7 @@ class PiHoleGetter(BaseGetter):
             payload,
             [
                 ("queries", "blocked_percent"),
+                ("queries", "percent_blocked"),
                 ("blocked_percent",),
                 ("ads_percentage_today",),
                 ("percentage_blocked",),
@@ -144,20 +151,31 @@ class PiHoleGetter(BaseGetter):
             ],
         )
         top_blocked_domain, top_blocked_hits = _extract_top_entry(
-            payload,
-            keys=(("top_blocked",), ("top", "blocked"), ("top_ads",)),
+            top_blocked_payload,
+            keys=(("domains",), ("top_blocked",), ("top", "blocked"), ("top_ads",)),
             name_fields=("domain", "name", "item"),
-            value_fields=("hits", "count", "queries", "value"),
+            value_fields=("count", "hits", "queries", "value"),
         )
         top_client_name, top_client_queries = _extract_top_entry(
-            payload,
-            keys=(("top_clients",), ("top", "clients")),
+            top_clients_payload,
+            keys=(("clients",), ("top_clients",), ("top", "clients")),
             name_fields=("client", "name", "ip", "item"),
-            value_fields=("queries", "count", "hits", "value"),
+            value_fields=("count", "queries", "hits", "value"),
         )
 
         return {
             "pihole.version": _first_text(
+                version_payload,
+                [
+                    ("version", "ftl", "local", "version"),
+                    ("version", "core", "local", "version"),
+                    ("version", "web", "local", "version"),
+                    ("version",),
+                    ("pihole_version",),
+                    ("meta", "version"),
+                ],
+            )
+            or _first_text(
                 payload,
                 [
                     ("version",),
@@ -184,9 +202,11 @@ class PiHoleGetter(BaseGetter):
         if self._api_token:
             headers["Authorization"] = f"Bearer {self._api_token}"
         elif self._password:
-            headers["Authorization"] = f"Bearer {self._password}"
+            self._ensure_password_session_sid()
+
         sid = self._active_session_sid()
         if sid:
+            headers["X-FTL-SID"] = sid
             headers["Cookie"] = f"sid={sid}"
 
         req = Request(url, headers=headers, method="GET")  # noqa: S310 -- user-provided API endpoint
@@ -218,6 +238,14 @@ class PiHoleGetter(BaseGetter):
             raise RuntimeError("Pi-hole response payload is not a JSON object")
         return decoded
 
+    def _request_json_optional(self, path: str) -> dict[str, object]:
+        """Best-effort request for optional enrichment endpoints."""
+        try:
+            return self._request_json(path)
+        except RuntimeError as exc:
+            _log.debug("Pi-hole optional endpoint unavailable: %s (%s)", path, exc)
+            return {}
+
     def _active_session_sid(self) -> str:
         """Resolve the session sid to use for API requests."""
         if self._session_sid:
@@ -226,7 +254,7 @@ class PiHoleGetter(BaseGetter):
 
     def _can_refresh_password_session(self) -> bool:
         """Return whether password-based auth can refresh an expired sid."""
-        return False
+        return bool(self._password)
 
     def _ensure_password_session_sid(self) -> str:
         """Create and cache a password-derived session sid when needed."""
