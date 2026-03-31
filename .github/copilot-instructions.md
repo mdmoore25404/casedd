@@ -79,6 +79,12 @@ Use this section as a pre-flight checklist during implementation, not only at cl
   `min(16, ...)` or fixed `get_font(13)` become invisible at 4K / large panel resolutions.
   Scale proportionally: `max(14, rect.w // 55)` or similar formula, with no upper cap for
   full-screen widgets.
+- **Do not hardcode font sizes in templates or widget defaults.** All font sizing must be
+  dynamic, calculated based on the widget's bounding box (width, height) and optionally
+  padding. Use `font_size: "auto"` in `.casedd` templates and implement proportional
+  scaling logic in the widget's `draw()` method. Example: for a 100-pixel wide label with
+  5px padding, scale the font to fit `(100 - 10) = 90` pixels. This ensures widgets adapt to
+  all display resolutions (800×480, 1024×600, 4K) without requiring per-resolution tuning.
 ### Self-learning anti-pattern protocol
 
 When the agent encounters a new ruff or mypy violation during an implementation session
