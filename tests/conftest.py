@@ -11,9 +11,11 @@ from casedd.data_store import DataStore
 from casedd.outputs.http_viewer import HttpViewerOutput
 
 
-def _make_client(
+def _make_client(  # noqa: PLR0913 -- test helper keeps auth permutations explicit
     *,
     api_key: str | None = None,
+    api_basic_user: str | None = None,
+    api_basic_password: str | None = None,
     api_rate_limit: int = 0,
     health_provider: Callable[[], dict[str, object]] | None = None,
     templates_dir: Path | None = None,
@@ -22,6 +24,8 @@ def _make_client(
 
     Args:
         api_key: Optional API key to enforce on update endpoints.
+        api_basic_user: Optional HTTP Basic Auth username.
+        api_basic_password: Optional HTTP Basic Auth password.
         api_rate_limit: Max requests/minute per IP (0 = disabled).
         health_provider: Optional callable returning a health snapshot dict.
         templates_dir: Directory to serve templates from (defaults to CWD/templates).
@@ -45,6 +49,8 @@ def _make_client(
         history_provider=dict,
         health_provider=health_provider,
         api_key=api_key,
+        api_basic_user=api_basic_user,
+        api_basic_password=api_basic_password,
         api_rate_limit=api_rate_limit,
     )
     # Access the private FastAPI app directly for TestClient injection

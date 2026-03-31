@@ -414,6 +414,8 @@ class Daemon:
             _rotation_updater,
             health_provider=_health_provider,
             api_key=self._cfg.api_key,
+            api_basic_user=self._cfg.api_basic_user,
+            api_basic_password=self._cfg.api_basic_password,
             api_rate_limit=self._cfg.api_rate_limit,
         )
 

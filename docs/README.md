@@ -36,7 +36,10 @@ Interested in commercial use or white-label rights? Feel free to reach out.
 - **Template policy engine** — rotate templates, schedule templates by time/day, and trigger template overrides from data-store conditions
 - **Speedtest integration** — optional Ookla CLI getter (default every 30 min) with plan-relative metrics and status keys
 - **External data push** — accept JSON updates via Unix domain socket or REST POST; values cached in RAM and used on next render
+- **Write-endpoint auth and throttling** — protect update endpoints with `X-API-Key`, HTTP Basic Auth, and optional per-IP rate limiting
 - **Template-aware polling** — getters run only when their key namespaces are referenced by the active template
+- **Operational health** — health and metrics endpoints expose daemon and per-getter state
+- **CLI control surface** — `casedd-ctl` provides status, health, template, metrics, snapshot, data, and reload commands
 - **Dev-friendly** — `CASEDD_NO_FB=1` disables framebuffer for dev; browser WebSocket view is the primary dev display
 - **Multiple deployment modes** — plain Python, systemd service, Docker Compose
 
@@ -82,8 +85,23 @@ cp .env.example .env
 ./dev.sh status     # check PID + last log lines
 ./dev.sh logs       # tail -f the log file
 ./dev.sh lint       # ruff check + mypy --strict (must be zero errors)
+./dev.sh test       # pytest with coverage
+./dev.sh test --fast # pytest without coverage
 ./dev.sh docs       # generate API docs to docs/api.json (local only)
 ```
+
+### CLI (`casedd-ctl`)
+
+```bash
+./casedd-ctl status
+./casedd-ctl health
+./casedd-ctl templates list
+./casedd-ctl help templates
+./casedd-ctl help templates set
+./casedd-ctl --json health
+```
+
+See [docs/cli.md](cli.md) for the full command reference.
 
 ### Linting (must be clean before any commit)
 

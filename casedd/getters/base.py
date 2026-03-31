@@ -76,6 +76,12 @@ class BaseGetter(ABC):
         name = type(self).__name__
         _log.info("Getter started: %s (interval=%.1fs)", name, self._interval)
 
+        # Mark the getter as actually starting (it may have been registered as
+        # "inactive" when not scheduled). This lets the health snapshot show
+        # precise state for UI/alerts.
+        if self._health is not None:
+            self._health.mark_starting(name)
+
         while self._running:
             try:
                 data = await self.fetch()

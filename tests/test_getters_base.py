@@ -70,7 +70,7 @@ def test_attach_health_initial_status_is_starting() -> None:
     getter = _GoodGetter(store)
     getter.attach_health(registry)
     entry = registry.snapshot()[0]
-    assert entry["status"] == "starting"
+    assert entry["status"] == "inactive"
 
 
 # ---------------------------------------------------------------------------

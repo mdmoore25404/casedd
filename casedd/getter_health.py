@@ -40,13 +40,24 @@ class GetterHealthRegistry:
         with self._lock:
             if name not in self._entries:
                 self._entries[name] = {
-                    "status": "starting",
+                    "status": "inactive",
                     "error_count": 0,
                     "consecutive_errors": 0,
                     "last_error_at": None,
                     "last_error_msg": None,
                     "last_success_at": None,
                 }
+
+    def mark_starting(self, name: str) -> None:
+        """Mark a registered getter as having begun its startup sequence.
+
+        This is used by the getter run loop when it actually starts polling so
+        that the health snapshot distinguishes "inactive" (not scheduled)
+        from "starting" (task is running but hasn't yet recorded success).
+        """
+        with self._lock:
+            entry = self._entries.setdefault(name, {})
+            entry["status"] = "starting"
 
     def record_success(self, name: str) -> None:
         """Record a successful fetch for *name*.

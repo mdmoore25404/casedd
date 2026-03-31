@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+"""Convenience wrapper to run the `casedd-ctl` CLI without installing the package.
+
+Usage: ./casedd-ctl <subcommand> [...]
+
+This simply invokes `casedd.cli:main` using the current Python interpreter.
+"""
+from __future__ import annotations
+
+import sys
+
+from casedd.cli import main
+
+
+if __name__ == "__main__":
+    main()

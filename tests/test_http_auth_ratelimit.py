@@ -2,10 +2,17 @@
 
 from __future__ import annotations
 
+import base64
+
 from casedd.outputs.http_viewer import _RateLimiter
 from tests.conftest import _make_client
 
 _UPDATE_BODY = {"update": {"test.val": 42}}
+
+
+def _basic_auth_header(user: str, password: str) -> dict[str, str]:
+    token = base64.b64encode(f"{user}:{password}".encode()).decode("ascii")
+    return {"Authorization": f"Basic {token}"}
 
 
 # ---------------------------------------------------------------------------
@@ -98,6 +105,51 @@ def test_update_correct_key_returns_204() -> None:
         "/api/update",
         json=_UPDATE_BODY,
         headers={"X-API-Key": "secret"},
+    )
+    assert resp.status_code == 204
+
+
+def test_update_missing_basic_auth_returns_401() -> None:
+    """Missing Basic Auth returns 401 when Basic credentials are configured."""
+    client, _ = _make_client(api_basic_user="dev", api_basic_password="secret")
+    resp = client.post("/api/update", json=_UPDATE_BODY)
+    assert resp.status_code == 401
+    assert resp.headers.get("www-authenticate") == 'Basic realm="CASEDD"'
+
+
+def test_update_wrong_basic_auth_returns_401() -> None:
+    """Wrong Basic Auth credentials are rejected."""
+    client, _ = _make_client(api_basic_user="dev", api_basic_password="secret")
+    resp = client.post(
+        "/api/update",
+        json=_UPDATE_BODY,
+        headers=_basic_auth_header("dev", "wrong"),
+    )
+    assert resp.status_code == 401
+
+
+def test_update_correct_basic_auth_returns_204() -> None:
+    """Correct Basic Auth credentials are accepted."""
+    client, _ = _make_client(api_basic_user="dev", api_basic_password="secret")
+    resp = client.post(
+        "/api/update",
+        json=_UPDATE_BODY,
+        headers=_basic_auth_header("dev", "secret"),
+    )
+    assert resp.status_code == 204
+
+
+def test_update_accepts_basic_auth_when_api_key_also_configured() -> None:
+    """Either configured auth mechanism may satisfy update access."""
+    client, _ = _make_client(
+        api_key="secret-key",
+        api_basic_user="dev",
+        api_basic_password="secret-pass",
+    )
+    resp = client.post(
+        "/api/update",
+        json=_UPDATE_BODY,
+        headers=_basic_auth_header("dev", "secret-pass"),
     )
     assert resp.status_code == 204
 

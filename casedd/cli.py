@@ -7,6 +7,7 @@ Usage::
 
     casedd-ctl status
     casedd-ctl health
+    casedd-ctl help templates
     casedd-ctl templates list
     casedd-ctl templates set <name>
     casedd-ctl metrics
@@ -306,6 +307,24 @@ def _cmd_reload(args: argparse.Namespace) -> None:
         print(json.dumps({"signal": "SIGHUP", "pid": pid}))
 
 
+def _cmd_help(args: argparse.Namespace) -> None:
+    """Print help for the root parser or a nested sub-command.
+
+    Args:
+        args: Parsed CLI arguments.
+    """
+    parser = getattr(args, "_root_parser", None)
+    help_targets = getattr(args, "_help_targets", None)
+    topics = tuple(getattr(args, "topics", []))
+    if not isinstance(parser, argparse.ArgumentParser) or not isinstance(help_targets, dict):
+        _die("Help system is unavailable")
+    target = help_targets.get(topics)
+    if not isinstance(target, argparse.ArgumentParser):
+        joined = " ".join(topics)
+        _die(f"Unknown help topic '{joined}'")
+    target.print_help()
+
+
 # ---------------------------------------------------------------------------
 # Argument parser
 # ---------------------------------------------------------------------------
@@ -321,6 +340,7 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="casedd-ctl",
         description="Interact with a running CASEDD daemon.",
     )
+    help_targets: dict[tuple[str, ...], argparse.ArgumentParser] = {(): parser}
     parser.add_argument(
         "--url",
         default=_DEFAULT_URL,
@@ -335,30 +355,54 @@ def _build_parser() -> argparse.ArgumentParser:
     sub.required = True
 
     # status
-    sub.add_parser("status", help="Show daemon status and active templates")
+    status_p = sub.add_parser("status", help="Show daemon status and active templates")
+    help_targets[("status",)] = status_p
 
     # health
-    sub.add_parser("health", help="Show getter health statuses")
+    health_p = sub.add_parser("health", help="Show getter health statuses")
+    help_targets[("health",)] = health_p
+
+    # help
+    help_p = sub.add_parser("help", help="Show help for a command or subcommand")
+    help_p.add_argument(
+        "topics",
+        nargs="*",
+        help="Command path, e.g. 'templates set' or 'template set'",
+    )
+    help_targets[("help",)] = help_p
 
     # templates
-    templates_p = sub.add_parser("templates", help="Template management")
+    templates_p = sub.add_parser(
+        "templates",
+        aliases=["template"],
+        help="Template management",
+    )
+    help_targets[("templates",)] = templates_p
+    help_targets[("template",)] = templates_p
     templates_sub = templates_p.add_subparsers(dest="templates_cmd", metavar="ACTION")
     templates_sub.required = True
-    templates_sub.add_parser("list", help="List available templates")
+    templates_list_p = templates_sub.add_parser("list", help="List available templates")
+    help_targets[("templates", "list")] = templates_list_p
+    help_targets[("template", "list")] = templates_list_p
     set_p = templates_sub.add_parser("set", help="Switch active template")
     set_p.add_argument("template_name", help="Template name to activate")
     set_p.add_argument("--panel", default="", help="Panel name (default: first panel)")
+    help_targets[("templates", "set")] = set_p
+    help_targets[("template", "set")] = set_p
 
     # metrics
-    sub.add_parser("metrics", help="Print Prometheus-format metrics")
+    metrics_p = sub.add_parser("metrics", help="Print Prometheus-format metrics")
+    help_targets[("metrics",)] = metrics_p
 
     # snapshot
     snap_p = sub.add_parser("snapshot", help="Save current frame as JPEG")
     snap_p.add_argument("--output", default="", help="Output path (default: casedd-snapshot.jpg)")
+    help_targets[("snapshot",)] = snap_p
 
     # data
     data_p = sub.add_parser("data", help="Dump data store snapshot")
     data_p.add_argument("--prefix", default="", help="Filter by key prefix")
+    help_targets[("data",)] = data_p
 
     # reload
     reload_p = sub.add_parser("reload", help="Trigger template hot-reload (SIGHUP)")
@@ -368,6 +412,9 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="pid_file",
         help="Path to daemon PID file",
     )
+    help_targets[("reload",)] = reload_p
+
+    parser.set_defaults(_root_parser=parser, _help_targets=help_targets)
 
     return parser
 
@@ -384,7 +431,9 @@ def main() -> None:
         _cmd_status(args)
     elif args.command == "health":
         _cmd_health(args)
-    elif args.command == "templates":
+    elif args.command == "help":
+        _cmd_help(args)
+    elif args.command in {"templates", "template"}:
         if args.templates_cmd == "list":
             _cmd_templates_list(args)
         elif args.templates_cmd == "set":

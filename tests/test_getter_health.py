@@ -20,12 +20,12 @@ def _registry_with(*names: str) -> GetterHealthRegistry:
 
 
 def test_register_creates_starting_entry() -> None:
-    """Newly registered getter appears in snapshot with status 'starting'."""
+    """Newly registered getter appears in snapshot with status 'inactive'."""
     reg = _registry_with("CpuGetter")
     snap = reg.snapshot()
     assert len(snap) == 1
     assert snap[0]["name"] == "CpuGetter"
-    assert snap[0]["status"] == "starting"
+    assert snap[0]["status"] == "inactive"
     assert snap[0]["error_count"] == 0
 
 

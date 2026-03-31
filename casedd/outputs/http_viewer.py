@@ -19,6 +19,8 @@ Provides:
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 from collections.abc import Callable
 import contextlib
 from datetime import UTC, datetime
@@ -28,6 +30,7 @@ import os
 from pathlib import Path
 import random
 import re
+import secrets
 import socket
 import threading
 import time
@@ -635,6 +638,8 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     rotation_updater: Callable[[str, list[str], float, list[RotationEntry] | None], None],
     health_provider: Callable[[], dict[str, object]] | None = None,
     api_key: str | None = None,
+    api_basic_user: str | None = None,
+    api_basic_password: str | None = None,
     rate_limiter: _RateLimiter | None = None,
 ) -> FastAPI:
     """Build and configure FastAPI app for viewer and control APIs."""
@@ -646,6 +651,25 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
 
     panel_names = [str(panel["name"]) for panel in panels]
 
+    def _basic_auth_matches(authorization: str | None) -> bool:
+        """Return True when an Authorization header matches configured Basic Auth."""
+        if api_basic_user is None or api_basic_password is None:
+            return False
+        if authorization is None or not authorization.startswith("Basic "):
+            return False
+        token = authorization[6:].strip()
+        try:
+            decoded = base64.b64decode(token, validate=True).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError):
+            return False
+        user, separator, password = decoded.partition(":")
+        if separator != ":":
+            return False
+        return secrets.compare_digest(user, api_basic_user) and secrets.compare_digest(
+            password,
+            api_basic_password,
+        )
+
     # --- Auth / rate-limit dependency for write endpoints ---
     def _check_update_access(request: Request) -> None:
         """Enforce API-key auth and per-IP rate limiting on update endpoints.
@@ -656,12 +680,23 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         Raises:
             HTTPException: 401 when API key is wrong, 429 when rate-limited.
         """
-        if api_key is not None:
-            provided = request.headers.get("X-API-Key", "")
-            if provided != api_key:
+        auth_required = any(
+            value is not None for value in (api_key, api_basic_user, api_basic_password)
+        )
+        if auth_required:
+            api_key_ok = False
+            if api_key is not None:
+                provided = request.headers.get("X-API-Key", "")
+                api_key_ok = secrets.compare_digest(provided, api_key)
+            basic_ok = _basic_auth_matches(request.headers.get("Authorization"))
+            if not (api_key_ok or basic_ok):
+                headers: dict[str, str] | None = None
+                if api_basic_user is not None and api_basic_password is not None:
+                    headers = {"WWW-Authenticate": 'Basic realm="CASEDD"'}
                 raise HTTPException(
                     status_code=401,
-                    detail="Invalid or missing X-API-Key header",
+                    detail="Invalid or missing authentication credentials",
+                    headers=headers,
                 )
         if rate_limiter is not None:
             client_ip = (
@@ -1104,6 +1139,8 @@ class HttpViewerOutput:
         ) = None,
         health_provider: Callable[[], dict[str, object]] | None = None,
         api_key: str | None = None,
+        api_basic_user: str | None = None,
+        api_basic_password: str | None = None,
         api_rate_limit: int = 0,
     ) -> None:
         """Initialize HTTP viewer output."""
@@ -1133,6 +1170,8 @@ class HttpViewerOutput:
             rotation_updater=_rot_updater,
             health_provider=health_provider,
             api_key=api_key,
+            api_basic_user=api_basic_user,
+            api_basic_password=api_basic_password,
             rate_limiter=_limiter,
         )
         self._task: asyncio.Task[None] | None = None

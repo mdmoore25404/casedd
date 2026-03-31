@@ -55,6 +55,20 @@ def test_parser_health() -> None:
     assert args.command == "health"
 
 
+def test_parser_help_root() -> None:
+    parser = cli._build_parser()
+    args = parser.parse_args(["help"])
+    assert args.command == "help"
+    assert args.topics == []
+
+
+def test_parser_help_templates_set() -> None:
+    parser = cli._build_parser()
+    args = parser.parse_args(["help", "templates", "set"])
+    assert args.command == "help"
+    assert args.topics == ["templates", "set"]
+
+
 def test_parser_templates_list() -> None:
     parser = cli._build_parser()
     args = parser.parse_args(["templates", "list"])
@@ -66,6 +80,14 @@ def test_parser_templates_set() -> None:
     parser = cli._build_parser()
     args = parser.parse_args(["templates", "set", "mytemplate"])
     assert args.command == "templates"
+    assert args.templates_cmd == "set"
+    assert args.template_name == "mytemplate"
+
+
+def test_parser_template_alias_set() -> None:
+    parser = cli._build_parser()
+    args = parser.parse_args(["template", "set", "mytemplate"])
+    assert args.command == "template"
     assert args.templates_cmd == "set"
     assert args.template_name == "mytemplate"
 
@@ -233,4 +255,28 @@ def test_cmd_reload_missing_pid_file_exits(capsys: pytest.CaptureFixture[str]) -
     )
     with pytest.raises(SystemExit) as exc:
         cli._cmd_reload(args)
+    assert exc.value.code == 1
+
+
+def test_cmd_help_templates_output(capsys: pytest.CaptureFixture[str]) -> None:
+    args = cli._build_parser().parse_args(["help", "templates"])
+    cli._cmd_help(args)
+    out = capsys.readouterr().out
+    assert "usage: casedd-ctl templates" in out
+    assert "list" in out
+    assert "set" in out
+
+
+def test_cmd_help_template_alias_output(capsys: pytest.CaptureFixture[str]) -> None:
+    args = cli._build_parser().parse_args(["help", "template", "set"])
+    cli._cmd_help(args)
+    out = capsys.readouterr().out
+    assert "template_name" in out
+    assert "--panel" in out
+
+
+def test_cmd_help_unknown_topic_exits() -> None:
+    args = cli._build_parser().parse_args(["help", "not-a-command"])
+    with pytest.raises(SystemExit) as exc:
+        cli._cmd_help(args)
     assert exc.value.code == 1
