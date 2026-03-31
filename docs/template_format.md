@@ -452,6 +452,8 @@ recent:
   label: "Recently Added"
   source: plex.recently_added.rows
   color: "#89b7ff"
+  background: "#0f1a24"          # optional section background
+  max_items: 10                    # optional row cap
   filter_regex: "(kids|family)"   # optional privacy filter
 ```
 
@@ -461,6 +463,10 @@ and `max_items` (optional row cap for displayed items)
 `plex_dashboard.casedd` also demonstrates template-level `skip_if` so the
 template is automatically skipped in rotation when both
 `plex.sessions.active_count` and `plex.sessions.transcoding_count` are zero.
+
+For stronger Plex branding, the dashboard header can use a nested `panel.grid`
+area with an `image` widget (`assets/plex/plex-logo.png`) so the logo scales
+within its own header cell while stat widgets keep stable space.
 
 ---
 

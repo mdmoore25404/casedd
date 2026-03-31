@@ -155,18 +155,16 @@ def _scale_image(source: Image.Image, w: int, h: int, mode: ScaleMode) -> Image.
     new_h = int(sh * scale)
     scaled = source.resize((new_w, new_h), Image.LANCZOS)  # type: ignore[attr-defined]
 
+    if mode == ScaleMode.FIT:
+        return scaled
+
     # Center-crop or pad to exact target size
     if mode == ScaleMode.FILL:
         left = (new_w - w) // 2
         top = (new_h - h) // 2
         return scaled.crop((left, top, left + w, top + h))
 
-    # FIT — center on a black canvas
-    canvas = Image.new("RGB", (w, h), (0, 0, 0))
-    offset_x = (w - new_w) // 2
-    offset_y = (h - new_h) // 2
-    canvas.paste(scaled, (offset_x, offset_y))
-    return canvas
+    return scaled
 
 
 class ImageWidget(BaseWidget):
@@ -221,4 +219,10 @@ class ImageWidget(BaseWidget):
             return
 
         scaled = _scale_image(source, rect.w, rect.h, cfg.scale)
+        if cfg.scale == ScaleMode.FIT:
+            offset_x = rect.x + (rect.w - scaled.width) // 2
+            offset_y = rect.y + (rect.h - scaled.height) // 2
+            img.paste(scaled, (offset_x, offset_y))
+            return
+
         img.paste(scaled, (rect.x, rect.y))

@@ -24,32 +24,39 @@ grid:
 widgets:
   server:
     type: panel
-    direction: row
-    align: center
-    gap: 16
+    background: "#101d29"
+    grid:
+      template_areas: |
+        "brand active transcode bandwidth summary"
+      columns: "1.5fr 1fr 1fr 1fr 1.4fr"
+      rows: "1fr"
     padding: 8
-    children:
-      - type: image
+    children_named:
+      brand:
+        type: image
         path: assets/plex/plex-logo.png
         scale: fit
-        width: 180
-      - type: value
+      active:
+        type: value
         source: plex.sessions.active_count
         label: "Active"
         color: "#74d680"
         font_size: auto
-      - type: value
+      transcode:
+        type: value
         source: plex.sessions.transcoding_count
         label: "Transcoding"
         color: "#ff9f6f"
         font_size: auto
-      - type: value
+      bandwidth:
+        type: value
         source: plex.bandwidth.current_mbps
         label: "Bandwidth Mb/s"
         precision: 1
         color: "#6fa8ff"
         font_size: auto
-      - type: text
+      summary:
+        type: text
         source: plex.summary
         label: "Summary"
         color: "#dfe7ef"
@@ -60,6 +67,7 @@ widgets:
     label: "Now Playing"
     source: plex.sessions.rows
     color: "#7ce29f"
+    background: "#0f1a24"
     padding: 6
     max_items: 6
 
@@ -68,5 +76,6 @@ widgets:
     label: "Recently Added"
     source: plex.recently_added.rows
     color: "#89b7ff"
+    background: "#0f1a24"
     padding: 6
     max_items: 19
