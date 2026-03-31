@@ -16,6 +16,7 @@ from __future__ import annotations
 from casedd.renderer.widgets.apod import ApodWidget
 from casedd.renderer.widgets.bar import BarWidget
 from casedd.renderer.widgets.base import BaseWidget
+from casedd.renderer.widgets.boolean import BooleanWidget
 from casedd.renderer.widgets.clock import ClockWidget
 from casedd.renderer.widgets.gauge import GaugeWidget
 from casedd.renderer.widgets.histogram import HistogramWidget
@@ -41,6 +42,7 @@ from casedd.template.models import WidgetType
 # PanelWidget is imported lazily by get_widget_renderer to avoid the circular
 # import that would arise from panel.py importing this module at parse time.
 _REGISTRY: dict[WidgetType, BaseWidget] = {
+    WidgetType.BOOLEAN: BooleanWidget(),
     WidgetType.VALUE: ValueWidget(),
     WidgetType.TEXT: TextWidget(),
     WidgetType.BAR: BarWidget(),

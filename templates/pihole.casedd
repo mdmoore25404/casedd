@@ -13,7 +13,7 @@ grid:
     clients     domains    top_hits   top_q
     top_blocked top_blocked top_client top_client
   columns: 1fr 1fr 1fr 1fr
-  rows: 1fr 1fr 1fr
+  rows: 1fr 1fr 1.35fr
 
 widgets:
   blocked_pct:
@@ -48,15 +48,10 @@ widgets:
     padding: [4, 8]
 
   blocking:
-    type: value
-    label: Blocking (1=On)
+    type: boolean
+    label: Blocking
     source: pihole.blocking.enabled
-    precision: 0
-    min: 0
-    max: 1
-    color_stops:
-      - [0, "#e45555"]
-      - [1, "#6de58f"]
+    color: "#6de58f"
     padding: [4, 8]
 
   clients:
@@ -93,16 +88,16 @@ widgets:
 
   top_blocked:
     type: text
-    label: Top Blocked Domain
-    source: pihole.top_blocked.domain
+    label: Top Blocked Domains
+    source: pihole.top_blocked.list
     color: "#f0f5ff"
     font_size: auto
     padding: [4, 8]
 
   top_client:
     type: text
-    label: Top Client
-    source: pihole.top_client.name
+    label: Top Clients
+    source: pihole.top_client.list
     color: "#f0f5ff"
     font_size: auto
     padding: [4, 8]

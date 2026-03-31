@@ -30,6 +30,7 @@ class WidgetType(StrEnum):
     """All supported widget type identifiers."""
 
     PANEL = "panel"
+    BOOLEAN = "boolean"
     VALUE = "value"
     TEXT = "text"
     BAR = "bar"

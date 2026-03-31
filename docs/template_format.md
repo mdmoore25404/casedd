@@ -144,6 +144,24 @@ Additional fields: `unit` (string), `precision` (int, default 0)
 
 ---
 
+### `boolean`
+
+Displays a boolean status as an icon:
+- true/on/enabled/1 -> green checkmark
+- false/off/disabled/0 -> red slash
+
+```yaml
+dns_blocking:
+  type: boolean
+  source: pihole.blocking.enabled
+  label: "Blocking"
+  color: "#6de58f"   # true-state color (false stays red)
+```
+
+Additional fields: uses common fields only (`label`, `padding`, `background`, `color`).
+
+---
+
 ### `text`
 
 Displays a string value or static content. Wraps text if it exceeds the bounding box width.

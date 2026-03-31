@@ -69,8 +69,10 @@ async def test_pihole_getter_authenticated_success(monkeypatch) -> None:
     assert payload["pihole.domains.blocked_count"] == 125000.0
     assert payload["pihole.top_blocked.domain"] == "ads.example.com"
     assert payload["pihole.top_blocked.hits"] == 37.0
+    assert payload["pihole.top_blocked.list"] == "1. ads.example.com 37"
     assert payload["pihole.top_client.name"] == "192.168.1.50"
     assert payload["pihole.top_client.queries"] == 181.0
+    assert payload["pihole.top_client.list"] == "1. 192.168.1.50 181"
 
 
 async def test_pihole_getter_blocking_disabled(monkeypatch) -> None:
@@ -113,6 +115,8 @@ async def test_pihole_getter_auth_failure(monkeypatch) -> None:
     assert payload["pihole.version"] == "—"
     assert payload["pihole.queries.total"] == 0.0
     assert payload["pihole.top_blocked.domain"] == "—"
+    assert payload["pihole.top_blocked.list"] == "—"
+    assert payload["pihole.top_client.list"] == "—"
 
 
 async def test_pihole_getter_partial_payload(monkeypatch) -> None:
@@ -132,6 +136,8 @@ async def test_pihole_getter_partial_payload(monkeypatch) -> None:
     assert payload["pihole.clients.active_count"] == 0.0
     assert payload["pihole.top_blocked.domain"] == ""
     assert payload["pihole.top_client.name"] == ""
+    assert payload["pihole.top_blocked.list"] == "—"
+    assert payload["pihole.top_client.list"] == "—"
 
 
 async def test_pihole_getter_password_auth_session(monkeypatch) -> None:
@@ -172,7 +178,9 @@ async def test_pihole_getter_password_auth_session(monkeypatch) -> None:
     assert payload["pihole.queries.blocked"] == 1.0
     assert payload["pihole.top_blocked.domain"] == "ads.example"
     assert payload["pihole.top_blocked.hits"] == 7.0
+    assert payload["pihole.top_blocked.list"] == "1. ads.example 7"
     assert payload["pihole.top_client.name"] == "192.168.1.2"
     assert payload["pihole.top_client.queries"] == 11.0
+    assert payload["pihole.top_client.list"] == "1. 192.168.1.2 11"
     assert calls[0] == ("http://pi.hole/api/auth", "POST", None, None)
     assert calls[1] == ("http://pi.hole/api/stats/summary", "GET", None, "sid-123")

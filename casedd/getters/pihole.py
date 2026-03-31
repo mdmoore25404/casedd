@@ -13,8 +13,10 @@ Store keys written:
     - ``pihole.domains.blocked_count``
     - ``pihole.top_blocked.domain``
     - ``pihole.top_blocked.hits``
+    - ``pihole.top_blocked.list``
     - ``pihole.top_client.name``
     - ``pihole.top_client.queries``
+    - ``pihole.top_client.list``
 """
 
 from __future__ import annotations
@@ -156,11 +158,25 @@ class PiHoleGetter(BaseGetter):
             name_fields=("domain", "name", "item"),
             value_fields=("count", "hits", "queries", "value"),
         )
+        top_blocked_rows = _extract_top_entries(
+            top_blocked_payload,
+            keys=(("domains",), ("top_blocked",), ("top", "blocked"), ("top_ads",)),
+            name_fields=("domain", "name", "item"),
+            value_fields=("count", "hits", "queries", "value"),
+            limit=5,
+        )
         top_client_name, top_client_queries = _extract_top_entry(
             top_clients_payload,
             keys=(("clients",), ("top_clients",), ("top", "clients")),
             name_fields=("client", "name", "ip", "item"),
             value_fields=("count", "queries", "hits", "value"),
+        )
+        top_client_rows = _extract_top_entries(
+            top_clients_payload,
+            keys=(("clients",), ("top_clients",), ("top", "clients")),
+            name_fields=("client", "name", "ip", "item"),
+            value_fields=("count", "queries", "hits", "value"),
+            limit=5,
         )
 
         return {
@@ -191,8 +207,10 @@ class PiHoleGetter(BaseGetter):
             "pihole.domains.blocked_count": float(blocked_domains),
             "pihole.top_blocked.domain": top_blocked_domain,
             "pihole.top_blocked.hits": float(top_blocked_hits),
+            "pihole.top_blocked.list": _format_ranked_list(top_blocked_rows),
             "pihole.top_client.name": top_client_name,
             "pihole.top_client.queries": float(top_client_queries),
+            "pihole.top_client.list": _format_ranked_list(top_client_rows),
         }
 
     def _request_json(self, path: str, *, retry_auth: bool = True) -> dict[str, object]:
@@ -319,8 +337,10 @@ class PiHoleGetter(BaseGetter):
             "pihole.domains.blocked_count": 0.0,
             "pihole.top_blocked.domain": "—",
             "pihole.top_blocked.hits": 0.0,
+            "pihole.top_blocked.list": "—",
             "pihole.top_client.name": "—",
             "pihole.top_client.queries": 0.0,
+            "pihole.top_client.list": "—",
         }
 
 
@@ -382,6 +402,67 @@ def _extract_top_entry(
         return name, _to_float(first_val)
 
     return "", 0.0
+
+
+def _extract_top_entries(
+    payload: dict[str, object],
+    *,
+    keys: tuple[tuple[str, ...], ...],
+    name_fields: tuple[str, ...],
+    value_fields: tuple[str, ...],
+    limit: int,
+) -> list[tuple[str, float]]:
+    """Extract ranked top rows from list- or dict-based API fragments."""
+    node: object = None
+    for path in keys:
+        node = _nested(payload, path)
+        if node is not None:
+            break
+
+    rows: list[tuple[str, float]] = []
+    if isinstance(node, list):
+        for item in node:
+            if not isinstance(item, dict):
+                continue
+            name = _dict_text(item, name_fields)
+            if not name:
+                continue
+            value = _dict_number(item, value_fields)
+            rows.append((name, value))
+            if len(rows) >= limit:
+                break
+        return rows
+
+    if isinstance(node, dict):
+        for key, value in node.items():
+            if not isinstance(key, str):
+                continue
+            rows.append((key, _to_float(value)))
+            if len(rows) >= limit:
+                break
+
+    return rows
+
+
+def _format_ranked_list(rows: list[tuple[str, float]]) -> str:
+    """Format top-row tuples into a multiline compact display string."""
+    if not rows:
+        return "—"
+
+    lines: list[str] = []
+    for idx, (name, count) in enumerate(rows, start=1):
+        compact = _truncate_name(name, max_chars=20)
+        lines.append(f"{idx}. {compact} {int(count)}")
+    return "\n".join(lines)
+
+
+def _truncate_name(value: str, *, max_chars: int) -> str:
+    """Trim long names to keep multiline text legible in tight widgets."""
+    if len(value) <= max_chars:
+        return value
+    if max_chars <= 3:
+        return value[:max_chars]
+    return f"{value[: max_chars - 3]}..."
 
 
 def _first_number(payload: dict[str, object], keys: list[tuple[str, ...]]) -> float:
