@@ -5,33 +5,34 @@ refresh_rate: 1.0
 
 grid:
   template_areas: |
-    host host host
-    summary runtime runtime
-    inventory inventory stats
-    inventory inventory stats
-  columns: 1.4fr 1.8fr 1fr
-  rows: 0.55fr 0.9fr 1fr 1fr
+    brand brand running running stats
+    inventory inventory inventory inventory stats
+  columns: 1fr 1fr 1.4fr 1.4fr 0.9fr
+  rows: 0.44fr 1.56fr
 
 widgets:
-  host:
-    type: text
-    label: "Local AI Host"
-    source: system.hostname
-    color: "#d6e3ef"
+  brand:
+    type: panel
+    background: transparent
     padding: [8, 10]
+    grid:
+      template_areas: |
+        logo
+      columns: 1fr
+      rows: 1fr
+    children_named:
+      logo:
+        type: image
+        path: assets/ollama/ollama-logo-white-transparent.png
+        scale: fit
 
-  summary:
-    type: text
-    label: "Runtime Summary"
-    source: ollama.summary
-    color: "#a9d9c4"
-    padding: [8, 10]
-
-  runtime:
-    type: ollama
-    source: ollama
+  running:
+    type: table
+    source: ollama.running.rows
     label: "Running Models"
-    color: "#7ee7b6"
+    color: "#dfe7f0"
+    table_fit_text: false
+    font_size: 18
     max_items: 8
     padding: [8, 10]
 
@@ -63,8 +64,4 @@ widgets:
         label: "Running"
         source: ollama.models.running_count
         precision: 0
-        color: "#b8c9dc"
-      - type: text
-        label: "Primary"
-        source: ollama.primary_model
         color: "#b8c9dc"

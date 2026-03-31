@@ -226,9 +226,16 @@ def _running_models_rows(models: list[dict[str, object]]) -> str:
     rows: list[str] = []
     for model in models:
         name = _display_model_name(model) or "-"
+        param_size = _detail_text(model, "parameter_size")
+        quant = _detail_text(model, "quantization_level")
         vram_gb = _bytes_to_gb(_numeric_value(model, "size_vram"))
         ttl = _model_ttl_compact(model)
-        rows.append(f"{name}|{vram_gb:.1f}GB VRAM {ttl}")
+        meta = " ".join(
+            part
+            for part in [quant, param_size, f"{vram_gb:.1f}GB", ttl]
+            if part
+        )
+        rows.append(f"{name}|{meta or '-'}")
     return "\n".join(rows) if rows else "—|—"
 
 

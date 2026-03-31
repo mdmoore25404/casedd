@@ -10,7 +10,11 @@ import pytest
 
 from casedd.data_store import DataStore
 from casedd.getter_health import GetterHealthRegistry
-from casedd.getters.ollama import OllamaDetailOptions, OllamaGetter
+from casedd.getters.ollama import (
+    OllamaDetailOptions,
+    OllamaGetter,
+    _running_models_rows,
+)
 
 
 class _RaisingURLOpen:
@@ -132,6 +136,9 @@ async def test_ollama_detailed_mode_emits_running_and_inventory(monkeypatch) -> 
     assert payload["ollama.running_1.family"] == "llama"
     assert payload["ollama.model_2.name"] == "qwen3"
     assert payload["ollama.model_2.parameter_size"] == "4B"
+    running_rows = str(payload["ollama.running.rows"])
+    assert "Q4_K_M" in running_rows
+    assert "8B" in running_rows
 
 
 async def test_ollama_detailed_mode_empty_inventory(monkeypatch) -> None:
@@ -181,3 +188,34 @@ async def test_ollama_failure_marks_health_error(monkeypatch) -> None:
     entry = snap.get("OllamaGetter")
     assert entry is not None
     assert entry["status"] == "error"
+
+
+def test_running_models_rows_includes_quant_vram_and_ttl() -> None:
+    """Running-model rows should include quantization, size, VRAM, and TTL."""
+    rows = _running_models_rows(
+        [
+            {
+                "name": "llama3.2:latest",
+                "size_vram": 5_100_000_000,
+                "expires_at": "2099-01-01T00:00:00Z",
+                "details": {
+                    "parameter_size": "8B",
+                    "quantization_level": "Q4_K_M",
+                },
+            }
+        ]
+    )
+
+    assert rows.startswith("llama3.2|")
+    assert "Q4_K_M" in rows
+    assert "8B" in rows
+    assert "GB" in rows
+
+
+def test_running_models_rows_uses_default_meta_when_fields_missing() -> None:
+    """Running-model rows should include stable fallback VRAM/TTL metadata."""
+    rows = _running_models_rows([
+        {"name": "tiny:latest"},
+    ])
+
+    assert rows == "tiny|0.0GB n/a"
