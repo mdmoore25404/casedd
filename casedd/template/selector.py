@@ -55,6 +55,7 @@ class TemplateSelector:
         base_template: str,
         rotation_templates: list[str],
         rotation_interval: float,
+        rotation_enabled: bool,
         schedule_rules: list[TemplateScheduleRule],
         trigger_rules: list[TemplateTriggerRule],
         force_store_key: str | None = None,
@@ -70,6 +71,8 @@ class TemplateSelector:
             base_template: Default template name.
             rotation_templates: Additional templates to rotate through.
             rotation_interval: Seconds between rotation steps (default dwell).
+            rotation_enabled: When false, rotation is disabled and selection
+                falls back to ``base_template`` after trigger/schedule policy.
             schedule_rules: Time-window rules.
             trigger_rules: Data-value trigger rules.
             force_store_key: Optional data-store key that overrides selection.
@@ -93,6 +96,7 @@ class TemplateSelector:
         )
         # Keep a flat template-name list for the legacy rotation_templates property.
         self._rotation_interval = rotation_interval
+        self._rotation_enabled = rotation_enabled
         self._rotation_index = 0
         self._rotation_entry_start_ts = monotonic_time.monotonic()
 
@@ -115,6 +119,7 @@ class TemplateSelector:
         self,
         rotation_templates: list[str],
         rotation_interval: float,
+        rotation_enabled: bool,
         entries: list[RotationEntry] | None = None,
     ) -> None:
         """Replace the rotation list and interval at runtime.
@@ -127,6 +132,7 @@ class TemplateSelector:
             rotation_templates: New list of additional templates (legacy flat
                 format, used when ``entries`` is not provided).
             rotation_interval: Default dwell in seconds between rotation steps.
+            rotation_enabled: Enables/disables rotation logic.
             entries: Full ordered rotation entry list with per-entry dwell and
                 skip conditions.  Overrides ``rotation_templates`` when given.
         """
@@ -134,6 +140,7 @@ class TemplateSelector:
             self._base_template, rotation_templates, entries
         )
         self._rotation_interval = max(1.0, rotation_interval)
+        self._rotation_enabled = rotation_enabled
         self._rotation_index = 0
         self._rotation_entry_start_ts = monotonic_time.monotonic()
 
@@ -144,20 +151,23 @@ class TemplateSelector:
 
     @property
     def rotation_entries(self) -> list[RotationEntry]:
-        """Current ordered rotation entries (includes base template entry)."""
+        """Current ordered rotation entries."""
         return list(self._rotation_entries)
 
     @property
     def rotation_templates(self) -> list[str]:
-        """Current rotation template names, excluding the base template."""
-        # Return without the implicit base-template prepend so callers see
-        # the same list they would configure (legacy compat).
-        return [e.template for e in self._rotation_entries if e.template != self._base_template]
+        """Current configured rotation template names."""
+        return [e.template for e in self._rotation_entries]
 
     @property
     def rotation_interval(self) -> float:
         """Default rotation dwell interval in seconds."""
         return self._rotation_interval
+
+    @property
+    def rotation_enabled(self) -> bool:
+        """Whether rotation cycling is enabled for this selector."""
+        return self._rotation_enabled
 
     @property
     def is_trigger_held(self) -> bool:
@@ -276,6 +286,9 @@ class TemplateSelector:
         Returns:
             Template name of the active rotation entry.
         """
+        if not self._rotation_enabled:
+            return self._base_template
+
         if len(self._rotation_entries) == 1:
             return self._rotation_entries[0].template
 
@@ -323,9 +336,10 @@ class TemplateSelector:
     ) -> list[RotationEntry]:
         """Build the ordered rotation entry list.
 
-        When ``entries`` is provided it is used directly (with the base
-        template prepended if absent).  Otherwise an entry list is synthesised
-        from the legacy flat ``rotation_templates`` list.
+        When ``entries`` is provided and non-empty it is used directly.
+        Otherwise an entry list is synthesised from the legacy flat
+        ``rotation_templates`` list. If no rotation templates are configured,
+        the base template is returned as the only entry.
 
         Args:
             base_template: Default template from config.
@@ -335,11 +349,8 @@ class TemplateSelector:
         Returns:
             Ordered, deduplicated list of :class:`RotationEntry` objects.
         """
-        if entries is not None:
-            # Ensure base template leads; deduplicate by template name.
-            template_names = [e.template for e in entries]
-            if base_template not in template_names:
-                return [RotationEntry(template=base_template), *entries]
+        if entries:
+            # Preserve configured order; deduplicate by template name.
             seen: set[str] = set()
             out: list[RotationEntry] = []
             for entry in entries:
@@ -350,14 +361,16 @@ class TemplateSelector:
             return out
 
         # Legacy path: synthesise plain entries from a flat template-name list.
-        ordered: list[RotationEntry] = [RotationEntry(template=base_template)]
-        legacy_seen: set[str] = {base_template}
+        ordered: list[RotationEntry] = []
+        legacy_seen: set[str] = set()
         for name in rotation_templates:
             if name in legacy_seen:
                 continue
             ordered.append(RotationEntry(template=name))
             legacy_seen.add(name)
-        return ordered
+        if ordered:
+            return ordered
+        return [RotationEntry(template=base_template)]
 
     def _should_skip(self, entry: RotationEntry, snapshot: dict[str, StoreValue]) -> bool:
         """Return True when all skip conditions on an entry are satisfied.

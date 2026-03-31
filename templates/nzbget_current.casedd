@@ -1,0 +1,118 @@
+# nzbget_current.casedd — NZBGet current download jobs with progress
+
+name: nzbget_current
+description: Active NZBGet download jobs with progress bars.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0b1118"
+refresh_rate: 5.0
+skip_if:
+  - source: nzbget.queue.active_count
+    operator: eq
+    value: 0
+
+grid:
+  template_areas: |
+    "header"
+    "job1"
+    "job2"
+    "job3"
+  columns: "1fr"
+  rows: "0.15fr 0.28fr 0.28fr 0.29fr"
+
+widgets:
+  header:
+    type: panel
+    background: "#101822"
+    padding: 8
+    grid:
+      template_areas: |
+        "active speed eta"
+      columns: "1fr 1fr 1fr"
+      rows: "1fr"
+    children_named:
+      active:
+        type: value
+        source: nzbget.queue.active_count
+        label: "Active"
+        color: "#74d680"
+        font_size: auto
+      speed:
+        type: value
+        source: nzbget.rate.mbps
+        label: "Mb/s"
+        precision: 1
+        color: "#ff9f6f"
+        font_size: auto
+      eta:
+        type: value
+        source: nzbget.eta_seconds
+        label: "ETA (s)"
+        color: "#6fa8ff"
+        font_size: auto
+
+  job1:
+    type: panel
+    background: "#0f1a24"
+    padding: 6
+    grid:
+      template_areas: |
+        "name progress"
+      columns: "1fr 0.5fr"
+      rows: "1fr"
+    children_named:
+      name:
+        type: text
+        source: nzbget.current_1.name
+        color: "#dfe7ef"
+        font_size: auto
+      progress:
+        type: bar
+        source: nzbget.current_1.progress_percent
+        label: "%"
+        color: "#60e6a5"
+        font_size: auto
+
+  job2:
+    type: panel
+    background: "#0f1a24"
+    padding: 6
+    grid:
+      template_areas: |
+        "name progress"
+      columns: "1fr 0.5fr"
+      rows: "1fr"
+    children_named:
+      name:
+        type: text
+        source: nzbget.current_2.name
+        color: "#dfe7ef"
+        font_size: auto
+      progress:
+        type: bar
+        source: nzbget.current_2.progress_percent
+        label: "%"
+        color: "#60e6a5"
+        font_size: auto
+
+  job3:
+    type: panel
+    background: "#0f1a24"
+    padding: 6
+    grid:
+      template_areas: |
+        "name progress"
+      columns: "1fr 0.5fr"
+      rows: "1fr"
+    children_named:
+      name:
+        type: text
+        source: nzbget.current_3.name
+        color: "#dfe7ef"
+        font_size: auto
+      progress:
+        type: bar
+        source: nzbget.current_3.progress_percent
+        label: "%"
+        color: "#60e6a5"
+        font_size: auto

@@ -461,6 +461,7 @@ export function App() {
   const [replayJson, setReplayJson] = useState(() => prettyJson([]));
   const [rotationEntries, setRotationEntries] = useState([]);
   const [rotationInterval, setRotationInterval] = useState(30);
+  const [rotationEnabled, setRotationEnabled] = useState(true);
   const [rotationDirty, setRotationDirty] = useState(false);
   const [showRotationHelp, setShowRotationHelp] = useState(false);
   const [rotationDocsHtml, setRotationDocsHtml] = useState("");
@@ -679,6 +680,7 @@ export function App() {
       setRotationEntries(srcEntries.map(toUiEntry));
       const iv = Number(selectedPanelData.rotation_interval);
       setRotationInterval(Number.isFinite(iv) && iv > 0 ? iv : 30);
+      setRotationEnabled(Boolean(selectedPanelData.rotation_enabled ?? true));
       setRotationDirty(false);
     }
   }, [overrideDraftDirty, selectedPanelData, selectedTemplate]);
@@ -872,9 +874,12 @@ export function App() {
     }
     const entries = rotationEntries.map(fromUiEntry);
     const templateNames = entries.map((e) => e.template);
-    await updateRotation(selectedPanel, templateNames, interval, entries);
+    await updateRotation(selectedPanel, templateNames, interval, rotationEnabled, entries);
     setRotationDirty(false);
-    setStatus(`rotation saved for ${selectedPanel}: [${templateNames.join(", ") || "none"}] every ${interval}s`);
+    setStatus(
+      `rotation ${rotationEnabled ? "enabled" : "disabled"} for ${selectedPanel}: `
+      + `[${templateNames.join(", ") || "none"}] every ${interval}s`
+    );
     await refreshPanels();
   }
 
@@ -1085,6 +1090,21 @@ export function App() {
                     setRotationDirty(true);
                   }}
                 />
+              </div>
+              <div className="form-check form-switch mb-3">
+                <input
+                  className="form-check-input"
+                  id="rotation-enabled"
+                  type="checkbox"
+                  checked={rotationEnabled}
+                  onChange={(event) => {
+                    setRotationEnabled(event.target.checked);
+                    setRotationDirty(true);
+                  }}
+                />
+                <label className="form-check-label small" htmlFor="rotation-enabled">
+                  Rotation enabled
+                </label>
               </div>
               <div className="small text-body-secondary mb-1 d-flex gap-1" style={{ fontWeight: 600 }}>
                 <span style={{ flex: "0 0 9rem" }}>Template</span>

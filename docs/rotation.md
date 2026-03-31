@@ -6,7 +6,15 @@ CASEDD can automatically cycle through multiple templates — useful for showing
 
 ## How Rotation Works
 
-Rotation is **always active**. Every panel has a rotation list that starts with its *base template* (the one set in `casedd.yaml`). If no additional templates are added, the panel simply stays on the base template indefinitely.
+Rotation is controlled by `template_rotation_enabled` in `casedd.yaml`.
+
+- When `template_rotation_enabled: true`, CASEDD cycles through
+  `template_rotation` entries in order.
+- When `template_rotation_enabled: false`, CASEDD stays on the base
+  `template` (unless schedule/trigger rules override it).
+
+`template` is **not** automatically prepended to `template_rotation`. Add it
+explicitly when you want it included in the cycle.
 
 When you add more templates to the rotation list:
 
@@ -35,6 +43,7 @@ Open the **Advanced App** (`/app/`) and select a panel. The **Template Rotation*
 
 | Setting | Description |
 |---|---|
+| **Rotation enabled** | Toggles whether rotation is active for the panel. |
 | **Default dwell (s)** | How long, in seconds, to stay on each template unless overridden per-entry. |
 | **Template** | Which `.casedd` template to include in the cycle. |
 | **Dwell (s)** | Per-entry dwell override. Leave blank to use the default dwell. |
@@ -148,7 +157,8 @@ This lets you ship sensible defaults with a template (e.g., "only show me when b
 
 ## Persistence
 
-Rotation configuration set via the Advanced App or the API is **automatically saved** to `run/rotation-<panel>.json` and reloaded when the daemon restarts. You don't need to update `casedd.yaml`.
+Rotation configuration set via the Advanced App or the API is
+**automatically saved** to `casedd.yaml` and reloaded on startup.
 
 ---
 
@@ -169,6 +179,7 @@ PUT /api/panels/{panel}/rotation
 Content-Type: application/json
 
 {
+  "rotation_enabled": true,
   "rotation_interval": 30,
   "rotation_entries": [
     { "template": "system_stats" },
@@ -180,6 +191,7 @@ Content-Type: application/json
 
 | Field | Type | Description |
 |---|---|---|
+| `rotation_enabled` | bool | Enables/disables rotation. `false` pins to base template. |
 | `rotation_interval` | float | Default dwell in seconds (applies to entries without `seconds`). |
 | `rotation_entries` | list | Ordered list of rotation entries. |
 | `rotation_entries[].template` | string | Template name. |

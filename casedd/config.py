@@ -189,8 +189,11 @@ class PanelConfig(BaseModel):
         width: Optional panel width override in pixels.
         height: Optional panel height override in pixels.
         template: Optional per-panel base template name.
-        template_rotation: Optional per-panel rotation templates.
+        template_rotation: Optional per-panel rotation templates. Accepts
+            either template names or :class:`RotationEntry` objects with
+            per-template dwell times.
         template_rotation_interval: Optional per-panel rotation interval seconds.
+        template_rotation_enabled: Optional per-panel rotation enable flag.
         template_schedule: Optional per-panel schedule rules.
         template_triggers: Optional per-panel trigger rules.
     """
@@ -204,8 +207,9 @@ class PanelConfig(BaseModel):
     width: int | None = Field(default=None, gt=0)
     height: int | None = Field(default=None, gt=0)
     template: str | None = None
-    template_rotation: list[str] = Field(default_factory=list)
+    template_rotation: list[str | RotationEntry] = Field(default_factory=list)
     template_rotation_interval: float | None = Field(default=None, gt=0)
+    template_rotation_enabled: bool | None = None
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
     rotation: int | None = None
@@ -301,8 +305,18 @@ class Config:
             ``["enp8s0"]``). Traffic from all other interfaces (Docker bridges,
             veth pairs, loopback) is excluded. Empty list falls back to the
             psutil aggregate across all interfaces.
-        template_rotation: Additional template names to cycle through.
+        nzbget_url: NZBGet API server URL.
+        nzbget_username: Optional username for NZBGet RPC authentication.
+        nzbget_password: Optional password for NZBGet RPC authentication.
+        nzbget_interval: NZBGet polling interval in seconds.
+        nzbget_timeout: NZBGet HTTP request timeout in seconds.
+        template_rotation: Additional templates to cycle through. Accepts
+            either template names or :class:`RotationEntry` objects with
+            per-template dwell times.
         template_rotation_interval: Seconds spent on each rotated template.
+        template_rotation_enabled: Enables/disables template rotation.
+            When ``False``, only ``template`` is shown (unless a trigger or
+            schedule rule overrides it).
         template_schedule: Local-time schedule rules overriding rotation.
         template_triggers: Data-value trigger rules overriding schedule/rotation.
         trigger_border_color: Border color painted around trigger-held frames.
@@ -394,12 +408,19 @@ class Config:
     plex_privacy_filter_libraries: list[str] = Field(default_factory=list)
     plex_privacy_redaction_text: str = Field(default="[hidden]")
     net_interfaces: list[str] = Field(default_factory=list)
+    nzbget_url: str = Field(default="http://localhost:6789")
+    nzbget_username: str | None = Field(default=None)
+    nzbget_password: str | None = Field(default=None, repr=False)
+    nzbget_interval: float = Field(default=5.0)
+    nzbget_timeout: float = Field(default=3.0)
+    nzbget_category_filter_regex: str | None = Field(default=None)
     nasa_api_key: str | None = Field(default=None, repr=False)
     apod_interval: float = Field(default=3600.0, gt=0)
     apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data
     pushover_webhook_url: str | None = Field(default=None, repr=False)
-    template_rotation: list[str] = Field(default_factory=list)
+    template_rotation: list[str | RotationEntry] = Field(default_factory=list)
     template_rotation_interval: float = Field(default=30.0)
+    template_rotation_enabled: bool = Field(default=True)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
     trigger_border_color: str = Field(default="#dc1e1e")
@@ -708,17 +729,132 @@ def _read_yaml(path: Path) -> dict[str, object]:
     return raw if isinstance(raw, dict) else {}
 
 
+def _get_yaml_bool(yaml_data: dict[str, object], key: str, default: bool) -> bool:
+    """Read a bool value from YAML with string-safe normalization.
+
+    Args:
+        yaml_data: Parsed YAML mapping.
+        key: Top-level YAML key.
+        default: Value used when key is absent.
+
+    Returns:
+        Parsed boolean value.
+    """
+    raw = yaml_data.get(key, default)
+    if isinstance(raw, bool):
+        return raw
+    text = str(raw).strip().lower()
+    return text not in {"0", "false", "no", "off", ""}
+
+
+def get_config_path() -> Path:
+    """Return the active config path from env or default.
+
+    Returns:
+        Absolute or relative path to the active ``casedd.yaml`` file.
+    """
+    return Path(os.environ.get("CASEDD_CONFIG", "casedd.yaml"))
+
+
+def _rotation_entries_to_yaml(entries: list[RotationEntry]) -> list[object]:
+    """Serialize rotation entries to YAML-friendly values.
+
+    Args:
+        entries: Rotation entries from runtime state.
+
+    Returns:
+        List containing either plain template names or mapping objects.
+    """
+    out: list[object] = []
+    for entry in entries:
+        if entry.seconds is None and not entry.skip_if:
+            out.append(entry.template)
+            continue
+        out.append(entry.model_dump(mode="json", exclude_none=True))
+    return out
+
+
+def save_rotation_config_to_yaml(
+    panel_name: str,
+    rotation_templates: list[str],
+    rotation_interval: float,
+    rotation_enabled: bool,
+    rotation_entries: list[RotationEntry] | None,
+) -> Path:
+    """Persist rotation settings to ``casedd.yaml``.
+
+    This makes YAML the single source of truth for rotation settings used by
+    startup and the advanced UI.
+
+    Args:
+        panel_name: Stable panel name to update.
+        rotation_templates: Ordered template names when no per-entry payload
+            is provided.
+        rotation_interval: Default dwell time in seconds.
+        rotation_enabled: Whether rotation is enabled.
+        rotation_entries: Optional per-entry records including seconds/skip_if.
+
+    Returns:
+        Path to the YAML file that was updated.
+
+    Raises:
+        ValueError: If ``panel_name`` is unknown in a multi-panel config.
+        OSError: If the file cannot be written.
+    """
+    config_path = get_config_path()
+    yaml_data = _read_yaml(config_path)
+    serialized_rotation = (
+        _rotation_entries_to_yaml(rotation_entries)
+        if rotation_entries is not None
+        else [name for name in rotation_templates if name.strip()]
+    )
+
+    panels_raw = yaml_data.get("panels")
+    if isinstance(panels_raw, list) and panels_raw:
+        target_panel: dict[str, object] | None = None
+        for panel_raw in panels_raw:
+            if not isinstance(panel_raw, dict):
+                continue
+            if str(panel_raw.get("name", "")).strip() != panel_name:
+                continue
+            target_panel = panel_raw
+            break
+        if target_panel is None:
+            msg = f"panel '{panel_name}' not found in YAML panels"
+            raise ValueError(msg)
+        target_panel["template_rotation"] = serialized_rotation
+        target_panel["template_rotation_interval"] = float(rotation_interval)
+        target_panel["template_rotation_enabled"] = bool(rotation_enabled)
+    else:
+        if panel_name != "primary":
+            msg = (
+                f"panel '{panel_name}' not found; single-panel YAML only supports "
+                "panel 'primary'"
+            )
+            raise ValueError(msg)
+        yaml_data["template_rotation"] = serialized_rotation
+        yaml_data["template_rotation_interval"] = float(rotation_interval)
+        yaml_data["template_rotation_enabled"] = bool(rotation_enabled)
+
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    yaml_text = yaml.safe_dump(yaml_data, sort_keys=False)
+    config_path.write_text(yaml_text, encoding="utf-8")
+    return config_path
+
+
 def load_config() -> Config:
     """Build and return the active daemon configuration.
 
     Merges YAML file settings and environment variable overrides, with env
-    vars taking highest priority.
+    vars taking highest priority. Rotation settings (``template_rotation`` and
+    ``template_rotation_interval``) are intentionally YAML-only so the advanced
+    UI and startup both use a single source of truth.
 
     Returns:
         A frozen :class:`Config` instance with all settings resolved.
     """
     # Determine config file path from env (before we've built Config)
-    config_path = Path(os.environ.get("CASEDD_CONFIG", "casedd.yaml"))
+    config_path = get_config_path()
     yaml_data = _read_yaml(config_path)
 
     # Helper: env var overrides yaml, yaml overrides default
@@ -742,15 +878,31 @@ def load_config() -> Config:
             return default
         return int(raw)
 
-    def _get_rotation_templates() -> list[str]:
-        """Parse template rotation list from env or YAML.
+    def _get_rotation_templates() -> list[str | RotationEntry]:
+        """Parse template rotation list from YAML.
 
         Returns:
-            Ordered list of template names.
+            Ordered list of template names and/or rotation entry objects.
         """
-        raw = _get("CASEDD_TEMPLATE_ROTATION", "template_rotation", [])
+        raw = yaml_data.get("template_rotation", [])
         if isinstance(raw, list):
-            return [str(item).strip() for item in raw if str(item).strip()]
+            out: list[str | RotationEntry] = []
+            for item in raw:
+                if isinstance(item, str):
+                    name = item.strip()
+                    if name:
+                        out.append(name)
+                    continue
+                if isinstance(item, RotationEntry):
+                    out.append(item)
+                    continue
+                if isinstance(item, dict):
+                    out.append(RotationEntry.model_validate(item))
+                    continue
+                name = str(item).strip()
+                if name:
+                    out.append(name)
+            return out
         text = str(raw)
         return [item.strip() for item in text.split(",") if item.strip()]
 
@@ -923,6 +1075,18 @@ def load_config() -> Config:
         ).strip()
         or "[hidden]",
         net_interfaces=_get_csv_or_list("CASEDD_NET_INTERFACES", "net_interfaces"),
+        nzbget_url=str(_get("CASEDD_NZBGET_URL", "nzbget_url", "http://localhost:6789")),
+        nzbget_username=str(_get("CASEDD_NZBGET_USERNAME", "nzbget_username", "")).strip() or None,
+        nzbget_password=str(_get("CASEDD_NZBGET_PASSWORD", "nzbget_password", "")).strip() or None,
+        nzbget_interval=float(str(_get("CASEDD_NZBGET_INTERVAL", "nzbget_interval", 5.0))),
+        nzbget_timeout=float(str(_get("CASEDD_NZBGET_TIMEOUT", "nzbget_timeout", 3.0))),
+        nzbget_category_filter_regex=str(
+            _get(
+                "CASEDD_NZBGET_CATEGORY_FILTER_REGEX",
+                "nzbget_category_filter_regex",
+                "",
+            )
+        ).strip() or None,
         nasa_api_key=str(_get("CASEDD_NASA_API_KEY", "nasa_api_key", "")).strip() or None,
         apod_interval=float(str(_get("CASEDD_APOD_INTERVAL", "apod_interval", 3600.0))),
         apod_cache_dir=str(_get("CASEDD_APOD_CACHE_DIR", "apod_cache_dir", "/tmp/casedd-apod")),  # noqa: S108
@@ -930,9 +1094,8 @@ def load_config() -> Config:
             _get("CASEDD_PUSHOVER_WEBHOOK_URL", "pushover_webhook_url", "")
         ).strip() or None,
         template_rotation=_get_rotation_templates(),
-        template_rotation_interval=float(
-            str(_get("CASEDD_TEMPLATE_ROTATION_INTERVAL", "template_rotation_interval", 30.0))
-        ),
+        template_rotation_interval=float(str(yaml_data.get("template_rotation_interval", 30.0))),
+        template_rotation_enabled=_get_yaml_bool(yaml_data, "template_rotation_enabled", True),
         template_schedule=cast(
             "list[TemplateScheduleRule]",
             _get_yaml_list("template_schedule"),

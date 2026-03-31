@@ -19,7 +19,6 @@ from collections.abc import Callable
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import json
 import logging
 from pathlib import Path
 import signal
@@ -34,6 +33,7 @@ from casedd.config import (
     RotationEntry,
     TemplateScheduleRule,
     TemplateTriggerRule,
+    save_rotation_config_to_yaml,
 )
 from casedd.data_store import DataStore, StoreValue
 from casedd.getter_health import GetterHealthRegistry
@@ -47,6 +47,7 @@ from casedd.getters.htop import HtopGetter
 from casedd.getters.memory import MemoryGetter
 from casedd.getters.net_ports import NetPortsGetter
 from casedd.getters.network import NetworkGetter
+from casedd.getters.nzbget import NZBGetGetter
 from casedd.getters.ollama import OllamaGetter
 from casedd.getters.plex import PlexGetter
 from casedd.getters.speedtest import SpeedtestGetter
@@ -82,9 +83,6 @@ _TEST_MODE_STORE_KEY = "casedd.test_mode"
 _TEMPLATE_FORCE_PREFIX = "casedd.template.force."
 _TEMPLATE_CURRENT_PREFIX = "casedd.template.current."
 
-# Directory that holds per-panel rotation state files (survives restarts).
-_ROTATION_STATE_DIR = Path("run")
-
 # Visual indicator painted over trigger-held frames so the viewer knows
 # the template is being forced by an out-of-spec condition.
 _TRIGGER_BORDER_WIDTH: int = 6
@@ -109,63 +107,6 @@ def _draw_trigger_border(
         )
 
 
-def _rotation_state_path(panel_name: str) -> Path:
-    """Return the path for a panel's persisted rotation state file."""
-    return _ROTATION_STATE_DIR / f"rotation-{panel_name}.json"
-
-
-def _save_rotation_state(
-    panel_name: str,
-    entries: list[RotationEntry],
-    default_interval: float,
-) -> None:
-    """Persist rotation entries to a JSON file under ``run/``.
-
-    Args:
-        panel_name: Stable panel identifier.
-        entries: Full ordered entry list to persist.
-        default_interval: Default dwell interval in seconds.
-    """
-    path = _rotation_state_path(panel_name)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        data: dict[str, object] = {
-            "entries": [e.model_dump(mode="json") for e in entries],
-            "rotation_interval": default_interval,
-        }
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    except OSError:
-        _log.warning("Could not save rotation state for panel '%s'", panel_name)
-
-
-def _load_rotation_state(
-    panel_name: str,
-) -> tuple[list[RotationEntry], float] | None:
-    """Load persisted rotation state previously written by :func:`_save_rotation_state`.
-
-    Args:
-        panel_name: Stable panel identifier.
-
-    Returns:
-        ``(entries, default_interval)`` tuple, or ``None`` when no saved state
-        exists or the file cannot be parsed.
-    """
-    path = _rotation_state_path(panel_name)
-    if not path.exists():
-        return None
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        entries = [
-            RotationEntry.model_validate(item)
-            for item in raw.get("entries", [])
-        ]
-        interval = float(raw.get("rotation_interval", 30.0))
-        return entries, interval
-    except Exception:  # best-effort load; fall back to defaults
-        _log.warning("Could not load rotation state for panel '%s' — using defaults", panel_name)
-        return None
-
-
 @dataclass
 class _PanelRuntime:
     """Mutable runtime state for one panel output."""
@@ -177,6 +118,7 @@ class _PanelRuntime:
     base_template: str
     rotation_templates: list[str]
     rotation_interval: float
+    rotation_enabled: bool
     rotation_entries: list[RotationEntry]
     schedule_rules: list[TemplateScheduleRule]
     trigger_rules: list[TemplateTriggerRule]
@@ -293,6 +235,7 @@ class Daemon:
             await ws_output.stop()
             await http_output.stop()
             await registry.stop()
+            await self._blackout_framebuffers(panel_runtimes)
             _log.info("Daemon shutdown complete.")
 
     def _setup_framebuffer_detection(self) -> None:
@@ -353,10 +296,11 @@ class Daemon:
                 return {}
             return {
                 "base_template": runtime.base_template,
-                "rotation_templates": list(runtime.selector.rotation_templates),
-                "rotation_interval": runtime.selector.rotation_interval,
+                "rotation_templates": list(runtime.rotation_templates),
+                "rotation_interval": runtime.rotation_interval,
+                "rotation_enabled": runtime.rotation_enabled,
                 "rotation_entries": [
-                    e.model_dump(mode="json") for e in runtime.selector.rotation_entries
+                    e.model_dump(mode="json") for e in runtime.rotation_entries
                 ],
             }
 
@@ -364,16 +308,34 @@ class Daemon:
             panel_name: str,
             templates: list[str],
             interval: float,
+            enabled: bool,
             entries: list[RotationEntry] | None = None,
         ) -> None:
             runtime = next((r for r in panel_runtimes if r.name == panel_name), None)
             if runtime is None:
                 return
-            runtime.selector.update_rotation(templates, interval, entries)
-            runtime.rotation_templates = templates
+            runtime.selector.update_rotation(templates, interval, enabled, entries)
+            runtime.rotation_templates = (
+                [entry.template for entry in entries]
+                if entries is not None
+                else templates
+            )
             runtime.rotation_interval = interval
+            runtime.rotation_enabled = enabled
             runtime.rotation_entries = list(runtime.selector.rotation_entries)
-            _save_rotation_state(panel_name, runtime.rotation_entries, interval)
+            try:
+                save_rotation_config_to_yaml(
+                    panel_name,
+                    templates,
+                    interval,
+                    enabled,
+                    entries,
+                )
+            except (OSError, ValueError):
+                _log.warning(
+                    "Could not persist rotation config to YAML for panel '%s'",
+                    panel_name,
+                )
 
         ws_output = WebSocketOutput(_BIND_HOST, self._cfg.ws_port)
 
@@ -399,6 +361,7 @@ class Daemon:
                     "base_template": panel.base_template,
                     "rotation_templates": list(panel.rotation_templates),
                     "rotation_interval": panel.rotation_interval,
+                    "rotation_enabled": panel.rotation_enabled,
                     "rotation_entries": [
                         e.model_dump(mode="json") for e in panel.rotation_entries
                     ],
@@ -612,6 +575,13 @@ class Daemon:
             image = self._build_status_frame(panel.width, panel.height, "CASEDD stopping", lines)
             await self._display_panel_frame(panel, image, ws_output, http_output)
 
+    async def _blackout_framebuffers(self, panel_runtimes: list[_PanelRuntime]) -> None:
+        """Write a final black frame to all framebuffers before process exit."""
+        _log.info("Writing final black frame to framebuffer(s)")
+        for panel in panel_runtimes:
+            black = Image.new("RGB", (panel.width, panel.height), (0, 0, 0))
+            await asyncio.to_thread(panel.framebuffer.write, black)
+
     def _make_trigger_callback(
         self,
     ) -> Callable[[TemplateTriggerRule, StoreValue | None], None] | None:
@@ -634,6 +604,37 @@ class Daemon:
             )
 
         return _notify
+
+    def _resolve_rotation_config(
+        self,
+        panel: PanelConfig,
+    ) -> tuple[list[str], list[RotationEntry] | None]:
+        """Normalize panel rotation config into templates and optional entries.
+
+        Supports mixed config lists containing plain template names and
+        :class:`RotationEntry` records with per-template dwell times.
+
+        Args:
+            panel: Panel configuration to normalize.
+
+        Returns:
+            Tuple of ``(rotation_templates, rotation_entries_or_none)``.
+        """
+        if not panel.template_rotation:
+            return [], None
+
+        rotation_templates = [
+            item.template if isinstance(item, RotationEntry) else item
+            for item in panel.template_rotation
+        ]
+        if not any(isinstance(item, RotationEntry) for item in panel.template_rotation):
+            return rotation_templates, None
+
+        rotation_entries = [
+            item if isinstance(item, RotationEntry) else RotationEntry(template=item)
+            for item in panel.template_rotation
+        ]
+        return rotation_templates, rotation_entries
 
     def _build_panel_runtimes(self, registry: TemplateRegistry) -> list[_PanelRuntime]:
         """Create panel runtimes from config or legacy single-panel settings.
@@ -659,6 +660,7 @@ class Daemon:
                 template=self._cfg.template,
                 template_rotation=self._cfg.template_rotation,
                 template_rotation_interval=self._cfg.template_rotation_interval,
+                template_rotation_enabled=self._cfg.template_rotation_enabled,
                 template_schedule=self._cfg.template_schedule,
                 template_triggers=self._cfg.template_triggers,
             )
@@ -671,7 +673,7 @@ class Daemon:
             width = panel.width if panel.width is not None else 0
             height = panel.height if panel.height is not None else 0
             base_template = panel.template if panel.template is not None else self._cfg.template
-            rotation_templates = list(panel.template_rotation)
+            rotation_templates, configured_rotation_entries = self._resolve_rotation_config(panel)
             schedule_rules = list(panel.template_schedule)
             trigger_rules = list(panel.template_triggers)
             rotation_interval = (
@@ -679,24 +681,19 @@ class Daemon:
                 if panel.template_rotation_interval is not None
                 else self._cfg.template_rotation_interval
             )
-
-            # Load persisted rotation state (saved between restarts via UI).
-            # Persisted state takes priority over config-file defaults.
-            saved_state = _load_rotation_state(panel_name)
-            rotation_entries: list[RotationEntry] | None = None
-            if saved_state is not None:
-                rotation_entries, rotation_interval = saved_state
-                _log.info(
-                    "Panel '%s': loaded persisted rotation state (%d entries)",
-                    panel_name,
-                    len(rotation_entries),
-                )
+            rotation_enabled = (
+                panel.template_rotation_enabled
+                if panel.template_rotation_enabled is not None
+                else self._cfg.template_rotation_enabled
+            )
+            rotation_entries: list[RotationEntry] | None = configured_rotation_entries
 
             force_key = f"{_TEMPLATE_FORCE_PREFIX}{panel_name}"
             selector = TemplateSelector(
                 base_template=base_template,
                 rotation_templates=rotation_templates,
                 rotation_interval=rotation_interval,
+                rotation_enabled=rotation_enabled,
                 schedule_rules=schedule_rules,
                 trigger_rules=trigger_rules,
                 force_store_key=force_key,
@@ -763,6 +760,7 @@ class Daemon:
                 base_template=base_template,
                 rotation_templates=rotation_templates,
                 rotation_interval=rotation_interval,
+                rotation_enabled=rotation_enabled,
                 rotation_entries=list(selector.rotation_entries),
                 schedule_rules=schedule_rules,
                 trigger_rules=trigger_rules,
@@ -920,6 +918,15 @@ class Daemon:
                 privacy_filter_libraries=self._cfg.plex_privacy_filter_libraries,
                 privacy_redaction_text=self._cfg.plex_privacy_redaction_text,
             ),
+            NZBGetGetter(
+                self._store,
+                url=self._cfg.nzbget_url,
+                username=self._cfg.nzbget_username,
+                password=self._cfg.nzbget_password,
+                interval=self._cfg.nzbget_interval,
+                timeout=self._cfg.nzbget_timeout,
+                category_filter_regex=self._cfg.nzbget_category_filter_regex,
+            ),
             WeatherGetter(
                 self._store,
                 provider=self._cfg.weather_provider,
@@ -1042,6 +1049,7 @@ class Daemon:
             ("ups.", "UpsGetter"),
             ("htop.", "HtopGetter"),
             ("plex.", "PlexGetter"),
+            ("nzbget.", "NZBGetGetter"),
             ("weather.", "WeatherGetter"),
             ("apod.", "ApodGetter"),
             ("netports.", "NetPortsGetter"),

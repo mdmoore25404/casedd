@@ -100,6 +100,7 @@ class HistogramWidget(BaseWidget):
                 sampled_value = None
 
         if sampled_value is not None:
+            self._backfill_single_series(buf, cfg, now)
             buf.append((now, max(cfg.min, min(cfg.max, sampled_value))))
         while len(buf) > cfg.samples:
             buf.popleft()
@@ -270,6 +271,7 @@ class HistogramWidget(BaseWidget):
                 parsed = None
 
             if parsed is not None:
+                self._backfill_single_series(buf, cfg, now)
                 clamped = max(cfg.min, min(cfg.max, parsed))
                 buf.append((now, clamped))
             while len(buf) > cfg.samples:
@@ -279,6 +281,53 @@ class HistogramWidget(BaseWidget):
                     buf.popleft()
             current_values[source] = buf[-1][1] if buf else None
         return current_values
+
+    def _backfill_single_series(
+        self,
+        buf: deque[tuple[float, float]],
+        cfg: WidgetConfig,
+        now: float,
+    ) -> None:
+        """Backfill missing time slots so rotation does not create chart gaps.
+
+        Histogram sampling is tied to render calls. When a template is rotated
+        off-screen, this widget is not rendered and no samples are appended.
+        On return, time-window trimming can make that look like a getter pause.
+        We synthesize intermediate samples using the last known value to keep
+        the chart continuous across display rotations.
+
+        Args:
+            buf: Rolling sample buffer for this series.
+            cfg: Widget configuration.
+            now: Current monotonic timestamp.
+        """
+        if not buf:
+            return
+        if cfg.window_seconds is None:
+            return
+        if cfg.samples <= 1:
+            return
+
+        step = cfg.window_seconds / float(cfg.samples)
+        if step <= 0:
+            return
+
+        last_ts, last_value = buf[-1]
+        elapsed = now - last_ts
+        if elapsed <= step * 1.5:
+            return
+
+        missing = int(elapsed / step) - 1
+        if missing <= 0:
+            return
+
+        # Bound synthesized points to avoid large bursts after very long gaps.
+        to_add = min(missing, cfg.samples)
+        for idx in range(to_add):
+            synth_ts = last_ts + (step * float(idx + 1))
+            if synth_ts >= now:
+                break
+            buf.append((synth_ts, last_value))
 
     def _series_sample_count(
         self,
