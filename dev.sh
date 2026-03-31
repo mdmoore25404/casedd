@@ -11,6 +11,7 @@
 #   status    Show daemon/web health + last 20 log lines
 #   logs      Tail the log file (Ctrl-C to exit)
 #   lint      Run ruff + mypy (must be zero errors before committing)
+#   test      Run pytest suite with coverage (--fast skips coverage report)
 #   docs      Generate API docs to docs/api.json (local only)
 #   pages     Serve GitHub Pages docs locally on http://localhost:4000
 #   help      Show this message
@@ -408,6 +409,21 @@ cmd_lint() {
     echo "Lint passed."
 }
 
+cmd_test() {
+    _activate_venv
+    local fast=false
+    for arg in "${@}"; do
+        [[ "$arg" == "--fast" ]] && fast=true
+    done
+    if $fast; then
+        echo "==> pytest (fast — no coverage)"
+        pytest tests/ -v
+    else
+        echo "==> pytest --cov=casedd --cov-report=term-missing"
+        pytest tests/ -v --cov=casedd --cov-report=term-missing
+    fi
+}
+
 cmd_docs() {
     bash "$REPO_ROOT/scripts/gen_docs.sh"
 }
@@ -440,6 +456,7 @@ case "${1:-help}" in
     status)  cmd_status ;;
     logs)    cmd_logs ;;
     lint)    cmd_lint ;;
+    test)    cmd_test "${@:2}" ;;
     docs)    cmd_docs ;;
     pages)   cmd_pages ;;
     help|--help|-h) cmd_help ;;
