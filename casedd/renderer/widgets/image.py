@@ -40,7 +40,7 @@ from casedd.template.models import ImageTier, ScaleMode, WidgetConfig
 
 _log = logging.getLogger(__name__)
 
-# Module-level image cache: path string → PIL Image (converted to RGB)
+# Module-level image cache: path string → PIL Image (converted to RGBA)
 _image_cache: dict[str, Image.Image] = {}
 
 # Comparison dispatch table keyed by operator token.
@@ -112,7 +112,7 @@ def _load_image(path_str: str) -> Image.Image | None:
         path_str: Filesystem path to the image file.
 
     Returns:
-        A PIL Image in RGB mode, or ``None`` if the file cannot be loaded.
+        A PIL Image in RGBA mode, or ``None`` if the file cannot be loaded.
     """
     if path_str in _image_cache:
         return _image_cache[path_str]
@@ -123,7 +123,7 @@ def _load_image(path_str: str) -> Image.Image | None:
         return None
 
     try:
-        loaded = Image.open(path).convert("RGB")
+        loaded = Image.open(path).convert("RGBA")
     except OSError as exc:
         _log.warning("Image widget: cannot open '%s': %s", path, exc)
         return None
@@ -231,7 +231,7 @@ class ImageWidget(BaseWidget):
         if cfg.scale == ScaleMode.FIT:
             offset_x = rect.x + (rect.w - scaled.width) // 2
             offset_y = rect.y + (rect.h - scaled.height) // 2
-            img.paste(scaled, (offset_x, offset_y))
+            img.paste(scaled, (offset_x, offset_y), scaled)
             return
 
-        img.paste(scaled, (rect.x, rect.y))
+        img.paste(scaled, (rect.x, rect.y), scaled)

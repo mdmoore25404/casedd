@@ -26,10 +26,15 @@ widgets:
       rows: "1fr"
     children_named:
       logo:
-        type: text
-        content: "NZBGet"
-        color: "#60e6a5"
-        font_size: auto
+        type: image
+        path: assets/nzbget/nzbget-icon.png
+        scale: fit
+        tiers:
+          - path: assets/nzbget/nzbget-icon-muted.png
+            when:
+              - source: nzbget.status.download_queue_enabled
+                operator: eq
+                value: 0
       queue:
         type: value
         source: nzbget.queue.total
@@ -50,7 +55,7 @@ widgets:
         color: "#ff9f6f"
         font_size: auto
       eta:
-        type: text
+        type: value
         source: nzbget.eta_hms
         label: "ETA"
         color: "#6fa8ff"

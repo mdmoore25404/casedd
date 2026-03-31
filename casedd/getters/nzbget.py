@@ -5,11 +5,14 @@ Polls NZBGet via its documented JSON-RPC API and publishes flattened
 
 Store keys written:
     - ``nzbget.version``
+    - ``nzbget.status.download_queue_enabled``
     - ``nzbget.status.download_paused``
     - ``nzbget.status.postprocess_paused``
     - ``nzbget.status.scan_paused``
     - ``nzbget.queue.total``
     - ``nzbget.queue.active_count``
+    - ``nzbget.queue.current_count``
+    - ``nzbget.queue.active_download_percent``
     - ``nzbget.queue.remaining_mb``
     - ``nzbget.queue.remaining_size``  — human-readable size string (MB/GB/TB)
     - ``nzbget.rate.mbps``
@@ -156,6 +159,36 @@ class NZBGetGetter(BaseGetter):
             re.compile(category_filter_regex) if category_filter_regex else None
         )
 
+    def _is_hidden_category(self, category: str) -> bool:
+        """Return whether a category should be privacy-redacted.
+
+        Args:
+            category: Queue item category text from NZBGet.
+
+        Returns:
+            True when category matches the configured privacy regex.
+        """
+        if not self._category_filter_regex:
+            return False
+        return bool(self._category_filter_regex.search(category))
+
+    @staticmethod
+    def _is_paused_item(item: dict[str, Any], remaining_mb: int) -> bool:
+        """Return whether a queue item is paused.
+
+        NZBGet surfaces paused bytes via ``PausedSizeMB``. Treat an item as
+        paused when all of its remaining bytes are paused.
+
+        Args:
+            item: Raw NZBGet queue row.
+            remaining_mb: Remaining size in megabytes for the row.
+
+        Returns:
+            True when the item is fully paused.
+        """
+        paused_mb = int(item.get("PausedSizeMB", 0))
+        return remaining_mb > 0 and paused_mb >= remaining_mb
+
     def _make_auth_header(self) -> dict[str, str] | None:
         """Create HTTP Basic Auth header if credentials are configured.
 
@@ -238,22 +271,43 @@ class NZBGetGetter(BaseGetter):
             self._rpc_call(_METHOD_HISTORY),
         )
 
-        # Process status — store as int (1=paused, 0=active) so widgets
-        # can display numeric comparisons and bar widgets work cleanly.
-        updates["nzbget.status.download_paused"] = int(
-            bool(status_data.get("DownloadPaused"))
-        )
-        updates["nzbget.status.postprocess_paused"] = int(
-            bool(status_data.get("PostPaused"))
-        )
-        updates["nzbget.status.scan_paused"] = int(
-            bool(status_data.get("ScanPaused"))
-        )
-
         # Process queue metrics
         queue_items: list[Any] = queue_data if isinstance(queue_data, list) else []
+        current_download_items = [
+            item for item in queue_items if int(item.get("RemainingSizeMB", 0)) > 0
+        ]
+        paused_download_count = sum(
+            1
+            for item in current_download_items
+            if self._is_paused_item(
+                item,
+                int(item.get("RemainingSizeMB", 0)),
+            )
+        )
+        postprocess_count = sum(
+            1
+            for item in queue_items
+            if bool(item.get("PostProcessing", False))
+        )
+        # When post-processing is globally paused, treat all active post-process
+        # rows as paused; this clears to 0 automatically when no rows remain.
+        paused_postprocess_count = (
+            postprocess_count if bool(status_data.get("PostPaused")) else 0
+        )
         active_count = sum(
-            1 for item in queue_items if bool(item.get("ActiveDownloads", 0) > 0)
+            1
+            for item in current_download_items
+            if int(item.get("ActiveDownloads", 0)) > 0
+            and not self._is_paused_item(
+                item,
+                int(item.get("RemainingSizeMB", 0)),
+            )
+        )
+        current_count = len(current_download_items)
+        active_download_percent = (
+            round((active_count / current_count) * 100.0, 1)
+            if current_count > 0
+            else 0.0
         )
         total_mb = sum(item.get("RemainingSizeMB", 0) for item in queue_items)
         current_rate = float(status_data.get("DownloadRate", 0)) / 1024.0 / 1024.0
@@ -261,8 +315,20 @@ class NZBGetGetter(BaseGetter):
             total_mb / current_rate if current_rate > 0 else 0
         )
 
+        # Store pause metrics as counts so dashboard counters reflect live queue
+        # state and clear immediately when items are removed/completed.
+        updates["nzbget.status.download_queue_enabled"] = (
+            0 if bool(status_data.get("DownloadPaused")) else 1
+        )
+        updates["nzbget.status.download_paused"] = paused_download_count
+        updates["nzbget.status.postprocess_paused"] = paused_postprocess_count
+        updates["nzbget.status.scan_paused"] = int(
+            bool(status_data.get("ScanPaused"))
+        )
         updates["nzbget.queue.total"] = len(queue_items)
         updates["nzbget.queue.active_count"] = active_count
+        updates["nzbget.queue.current_count"] = current_count
+        updates["nzbget.queue.active_download_percent"] = active_download_percent
         updates["nzbget.queue.remaining_mb"] = int(total_mb)
         updates["nzbget.queue.remaining_size"] = _format_size_mb(int(total_mb))
         updates["nzbget.rate.mbps"] = round(current_rate, 2)
@@ -270,11 +336,6 @@ class NZBGetGetter(BaseGetter):
         updates["nzbget.eta_hms"] = _seconds_to_hms(eta_seconds)
 
         # Process postprocess status
-        postprocess_count = sum(
-            1
-            for item in queue_items
-            if bool(item.get("PostProcessing", False))
-        )
         updates["nzbget.postprocess.active_count"] = postprocess_count
 
         # Process history
@@ -296,8 +357,14 @@ class NZBGetGetter(BaseGetter):
         updates["nzbget.history.success_count"] = success_count
         updates["nzbget.history.failed_count"] = failed_count
 
-        # Process current jobs (first 3 for display)
+        # Process current jobs (first 3 for display). Always write all slots so
+        # stale rows are removed from the data store when queue entries disappear.
         current_jobs = self._extract_current_jobs(queue_items)
+        for idx in range(1, 4):
+            prefix = f"nzbget.current_{idx}"
+            updates[f"{prefix}.name"] = ""
+            updates[f"{prefix}.progress_percent"] = 0.0
+            updates[f"{prefix}.category"] = ""
         for idx, job in enumerate(current_jobs[:3], start=1):
             prefix = f"nzbget.current_{idx}"
             updates[f"{prefix}.name"] = job.name
@@ -311,7 +378,7 @@ class NZBGetGetter(BaseGetter):
     ) -> list[_CurrentJob]:
         """Extract actively downloading jobs from queue list.
 
-        Filters out jobs matching the category filter regex (if configured).
+        Keeps hidden jobs in output but redacts visible details.
 
         Args:
             queue_items: Raw queue list from NZBGet API.
@@ -330,16 +397,15 @@ class NZBGetGetter(BaseGetter):
             if remaining <= 0:
                 continue
 
-            name = item.get("NZBName", "Unknown")
+            name = str(item.get("NZBName", "Unknown"))
             total = int(item.get("FileSizeMB", 0))
             progress = round(100.0 * (total - remaining) / total, 1) if total > 0 else 0.0
-            category = item.get("Category", "")
+            category = str(item.get("Category", ""))
 
-            # Skip categories matching filter regex (for privacy)
-            if self._category_filter_regex and self._category_filter_regex.search(
-                category
-            ):
-                continue
+            # Privacy filtering keeps row-level counts intact but redacts details.
+            if self._is_hidden_category(category):
+                name = "[hidden]"
+                category = "[hidden]"
 
             jobs.append(
                 _CurrentJob(
