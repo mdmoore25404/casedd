@@ -933,6 +933,11 @@ def load_config() -> Config:
         ).strip()
         or "[hidden]",
         net_interfaces=_get_csv_or_list("CASEDD_NET_INTERFACES", "net_interfaces"),
+        nzbget_url=str(_get("CASEDD_NZBGET_URL", "nzbget_url", "http://localhost:6789")),
+        nzbget_username=str(_get("CASEDD_NZBGET_USERNAME", "nzbget_username", "")).strip() or None,
+        nzbget_password=str(_get("CASEDD_NZBGET_PASSWORD", "nzbget_password", "")).strip() or None,
+        nzbget_interval=float(str(_get("CASEDD_NZBGET_INTERVAL", "nzbget_interval", 5.0))),
+        nzbget_timeout=float(str(_get("CASEDD_NZBGET_TIMEOUT", "nzbget_timeout", 3.0))),
         nasa_api_key=str(_get("CASEDD_NASA_API_KEY", "nasa_api_key", "")).strip() or None,
         apod_interval=float(str(_get("CASEDD_APOD_INTERVAL", "apod_interval", 3600.0))),
         apod_cache_dir=str(_get("CASEDD_APOD_CACHE_DIR", "apod_cache_dir", "/tmp/casedd-apod")),  # noqa: S108
