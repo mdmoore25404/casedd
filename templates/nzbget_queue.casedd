@@ -42,16 +42,10 @@ widgets:
     padding: 8
     grid:
       template_areas: |
-        "version online"
-      columns: "1fr 1fr"
+        "online"
+      columns: 1fr
       rows: "1fr"
     children_named:
-      version:
-        type: value
-        source: nzbget.version
-        label: "Version"
-        color: "#dfe7ef"
-        font_size: auto
       online:
         type: text
         content: "✓ Online"
