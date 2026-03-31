@@ -577,6 +577,58 @@ class TestNZBGetGetter:
         assert updates["nzbget.queue.active_count"] == 1
         assert updates["nzbget.queue.active_download_percent"] == 50.0
 
+    async def test_fetch_clears_current_slots_when_queue_empties(
+        self,
+        data_store: DataStore,
+    ) -> None:
+        """Fetch clears previously populated current_* slots when no jobs remain."""
+        getter = NZBGetGetter(data_store, interval=1.0, timeout=3.0)
+
+        with patch.object(getter, "_rpc_call") as mock_rpc:
+            mock_rpc.side_effect = [
+                {"version": "1.0.0"},
+                {
+                    "DownloadPaused": False,
+                    "PostPaused": False,
+                    "ScanPaused": False,
+                    "DownloadRate": 524288,
+                },
+                [
+                    {
+                        "NZBName": "Visible.Active",
+                        "FileSizeMB": 100,
+                        "RemainingSizeMB": 50,
+                        "ActiveDownloads": 1,
+                        "PausedSizeMB": 0,
+                        "Category": "tv",
+                        "PostProcessing": False,
+                    }
+                ],
+                [],
+                {"version": "1.0.0"},
+                {
+                    "DownloadPaused": False,
+                    "PostPaused": True,
+                    "ScanPaused": False,
+                    "DownloadRate": 0,
+                },
+                [],
+                [],
+            ]
+
+            first_updates = await getter.fetch()
+            second_updates = await getter.fetch()
+
+        assert first_updates["nzbget.current_1.name"] == "Visible.Active"
+        assert first_updates["nzbget.queue.current_count"] == 1
+
+        assert second_updates["nzbget.queue.current_count"] == 0
+        assert second_updates["nzbget.current_1.name"] == ""
+        assert second_updates["nzbget.current_1.progress_percent"] == 0.0
+        assert second_updates["nzbget.current_1.category"] == ""
+        assert second_updates["nzbget.current_2.name"] == ""
+        assert second_updates["nzbget.current_3.name"] == ""
+
     async def test_category_filter_no_regex(self, data_store: DataStore) -> None:
         """Test that all categories are included when no filter regex is set."""
         getter = NZBGetGetter(

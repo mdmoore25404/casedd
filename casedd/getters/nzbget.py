@@ -345,8 +345,14 @@ class NZBGetGetter(BaseGetter):
         updates["nzbget.history.success_count"] = success_count
         updates["nzbget.history.failed_count"] = failed_count
 
-        # Process current jobs (first 3 for display)
+        # Process current jobs (first 3 for display). Always write all slots so
+        # stale rows are removed from the data store when queue entries disappear.
         current_jobs = self._extract_current_jobs(queue_items)
+        for idx in range(1, 4):
+            prefix = f"nzbget.current_{idx}"
+            updates[f"{prefix}.name"] = ""
+            updates[f"{prefix}.progress_percent"] = 0.0
+            updates[f"{prefix}.category"] = ""
         for idx, job in enumerate(current_jobs[:3], start=1):
             prefix = f"nzbget.current_{idx}"
             updates[f"{prefix}.name"] = job.name
