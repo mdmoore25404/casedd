@@ -346,14 +346,15 @@ def _logo_lines_for_pairs(pairs: list[tuple[str, str]]) -> list[str]:
     os_name = _pair_value(pairs, "OS").lower()
     if "ubuntu" in os_name:
         return [
-            "      .-::::-.",
-            "   .:#########:.",
-            "  :####:.  .:####:",
-            " .###:        :###.",
-            " .###:        :###.",
-            "  :####:.  .:####:",
-            "   ':#########:'",
-            "      '-::::-'",
+            "        .:llllll:.",
+            "     'clllllllllllc'",
+            "   'cllllc'    'cllllc'",
+            "  clllc          clllc",
+            "  llll            llll",
+            "  clllc          clllc",
+            "   'cllllc'    'cllllc'",
+            "     'clllllllllllc'",
+            "        ':llllll:'",
         ]
     return [
         "    .-======-.",
