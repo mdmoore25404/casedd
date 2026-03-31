@@ -1,0 +1,58 @@
+# plex_dashboard.casedd — Plex now-playing + recently-added dashboard
+
+name: plex_dashboard
+description: Plex server health, active sessions, and recently added media.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0b1218"
+refresh_rate: 2.0
+
+grid:
+  template_areas: |
+    "server server"
+    "now    recent"
+  columns: "1fr 1fr"
+  rows: "0.28fr 0.72fr"
+
+widgets:
+  server:
+    type: panel
+    direction: row
+    gap: 16
+    padding: 8
+    children:
+      - type: value
+        source: plex.sessions.active_count
+        label: "Active"
+        color: "#74d680"
+        font_size: auto
+      - type: value
+        source: plex.sessions.transcoding_count
+        label: "Transcoding"
+        color: "#ff9f6f"
+        font_size: auto
+      - type: value
+        source: plex.bandwidth.current_mbps
+        label: "Bandwidth Mb/s"
+        precision: 1
+        color: "#6fa8ff"
+        font_size: auto
+      - type: text
+        source: plex.summary
+        label: "Summary"
+        color: "#dfe7ef"
+        font_size: auto
+
+  now:
+    type: plex_now_playing
+    label: "Now Playing"
+    source: plex.sessions.rows
+    color: "#7ce29f"
+    padding: 6
+
+  recent:
+    type: plex_recently_added
+    label: "Recently Added"
+    source: plex.recently_added.rows
+    color: "#89b7ff"
+    padding: 6

@@ -418,6 +418,46 @@ Additional fields: `paths` (list of file or directory paths), `interval` (second
 
 ---
 
+### `plex_now_playing`
+
+Compact table of active Plex sessions.
+
+Input rows must come from `plex.sessions.rows` with format:
+`USER|TITLE|MEDIA_TYPE|PROGRESS_PERCENT|TRANSCODE_DECISION`
+
+```yaml
+now:
+  type: plex_now_playing
+  label: "Now Playing"
+  source: plex.sessions.rows
+  color: "#7ce29f"
+  filter_regex: "(kids|private)"   # optional privacy filter
+```
+
+Additional fields: `filter_regex` (optional Python regex to hide matching rows)
+
+---
+
+### `plex_recently_added`
+
+Compact table of recently-added Plex media.
+
+Input rows must come from `plex.recently_added.rows` with format:
+`MEDIA_TYPE|LIBRARY|TITLE`
+
+```yaml
+recent:
+  type: plex_recently_added
+  label: "Recently Added"
+  source: plex.recently_added.rows
+  color: "#89b7ff"
+  filter_regex: "(kids|family)"   # optional privacy filter
+```
+
+Additional fields: `filter_regex` (optional Python regex to hide matching rows)
+
+---
+
 ### `panel`
 
 Container widget. Lays out children in a row or column. Supports its own nested `grid`

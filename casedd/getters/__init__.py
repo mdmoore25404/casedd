@@ -13,6 +13,7 @@ Available getters:
     - :mod:`casedd.getters.disk` — Disk usage
     - :mod:`casedd.getters.network` — Network byte rates
     - :mod:`casedd.getters.ollama` — Ollama API runtime state
+    - :mod:`casedd.getters.plex` — Plex server/session/library telemetry
     - :mod:`casedd.getters.speedtest` — Ookla speed test sampling
     - :mod:`casedd.getters.system` — Hostname, uptime, load average
     - :mod:`casedd.getters.ups` — UPS metrics via apcaccess/upsc/custom command

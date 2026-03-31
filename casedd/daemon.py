@@ -48,6 +48,7 @@ from casedd.getters.memory import MemoryGetter
 from casedd.getters.net_ports import NetPortsGetter
 from casedd.getters.network import NetworkGetter
 from casedd.getters.ollama import OllamaGetter
+from casedd.getters.plex import PlexGetter
 from casedd.getters.speedtest import SpeedtestGetter
 from casedd.getters.sysinfo import SysinfoGetter
 from casedd.getters.system import SystemGetter
@@ -903,6 +904,21 @@ class Daemon:
                 command=self._cfg.ups_command,
                 upsc_target=self._cfg.ups_upsc_target,
             ),
+            PlexGetter(
+                self._store,
+                base_url=self._cfg.plex_base_url,
+                token=self._cfg.plex_token,
+                client_identifier=self._cfg.plex_client_identifier,
+                product=self._cfg.plex_product,
+                interval=self._cfg.plex_interval,
+                timeout=self._cfg.plex_timeout,
+                verify_tls=self._cfg.plex_verify_tls,
+                max_sessions=self._cfg.plex_max_sessions,
+                max_recent=self._cfg.plex_max_recent,
+                privacy_filter_regex=self._cfg.plex_privacy_filter_regex,
+                privacy_filter_libraries=self._cfg.plex_privacy_filter_libraries,
+                privacy_redaction_text=self._cfg.plex_privacy_redaction_text,
+            ),
             WeatherGetter(
                 self._store,
                 provider=self._cfg.weather_provider,
@@ -1024,6 +1040,7 @@ class Daemon:
             ("ollama.", "OllamaGetter"),
             ("ups.", "UpsGetter"),
             ("htop.", "HtopGetter"),
+            ("plex.", "PlexGetter"),
             ("weather.", "WeatherGetter"),
             ("apod.", "ApodGetter"),
             ("netports.", "NetPortsGetter"),
