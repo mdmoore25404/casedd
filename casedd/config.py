@@ -288,8 +288,8 @@ class Config:
         ups_command: Optional custom UPS command override.
         ups_upsc_target: Target argument for ``upsc`` fallback mode.
         pihole_base_url: Pi-hole API base URL.
-        pihole_api_token: Pi-hole API token (app password) for bearer auth.
-        pihole_password: Pi-hole account password used for auth session login.
+        pihole_api_token: Pi-hole API token (legacy bearer token) for bearer auth.
+        pihole_password: Pi-hole app password (v6+) for bearer auth.
         pihole_session_sid: Optional Pi-hole session ID cookie value.
         pihole_timeout: Pi-hole HTTP request timeout in seconds.
         pihole_verify_tls: Verify Pi-hole HTTPS certificates when true.

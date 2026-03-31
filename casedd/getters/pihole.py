@@ -38,8 +38,8 @@ class PiHoleGetter(BaseGetter):
     Args:
         store: Shared data store.
         base_url: Pi-hole API base URL.
-        api_token: Optional API token for bearer authentication.
-        password: Optional Pi-hole password used to create an auth session.
+        api_token: Optional API token for bearer authentication (legacy token).
+        password: Optional Pi-hole app password for bearer authentication (v6+).
         session_sid: Optional API session cookie sid value.
         interval: Poll interval in seconds.
         timeout: HTTP timeout in seconds.
@@ -165,6 +165,8 @@ class PiHoleGetter(BaseGetter):
         headers = {"Accept": "application/json"}
         if self._api_token:
             headers["Authorization"] = f"Bearer {self._api_token}"
+        elif self._password:
+            headers["Authorization"] = f"Bearer {self._password}"
         sid = self._active_session_sid()
         if sid:
             headers["Cookie"] = f"sid={sid}"
@@ -202,13 +204,11 @@ class PiHoleGetter(BaseGetter):
         """Resolve the session sid to use for API requests."""
         if self._session_sid:
             return self._session_sid
-        if self._password_session_sid:
-            return self._password_session_sid
-        return self._ensure_password_session_sid()
+        return self._password_session_sid
 
     def _can_refresh_password_session(self) -> bool:
         """Return whether password-based auth can refresh an expired sid."""
-        return bool(self._password) and not self._api_token and not self._session_sid
+        return False
 
     def _ensure_password_session_sid(self) -> str:
         """Create and cache a password-derived session sid when needed."""

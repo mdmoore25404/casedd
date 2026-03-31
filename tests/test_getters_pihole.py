@@ -127,24 +127,18 @@ async def test_pihole_getter_partial_payload(monkeypatch) -> None:
 
 
 async def test_pihole_getter_password_auth_session(monkeypatch) -> None:
-    """Getter should login with password and reuse returned sid cookie."""
-    calls: list[tuple[str, str, str | None]] = []
+    """Getter should use password as Bearer token for authentication."""
+    calls: list[tuple[str, str, str | None, str | None]] = []
 
     def _urlopen(req, timeout: float, context=None):
         url = str(req.full_url)
         method = str(req.get_method())
-        cookie_header = req.get_header("Cookie")
-        calls.append((url, method, cookie_header))
-
-        if url.endswith("/api/auth"):
-            assert method == "POST"
-            body = req.data.decode("utf-8") if isinstance(req.data, bytes) else ""
-            assert '"password": "secret"' in body
-            return _FakeResponse('{"session": {"sid": "sid-abc"}}')
+        auth_header = req.get_header("Authorization")
+        calls.append((url, method, auth_header, None))
 
         assert url.endswith("/api/stats/summary")
         assert method == "GET"
-        assert cookie_header == "sid=sid-abc"
+        assert auth_header == "Bearer secret"
         return _FakeResponse(
             '{"version": "6.0.1", "queries": {"total": 5, "blocked": 1}}'
         )
@@ -157,5 +151,4 @@ async def test_pihole_getter_password_auth_session(monkeypatch) -> None:
     assert payload["pihole.version"] == "6.0.1"
     assert payload["pihole.queries.total"] == 5.0
     assert payload["pihole.queries.blocked"] == 1.0
-    assert calls[0] == ("http://pi.hole/api/auth", "POST", None)
-    assert calls[1] == ("http://pi.hole/api/stats/summary", "GET", "sid=sid-abc")
+    assert calls[0] == ("http://pi.hole/api/stats/summary", "GET", "Bearer secret", None)
