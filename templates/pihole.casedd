@@ -93,17 +93,19 @@ widgets:
     padding: [4, 8]
 
   top_blocked:
-    type: text
+    type: table
     label: Top Blocked Domains
     source: pihole.top_blocked.list
     color: "#f0f5ff"
     font_size: auto
+    max_items: 5
     padding: [4, 12]
 
   top_client:
-    type: text
+    type: table
     label: Top Clients
     source: pihole.top_client.list
     color: "#f0f5ff"
     font_size: auto
+    max_items: 5
     padding: [4, 12]

@@ -13,10 +13,10 @@ Store keys written:
     - ``pihole.domains.blocked_count``
     - ``pihole.top_blocked.domain``
     - ``pihole.top_blocked.hits``
-    - ``pihole.top_blocked.list``
+    - ``pihole.top_blocked.list`` (rows: ``name|count``)
     - ``pihole.top_client.name``
     - ``pihole.top_client.queries``
-    - ``pihole.top_client.list``
+    - ``pihole.top_client.list`` (rows: ``name|count``)
 """
 
 from __future__ import annotations
@@ -337,10 +337,10 @@ class PiHoleGetter(BaseGetter):
             "pihole.domains.blocked_count": 0.0,
             "pihole.top_blocked.domain": "—",
             "pihole.top_blocked.hits": 0.0,
-            "pihole.top_blocked.list": "—",
+            "pihole.top_blocked.list": "—|—",
             "pihole.top_client.name": "—",
             "pihole.top_client.queries": 0.0,
-            "pihole.top_client.list": "—",
+            "pihole.top_client.list": "—|—",
         }
 
 
@@ -445,24 +445,14 @@ def _extract_top_entries(
 
 
 def _format_ranked_list(rows: list[tuple[str, float]]) -> str:
-    """Format top-row tuples into a multiline compact display string."""
+    """Format top-row tuples into a multiline two-column table payload."""
     if not rows:
-        return "—"
+        return "—|—"
 
     lines: list[str] = []
-    for idx, (name, count) in enumerate(rows, start=1):
-        compact = _truncate_name(name, max_chars=20)
-        lines.append(f"{idx}. {compact} {int(count)}")
+    for name, count in rows:
+        lines.append(f"{name}|{int(count)}")
     return "\n".join(lines)
-
-
-def _truncate_name(value: str, *, max_chars: int) -> str:
-    """Trim long names to keep multiline text legible in tight widgets."""
-    if len(value) <= max_chars:
-        return value
-    if max_chars <= 3:
-        return value[:max_chars]
-    return f"{value[: max_chars - 3]}..."
 
 
 def _first_number(payload: dict[str, object], keys: list[tuple[str, ...]]) -> float:

@@ -176,6 +176,24 @@ hostname:
 
 ---
 
+### `table`
+
+Displays newline-delimited two-column rows in a compact table. Each source line
+must be formatted as `left|right`.
+
+```yaml
+top_domains:
+  type: table
+  label: "Top Blocked Domains"
+  source: pihole.top_blocked.list
+  font_size: auto
+  max_items: 5
+```
+
+Additional fields: `max_items` (optional row cap).
+
+---
+
 ### `bar`
 
 Horizontal progress bar. Value is clamped to `[min, max]`.

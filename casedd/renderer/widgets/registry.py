@@ -28,6 +28,7 @@ from casedd.renderer.widgets.plex_recently_added import PlexRecentlyAddedWidget
 from casedd.renderer.widgets.slideshow import SlideshowWidget
 from casedd.renderer.widgets.sparkline import SparklineWidget
 from casedd.renderer.widgets.sysinfo import SysinfoWidget
+from casedd.renderer.widgets.table import TableWidget
 from casedd.renderer.widgets.text import TextWidget
 from casedd.renderer.widgets.ups import UpsWidget
 from casedd.renderer.widgets.value import ValueWidget
@@ -45,6 +46,7 @@ _REGISTRY: dict[WidgetType, BaseWidget] = {
     WidgetType.BOOLEAN: BooleanWidget(),
     WidgetType.VALUE: ValueWidget(),
     WidgetType.TEXT: TextWidget(),
+    WidgetType.TABLE: TableWidget(),
     WidgetType.BAR: BarWidget(),
     WidgetType.GAUGE: GaugeWidget(),
     WidgetType.HISTOGRAM: HistogramWidget(),
