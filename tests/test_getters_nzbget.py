@@ -14,7 +14,7 @@ import pytest
 
 from casedd.data_store import DataStore
 from casedd.getter_health import GetterHealthRegistry
-from casedd.getters.nzbget import NZBGetGetter
+from casedd.getters.nzbget import NZBGetGetter, _format_size_mb, _seconds_to_hms
 
 
 @pytest.fixture
@@ -354,9 +354,65 @@ class TestNZBGetGetter:
 
         jobs = getter._extract_current_jobs(queue_items)
 
-        # Should extract only active jobs (first two), sorted by progress (highest first)
-        assert len(jobs) >= 1
-        assert jobs[0].name in ("Show.S01E02.1080p", "Show.S01E01.1080p")
+        # All three items have RemainingSizeMB > 0 so all are included.
+        # Sorted by progress descending: S01E02 (95%) > S01E01 (75%) > Paused (0%)
+        assert len(jobs) == 3
+        assert jobs[0].name == "Show.S01E02.1080p"
+        assert jobs[1].name == "Show.S01E01.1080p"
+
+    async def test_completed_items_excluded(self, data_store: DataStore) -> None:
+        """Completed items (RemainingSizeMB == 0) must not appear in current jobs.
+
+        NZBGet keeps completed entries in the queue list briefly before moving them
+        to history.  Without filtering they appear at 100% progress indefinitely.
+        """
+        getter = NZBGetGetter(data_store, interval=1.0, timeout=3.0)
+
+        queue_items = [
+            {
+                "NZBName": "Completed.Movie",
+                "FileSizeMB": 5000,
+                "RemainingSizeMB": 0,   # fully downloaded, awaiting history move
+                "ActiveDownloads": 0,
+                "Category": "movies",
+            },
+            {
+                "NZBName": "In.Progress.Show",
+                "FileSizeMB": 2000,
+                "RemainingSizeMB": 800,
+                "ActiveDownloads": 1,
+                "Category": "tv",
+            },
+        ]
+
+        jobs = getter._extract_current_jobs(queue_items)
+
+        assert len(jobs) == 1
+        assert jobs[0].name == "In.Progress.Show"
+
+    async def test_all_completed_returns_empty(self, data_store: DataStore) -> None:
+        """When all queue items are complete, the current jobs list is empty."""
+        getter = NZBGetGetter(data_store, interval=1.0, timeout=3.0)
+
+        queue_items = [
+            {
+                "NZBName": "Done.1",
+                "FileSizeMB": 1000,
+                "RemainingSizeMB": 0,
+                "ActiveDownloads": 0,
+                "Category": "movies",
+            },
+            {
+                "NZBName": "Done.2",
+                "FileSizeMB": 2000,
+                "RemainingSizeMB": 0,
+                "ActiveDownloads": 0,
+                "Category": "tv",
+            },
+        ]
+
+        jobs = getter._extract_current_jobs(queue_items)
+        assert jobs == []
 
     async def test_category_filter_regex(self, data_store: DataStore) -> None:
         """Test category filtering with regex patterns."""
@@ -470,7 +526,6 @@ class TestHelperFunctions:
     ])
     def test_seconds_to_hms(self, seconds: int, expected: str) -> None:
         """_seconds_to_hms formats seconds as HH:MM:SS."""
-        from casedd.getters.nzbget import _seconds_to_hms
         assert _seconds_to_hms(seconds) == expected
 
     @pytest.mark.parametrize("size_mb,expected", [
@@ -487,5 +542,4 @@ class TestHelperFunctions:
     ])
     def test_format_size_mb(self, size_mb: int, expected: str) -> None:
         """_format_size_mb converts MB to human-readable MB/GB/TB strings."""
-        from casedd.getters.nzbget import _format_size_mb
         assert _format_size_mb(size_mb) == expected

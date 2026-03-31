@@ -322,31 +322,32 @@ class NZBGetGetter(BaseGetter):
         jobs: list[_CurrentJob] = []
 
         for item in queue_items:
-            if item.get("ActiveDownloads", 0) > 0 or item.get("PausedSizeMB", 0) == 0:
-                # Item is active or not entirely paused
-                name = item.get("NZBName", "Unknown")
-                remaining = int(item.get("RemainingSizeMB", 0))
-                total = int(item.get("FileSizeMB", 0))
-                progress = (
-                    100.0
-                    if total == 0
-                    else round(100.0 * (total - remaining) / total, 1)
-                )
-                category = item.get("Category", "")
+            remaining = int(item.get("RemainingSizeMB", 0))
+            # Only show items that still have data left to download.
+            # Completed items (RemainingSizeMB == 0) linger in the NZBGet
+            # queue list until they are moved to history; excluding them
+            # prevents 100%-complete entries from appearing in the display.
+            if remaining <= 0:
+                continue
 
-                # Skip categories matching filter regex (for privacy)
-                if self._category_filter_regex and self._category_filter_regex.search(
-                    category
-                ):
-                    continue
+            name = item.get("NZBName", "Unknown")
+            total = int(item.get("FileSizeMB", 0))
+            progress = round(100.0 * (total - remaining) / total, 1) if total > 0 else 0.0
+            category = item.get("Category", "")
 
-                jobs.append(
-                    _CurrentJob(
-                        name=name,
-                        progress_percent=progress,
-                        category=category,
-                    )
+            # Skip categories matching filter regex (for privacy)
+            if self._category_filter_regex and self._category_filter_regex.search(
+                category
+            ):
+                continue
+
+            jobs.append(
+                _CurrentJob(
+                    name=name,
+                    progress_percent=progress,
+                    category=category,
                 )
+            )
 
         # Sort by progress descending (highest progress first)
         jobs.sort(key=lambda j: j.progress_percent, reverse=True)
