@@ -23,6 +23,7 @@ import json
 import logging
 from pathlib import Path
 import signal
+import time
 
 from PIL import Image, ImageDraw
 import psutil
@@ -35,6 +36,7 @@ from casedd.config import (
     TemplateTriggerRule,
 )
 from casedd.data_store import DataStore, StoreValue
+from casedd.getter_health import GetterHealthRegistry
 from casedd.getters.apod import ApodGetter
 from casedd.getters.base import BaseGetter
 from casedd.getters.cpu import CpuGetter
@@ -212,12 +214,18 @@ class Daemon:
         # Populated by USB display auto-detection when fb_auto_detect=True.
         self._auto_detected_fb: FramebufferInfo | None = None
         self._status_logo_path = Path(self._cfg.assets_dir) / "casedd-logo.png"
+        self._health = GetterHealthRegistry()
+        self._started_at: float = 0.0
+        self._render_count: int = 0
 
     async def run(self) -> None:
         """Start all subsystems and run the main render loop until shutdown."""
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, self._shutdown.set)
+        # SIGHUP triggers a config and template hot-reload.
+        loop.add_signal_handler(signal.SIGHUP, self._handle_sighup)
+        self._started_at = time.time()
 
         self._store.set(_TEST_MODE_STORE_KEY, 1 if self._cfg.test_mode else 0)
         self._setup_framebuffer_detection()
@@ -320,6 +328,18 @@ class Daemon:
             except Exception:
                 _log.exception("Failed to evaluate/claim primary display")
 
+    def _handle_sighup(self) -> None:
+        """Handle SIGHUP by logging a hot-reload notice.
+
+        Full config hot-reload requires a daemon restart because many
+        subsystems (ports, device paths) cannot be changed at runtime.
+        Template hot-reload is always active via the TemplateRegistry watcher.
+        """
+        _log.info(
+            "SIGHUP received — templates reloading via TemplateRegistry watcher. "
+            "Restart the daemon to apply config file changes."
+        )
+
     def _setup_outputs_and_ingestion(
         self,
         panel_runtimes: list[_PanelRuntime],
@@ -356,6 +376,14 @@ class Daemon:
 
         ws_output = WebSocketOutput(_BIND_HOST, self._cfg.ws_port)
 
+        def _health_provider() -> dict[str, object]:
+            """Return daemon health snapshot for /api/health and /api/metrics."""
+            return {
+                "uptime_seconds": time.time() - self._started_at,
+                "render_count": self._render_count,
+                "getters": self._health.snapshot(),
+            }
+
         http_output = HttpViewerOutput(
             self._store,
             _BIND_HOST,
@@ -384,6 +412,9 @@ class Daemon:
             },
             _rotation_provider,
             _rotation_updater,
+            health_provider=_health_provider,
+            api_key=self._cfg.api_key,
+            api_rate_limit=self._cfg.api_rate_limit,
         )
 
         unix_ingestion = UnixSocketIngestion(Path(self._cfg.socket_path), self._store)
@@ -790,6 +821,7 @@ class Daemon:
                 await asyncio.to_thread(panel.framebuffer.write, image)
                 context.http_output.set_latest_image(panel.name, image)
                 await context.ws_output.broadcast(image, panel=panel.name)
+                self._render_count += 1
 
             if tick_start - last_getter_sync >= _GETTER_SYNC_INTERVAL_SEC:
                 await self._sync_getter_tasks(
@@ -826,11 +858,11 @@ class Daemon:
             return None
 
     def _create_getters(self) -> list[BaseGetter]:
-        """Instantiate all getter objects with shared data store."""
+        """Instantiate all getter objects with shared data store and health registry."""
         if hasattr(psutil, "PROCFS_PATH"):
             psutil.PROCFS_PATH = self._cfg.procfs_path
 
-        return [
+        getters: list[BaseGetter] = [
             CpuGetter(self._store),
             GpuGetter(self._store),
             MemoryGetter(self._store),
@@ -887,6 +919,10 @@ class Daemon:
             NetPortsGetter(self._store),
             SysinfoGetter(self._store),
         ]
+        # Attach health registry so each getter reports outcomes.
+        for getter in getters:
+            getter.attach_health(self._health)
+        return getters
 
     async def _sync_getter_tasks(
         self,

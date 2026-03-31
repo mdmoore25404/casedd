@@ -303,6 +303,12 @@ class Config:
             URL here.  When a trigger rule with ``notify: true`` activates,
             CASEDD posts a JSON payload to this URL.
         test_mode: Disable all getters globally when true.
+        api_key: Optional shared secret for the ``POST /api/update`` endpoint.
+            When set, all update requests must include an ``X-API-Key`` header
+            matching this value.  Leave unset (default) to allow unauthenticated
+            pushes (suitable for trusted LAN deployments).
+        api_rate_limit: Maximum update requests per minute accepted from a
+            single source IP.  ``0`` (default) disables rate limiting.
     """
 
     log_level: str = Field(default="INFO")
@@ -369,6 +375,8 @@ class Config:
     panels: list[PanelConfig] = Field(default_factory=list)
     always_collect_prefixes: list[str] = Field(default_factory=list)
     test_mode: bool = Field(default=False)
+    api_key: str | None = Field(default=None)
+    api_rate_limit: int = Field(default=0, ge=0)
 
     @field_validator("log_level")
     @classmethod
@@ -838,4 +846,6 @@ def load_config() -> Config:
         always_collect_prefixes=_get_always_collect_prefixes(),
         test_mode=str(_get("CASEDD_TEST_MODE", "test_mode", "0"))
         not in {"0", "false", "False", ""},
+        api_key=str(_get("CASEDD_API_KEY", "api_key", "")).strip() or None,
+        api_rate_limit=int(str(_get("CASEDD_API_RATE_LIMIT", "api_rate_limit", 0))),
     )

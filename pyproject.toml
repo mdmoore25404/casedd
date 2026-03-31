@@ -12,6 +12,7 @@ license = { text = "MIT" }
 
 [project.scripts]
 casedd = "casedd.__main__:main"
+casedd-ctl = "casedd.cli:main"
 
 # ---------------------------------------------------------------------------
 # Ruff — linting and formatting (replaces flake8, isort, pyupgrade, bandit)
