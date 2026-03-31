@@ -908,6 +908,7 @@ class Daemon:
                 self._store,
                 base_url=self._cfg.pihole_base_url,
                 api_token=self._cfg.pihole_api_token,
+                password=self._cfg.pihole_password,
                 session_sid=self._cfg.pihole_session_sid,
                 interval=self._cfg.pihole_interval,
                 timeout=self._cfg.pihole_timeout,

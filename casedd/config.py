@@ -288,7 +288,8 @@ class Config:
         ups_command: Optional custom UPS command override.
         ups_upsc_target: Target argument for ``upsc`` fallback mode.
         pihole_base_url: Pi-hole API base URL.
-        pihole_api_token: Pi-hole API token for bearer-style auth.
+        pihole_api_token: Pi-hole API token (app password) for bearer auth.
+        pihole_password: Pi-hole account password used for auth session login.
         pihole_session_sid: Optional Pi-hole session ID cookie value.
         pihole_timeout: Pi-hole HTTP request timeout in seconds.
         pihole_verify_tls: Verify Pi-hole HTTPS certificates when true.
@@ -403,6 +404,7 @@ class Config:
     ups_upsc_target: str = Field(default="ups@localhost")
     pihole_base_url: str = Field(default="http://pi.hole")
     pihole_api_token: str | None = Field(default=None, repr=False)
+    pihole_password: str | None = Field(default=None, repr=False)
     pihole_session_sid: str | None = Field(default=None, repr=False)
     pihole_timeout: float = Field(default=4.0)
     pihole_verify_tls: bool = Field(default=True)
@@ -1080,6 +1082,8 @@ def load_config() -> Config:
         ups_upsc_target=str(_get("CASEDD_UPS_UPSC_TARGET", "ups_upsc_target", "ups@localhost")),
         pihole_base_url=str(_get("CASEDD_PIHOLE_BASE_URL", "pihole_base_url", "http://pi.hole")),
         pihole_api_token=str(_get("CASEDD_PIHOLE_API_TOKEN", "pihole_api_token", "")).strip()
+        or None,
+        pihole_password=str(_get("CASEDD_PIHOLE_PASSWORD", "pihole_password", "")).strip()
         or None,
         pihole_session_sid=str(_get("CASEDD_PIHOLE_SESSION_SID", "pihole_session_sid", "")).strip()
         or None,

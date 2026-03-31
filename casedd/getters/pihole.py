@@ -39,6 +39,7 @@ class PiHoleGetter(BaseGetter):
         store: Shared data store.
         base_url: Pi-hole API base URL.
         api_token: Optional API token for bearer authentication.
+        password: Optional Pi-hole password used to create an auth session.
         session_sid: Optional API session cookie sid value.
         interval: Poll interval in seconds.
         timeout: HTTP timeout in seconds.
@@ -50,6 +51,7 @@ class PiHoleGetter(BaseGetter):
         store: DataStore,
         base_url: str = "http://pi.hole",
         api_token: str | None = None,
+        password: str | None = None,
         session_sid: str | None = None,
         interval: float = 5.0,
         timeout: float = 4.0,
@@ -59,7 +61,9 @@ class PiHoleGetter(BaseGetter):
         super().__init__(store, interval)
         self._base_url = base_url.rstrip("/")
         self._api_token = api_token.strip() if isinstance(api_token, str) else ""
+        self._password = password.strip() if isinstance(password, str) else ""
         self._session_sid = session_sid.strip() if isinstance(session_sid, str) else ""
+        self._password_session_sid = ""
         self._timeout = timeout
         self._ssl_context: ssl.SSLContext | None = None
         if self._base_url.startswith("https://") and not verify_tls:
@@ -155,14 +159,15 @@ class PiHoleGetter(BaseGetter):
             "pihole.top_client.queries": float(top_client_queries),
         }
 
-    def _request_json(self, path: str) -> dict[str, object]:
+    def _request_json(self, path: str, *, retry_auth: bool = True) -> dict[str, object]:
         """GET one Pi-hole endpoint and parse JSON payload."""
         url = f"{self._base_url}{path}"
         headers = {"Accept": "application/json"}
         if self._api_token:
             headers["Authorization"] = f"Bearer {self._api_token}"
-        if self._session_sid:
-            headers["Cookie"] = f"sid={self._session_sid}"
+        sid = self._active_session_sid()
+        if sid:
+            headers["Cookie"] = f"sid={sid}"
 
         req = Request(url, headers=headers, method="GET")  # noqa: S310 -- user-provided API endpoint
         try:
@@ -174,6 +179,10 @@ class PiHoleGetter(BaseGetter):
                 body = resp.read().decode("utf-8")
         except HTTPError as exc:
             if exc.code in {401, 403}:
+                if retry_auth and self._can_refresh_password_session():
+                    self._password_session_sid = ""
+                    self._ensure_password_session_sid()
+                    return self._request_json(path, retry_auth=False)
                 msg = "Pi-hole auth failed (check token/session credentials)"
                 raise RuntimeError(msg) from exc
             raise RuntimeError(f"Pi-hole request failed with HTTP {exc.code}") from exc
@@ -188,6 +197,65 @@ class PiHoleGetter(BaseGetter):
         if not isinstance(decoded, dict):
             raise RuntimeError("Pi-hole response payload is not a JSON object")
         return decoded
+
+    def _active_session_sid(self) -> str:
+        """Resolve the session sid to use for API requests."""
+        if self._session_sid:
+            return self._session_sid
+        if self._password_session_sid:
+            return self._password_session_sid
+        return self._ensure_password_session_sid()
+
+    def _can_refresh_password_session(self) -> bool:
+        """Return whether password-based auth can refresh an expired sid."""
+        return bool(self._password) and not self._api_token and not self._session_sid
+
+    def _ensure_password_session_sid(self) -> str:
+        """Create and cache a password-derived session sid when needed."""
+        if not self._password:
+            return ""
+        if self._password_session_sid:
+            return self._password_session_sid
+
+        url = f"{self._base_url}/api/auth"
+        body = json.dumps({"password": self._password}).encode("utf-8")
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+        }
+        req = Request(  # noqa: S310 -- user-provided API endpoint
+            url,
+            data=body,
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urlopen(  # noqa: S310 -- user-provided API endpoint
+                req,
+                timeout=self._timeout,
+                context=self._ssl_context,
+            ) as resp:
+                raw = resp.read().decode("utf-8")
+        except HTTPError as exc:
+            if exc.code in {401, 403}:
+                raise RuntimeError("Pi-hole password auth failed") from exc
+            raise RuntimeError(f"Pi-hole auth request failed with HTTP {exc.code}") from exc
+        except URLError as exc:
+            raise RuntimeError(f"Pi-hole auth transport error: {exc}") from exc
+
+        try:
+            decoded = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"Pi-hole auth JSON parse error: {exc}") from exc
+
+        if not isinstance(decoded, dict):
+            raise RuntimeError("Pi-hole auth payload is not a JSON object")
+
+        sid = _first_text(decoded, [("session", "sid"), ("sid",)])
+        if not sid:
+            raise RuntimeError("Pi-hole auth response did not include a session sid")
+        self._password_session_sid = sid
+        return sid
 
 
 def _extract_blocking_enabled(payload: dict[str, object]) -> bool:

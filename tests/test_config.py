@@ -205,6 +205,7 @@ def test_pihole_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
         monkeypatch_obj.setenv("CASEDD_CONFIG", str(tmp_path / "missing.yaml"))
         monkeypatch_obj.setenv("CASEDD_PIHOLE_BASE_URL", "https://pi.hole")
         monkeypatch_obj.setenv("CASEDD_PIHOLE_API_TOKEN", "token")
+        monkeypatch_obj.setenv("CASEDD_PIHOLE_PASSWORD", "pw")
         monkeypatch_obj.setenv("CASEDD_PIHOLE_SESSION_SID", "sid")
         monkeypatch_obj.setenv("CASEDD_PIHOLE_TIMEOUT", "6")
         monkeypatch_obj.setenv("CASEDD_PIHOLE_VERIFY_TLS", "0")
@@ -214,6 +215,7 @@ def test_pihole_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
 
         assert cfg.pihole_base_url == "https://pi.hole"
         assert cfg.pihole_api_token == "token"
+        assert cfg.pihole_password == "pw"
         assert cfg.pihole_session_sid == "sid"
         assert cfg.pihole_timeout == 6.0
         assert cfg.pihole_verify_tls is False
