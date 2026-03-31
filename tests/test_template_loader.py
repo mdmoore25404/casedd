@@ -73,6 +73,35 @@ def test_load_pihole_template_file() -> None:
     assert tmpl.name == "pihole"
 
 
+def test_load_ollama_host_template_file() -> None:
+    """ollama_host.casedd in templates/ loads without validation errors."""
+    real = Path("templates/ollama_host.casedd")
+    if not real.exists():
+        pytest.skip("templates/ollama_host.casedd not present")
+    tmpl = load_template(real)
+    assert tmpl.name == "ollama_host"
+
+
+def test_ollama_host_template_structure() -> None:
+    """ollama_host.casedd keeps running table and white transparent logo wiring."""
+    real = Path("templates/ollama_host.casedd")
+    if not real.exists():
+        pytest.skip("templates/ollama_host.casedd not present")
+
+    tmpl = load_template(real)
+    running_widget = tmpl.widgets.get("running")
+    assert running_widget is not None
+    assert running_widget.type.value == "table"
+    assert running_widget.source == "ollama.running.rows"
+
+    brand_widget = tmpl.widgets.get("brand")
+    assert brand_widget is not None
+    logo_widget = brand_widget.children_named.get("logo")
+    assert logo_widget is not None
+    assert logo_widget.type.value == "image"
+    assert logo_widget.path == "assets/ollama/ollama-logo-white-transparent.png"
+
+
 # ---------------------------------------------------------------------------
 # File-not-found errors
 # ---------------------------------------------------------------------------

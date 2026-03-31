@@ -1,0 +1,67 @@
+name: ollama_host
+description: Local AI host dashboard for Ollama runtime and model inventory
+background: "#0a1016"
+refresh_rate: 1.0
+
+grid:
+  template_areas: |
+    brand brand running running stats
+    inventory inventory inventory inventory stats
+  columns: 1fr 1fr 1.4fr 1.4fr 0.9fr
+  rows: 0.44fr 1.56fr
+
+widgets:
+  brand:
+    type: panel
+    background: transparent
+    padding: [8, 10]
+    grid:
+      template_areas: |
+        logo
+      columns: 1fr
+      rows: 1fr
+    children_named:
+      logo:
+        type: image
+        path: assets/ollama/ollama-logo-white-transparent.png
+        scale: fit
+
+  running:
+    type: table
+    source: ollama.running.rows
+    label: "Running Models"
+    color: "#dfe7f0"
+    table_fit_text: false
+    font_size: 18
+    max_items: 8
+    padding: [8, 10]
+
+  inventory:
+    type: table
+    source: ollama.models.rows
+    label: "Local Model Inventory"
+    color: "#dfe7f0"
+    table_fit_text: true
+    max_items: 12
+    padding: [8, 10]
+
+  stats:
+    type: panel
+    direction: column
+    gap: 6
+    padding: [8, 10]
+    children:
+      - type: value
+        label: "API Version"
+        source: ollama.version
+        color: "#b8c9dc"
+      - type: value
+        label: "Local Models"
+        source: ollama.models.local_count
+        precision: 0
+        color: "#b8c9dc"
+      - type: value
+        label: "Running"
+        source: ollama.models.running_count
+        precision: 0
+        color: "#b8c9dc"
