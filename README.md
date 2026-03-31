@@ -30,7 +30,10 @@ Interested in commercial use or white-label rights? Feel free to reach out.
 - **Template policy engine** — rotate templates, schedule templates by time/day, and trigger template overrides from data-store conditions
 - **Speedtest integration** — optional Ookla CLI getter (default every 30 min) with plan-relative metrics and status keys
 - **External data push** — accept JSON updates via Unix domain socket or REST POST; values cached in RAM and used on next render
+- **Write-endpoint auth and throttling** — protect `POST /api/update` and `POST /update` with `X-API-Key`, HTTP Basic Auth, and optional per-IP rate limiting
 - **Template-aware polling** — getters run only when their key namespaces are referenced by the active template
+- **Operational health** — `/api/health` reports `ok`, `degraded`, or per-getter `inactive` / `starting` / `ok` / `error` states; `/api/metrics` exports Prometheus-friendly metrics
+- **CLI control surface** — `casedd-ctl` wraps the HTTP API for status, health, templates, metrics, snapshots, data dumps, and reloads
 - **Dev-friendly** — `CASEDD_NO_FB=1` disables framebuffer for dev; browser WebSocket view is the primary dev display
 - **Multiple deployment modes** — plain Python, systemd service, Docker Compose
 
@@ -77,6 +80,8 @@ cp .env.example .env
 ./dev.sh status     # check daemon/app PIDs + last log lines
 ./dev.sh logs       # tail -f the log file
 ./dev.sh lint       # ruff check + mypy --strict (must be zero errors)
+./dev.sh test       # pytest with coverage
+./dev.sh test --fast # pytest without coverage for quicker iteration
 ./dev.sh docs       # generate API docs to docs/api.json (local only)
 ```
 
@@ -100,6 +105,33 @@ It targets the CASEDD API for template overrides, test mode, and simulation.
 source .venv/bin/activate
 ruff check .
 mypy --strict casedd/
+```
+
+### CLI (`casedd-ctl`)
+
+`casedd-ctl` is installed as a console script via `pyproject.toml`, and the repo
+also ships a local wrapper at `./casedd-ctl` so the command works directly from
+the checkout without an install step.
+
+```bash
+./casedd-ctl status
+./casedd-ctl health
+./casedd-ctl templates list
+./casedd-ctl templates set htop
+./casedd-ctl metrics
+./casedd-ctl data --prefix cpu
+./casedd-ctl snapshot --output /tmp/casedd.jpg
+./casedd-ctl reload --pid-file run/casedd-dev.pid
+./casedd-ctl help
+./casedd-ctl help templates
+./casedd-ctl help templates set
+./casedd-ctl --json health
+```
+
+Use `--url` to target a non-default daemon address.
+
+```bash
+./casedd-ctl --url http://localhost:18080 health
 ```
 
 ---
@@ -198,6 +230,46 @@ curl -X POST http://localhost:8080/api/update \
   -H "Content-Type: application/json" \
   -d '{"update": {"outside_temp_f": 72.0}}'
 ```
+
+### Update API auth and rate limiting
+
+The write endpoints `POST /api/update` and `POST /update` can be protected with
+either an API key, HTTP Basic Auth, or both.
+
+Environment variables:
+
+```bash
+CASEDD_API_KEY=
+CASEDD_API_BASIC_USER=
+CASEDD_API_BASIC_PASSWORD=
+CASEDD_API_RATE_LIMIT=0
+```
+
+Examples:
+
+```bash
+curl -X POST http://localhost:8080/api/update \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-shared-secret" \
+  -d '{"update": {"outside_temp_f": 72.0}}'
+
+curl -X POST http://localhost:8080/api/update \
+  -H "Content-Type: application/json" \
+  -u devuser:devpass \
+  -d '{"update": {"outside_temp_f": 72.0}}'
+```
+
+When `CASEDD_API_RATE_LIMIT` is greater than `0`, writes over the configured
+per-minute quota for a source IP return `429 Too Many Requests`.
+
+### Health and metrics endpoints
+
+`GET /api/health` returns daemon uptime, render count, active panel templates,
+and per-getter health. Getters that are not needed by the currently active
+template policy report `inactive` instead of `starting`.
+
+`GET /api/metrics` exposes Prometheus-style metrics including uptime, render
+count, getter error totals, getter up/down state, and store key count.
 
 The lightweight viewer intentionally stays minimal (live state + panel picker).
 Use the advanced app for data push/testing/simulation workflows.

@@ -13,11 +13,14 @@ Provides:
 - Data store snapshot endpoint ``GET /api/data``
 - Render buffer inspection endpoint ``GET /api/debug/render-state``
 - Rotation documentation endpoint ``GET /api/docs/rotation``
+- Health/metrics endpoints ``GET /api/health``, ``GET /api/metrics``
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 from collections.abc import Callable
 import contextlib
 from datetime import UTC, datetime
@@ -27,6 +30,7 @@ import os
 from pathlib import Path
 import random
 import re
+import secrets
 import socket
 import threading
 import time
@@ -54,6 +58,53 @@ _TEST_MODE_STORE_KEY = "casedd.test_mode"
 # Directory holding user-facing markdown documentation.
 # Served read-only through dedicated endpoints — never user-path-controlled.
 _DOCS_DIR = Path("docs")
+
+# Window size for IP-based rate limiting (seconds).
+_RATE_LIMIT_WINDOW_SEC: float = 60.0
+
+
+class _RateLimiter:
+    """Simple fixed-window per-IP request counter.
+
+    Tracks request timestamps per source IP and rejects calls that exceed the
+    configured limit within a rolling 60-second window.  Thread-safe.
+    """
+
+    def __init__(self, max_per_minute: int) -> None:
+        """Initialise the limiter.
+
+        Args:
+            max_per_minute: Maximum allowed requests per source IP per minute.
+                ``0`` disables limiting.
+        """
+        self._max = max_per_minute
+        self._lock = threading.Lock()
+        # ip → list of request timestamps within the current window
+        self._windows: dict[str, list[float]] = {}
+
+    def is_allowed(self, client_ip: str) -> bool:
+        """Return True if the request should be allowed, False if rate-limited.
+
+        Args:
+            client_ip: Source IP address string.
+
+        Returns:
+            ``True`` when the request is within quota; ``False`` when rejected.
+        """
+        if self._max == 0:
+            return True
+        now = time.time()
+        cutoff = now - _RATE_LIMIT_WINDOW_SEC
+        with self._lock:
+            timestamps = self._windows.get(client_ip, [])
+            # Drop expired entries.
+            timestamps = [t for t in timestamps if t > cutoff]
+            if len(timestamps) >= self._max:
+                self._windows[client_ip] = timestamps
+                return False
+            timestamps.append(now)
+            self._windows[client_ip] = timestamps
+        return True
 
 
 class UpdateRequest(BaseModel):
@@ -353,6 +404,33 @@ _LIGHT_VIEWER_HTML = """\
       padding: 4px 8px;
       text-decoration: none;
     }
+    body.kiosk #toolbar { display: none; }
+    #kiosk-btn {
+      background: #161b22;
+      color: #8b949e;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 4px 8px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 13px;
+    }
+    #kiosk-hint {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(22,27,34,0.9);
+      color: #d0d7de;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-size: 12px;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+    #kiosk-hint.show { opacity: 1; }
   </style>
 </head>
 <body>
@@ -435,6 +513,40 @@ _LIGHT_VIEWER_HTML = """\
 
     loadPanels().then(connectWs).catch(() => {
       setInterval(refreshFrame, 1000);
+    });
+
+    // --- Kiosk mode ---------------------------------------------------------
+    // Activate via ?kiosk=1 (or =true / =yes) or keyboard shortcut H.
+    const _params = new URLSearchParams(location.search);
+    if (['1', 'true', 'yes'].includes((_params.get('kiosk') || '').toLowerCase())) {
+      document.body.classList.add('kiosk');
+    }
+
+    const kioskBtn = document.getElementById('kiosk-btn');
+    const kioskHint = document.getElementById('kiosk-hint');
+    let _hintTimer = null;
+
+    function showKioskHint(msg) {
+      kioskHint.textContent = msg;
+      kioskHint.classList.add('show');
+      clearTimeout(_hintTimer);
+      _hintTimer = setTimeout(() => kioskHint.classList.remove('show'), 2500);
+    }
+
+    function toggleKiosk() {
+      const entering = document.body.classList.toggle('kiosk');
+      if (entering) {
+        showKioskHint('Press H to restore the toolbar');
+      }
+    }
+
+    kioskBtn.addEventListener('click', toggleKiosk);
+
+    document.addEventListener('keydown', (e) => {
+      const tag = document.activeElement ? document.activeElement.tagName : '';
+      if ((e.key === 'h' || e.key === 'H') && tag !== 'INPUT' && tag !== 'SELECT') {
+        toggleKiosk();
+      }
     });
   </script>
 </body>
@@ -524,6 +636,11 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     simulation: _SimulationController,
     rotation_provider: Callable[[str], dict[str, object]],
     rotation_updater: Callable[[str, list[str], float, list[RotationEntry] | None], None],
+    health_provider: Callable[[], dict[str, object]] | None = None,
+    api_key: str | None = None,
+    api_basic_user: str | None = None,
+    api_basic_password: str | None = None,
+    rate_limiter: _RateLimiter | None = None,
 ) -> FastAPI:
     """Build and configure FastAPI app for viewer and control APIs."""
     app = FastAPI(
@@ -533,6 +650,63 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     )
 
     panel_names = [str(panel["name"]) for panel in panels]
+
+    def _basic_auth_matches(authorization: str | None) -> bool:
+        """Return True when an Authorization header matches configured Basic Auth."""
+        if api_basic_user is None or api_basic_password is None:
+            return False
+        if authorization is None or not authorization.startswith("Basic "):
+            return False
+        token = authorization[6:].strip()
+        try:
+            decoded = base64.b64decode(token, validate=True).decode("utf-8")
+        except (binascii.Error, UnicodeDecodeError):
+            return False
+        user, separator, password = decoded.partition(":")
+        if separator != ":":
+            return False
+        return secrets.compare_digest(user, api_basic_user) and secrets.compare_digest(
+            password,
+            api_basic_password,
+        )
+
+    # --- Auth / rate-limit dependency for write endpoints ---
+    def _check_update_access(request: Request) -> None:
+        """Enforce API-key auth and per-IP rate limiting on update endpoints.
+
+        Args:
+            request: Incoming FastAPI request.
+
+        Raises:
+            HTTPException: 401 when API key is wrong, 429 when rate-limited.
+        """
+        auth_required = any(
+            value is not None for value in (api_key, api_basic_user, api_basic_password)
+        )
+        if auth_required:
+            api_key_ok = False
+            if api_key is not None:
+                provided = request.headers.get("X-API-Key", "")
+                api_key_ok = secrets.compare_digest(provided, api_key)
+            basic_ok = _basic_auth_matches(request.headers.get("Authorization"))
+            if not (api_key_ok or basic_ok):
+                headers: dict[str, str] | None = None
+                if api_basic_user is not None and api_basic_password is not None:
+                    headers = {"WWW-Authenticate": 'Basic realm="CASEDD"'}
+                raise HTTPException(
+                    status_code=401,
+                    detail="Invalid or missing authentication credentials",
+                    headers=headers,
+                )
+        if rate_limiter is not None:
+            client_ip = (
+                request.client.host if request.client else "unknown"
+            )
+            if not rate_limiter.is_allowed(client_ip):
+                raise HTTPException(
+                    status_code=429,
+                    detail="Rate limit exceeded — try again shortly",
+                )
 
     def _template_path(name: str) -> Path:
         return templates_dir / f"{name}.casedd"
@@ -620,7 +794,8 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         }
 
     @app.post("/api/update", status_code=204, summary="Push data update")
-    async def push_update(body: UpdateRequest) -> None:
+    async def push_update(request: Request, body: UpdateRequest) -> None:
+        _check_update_access(request)
         payload = _normalize_update_payload(body.update)
         if not payload:
             msg = "update payload has no valid primitive values"
@@ -629,7 +804,8 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         store.update(payload)
 
     @app.post("/update", status_code=204, include_in_schema=False)
-    async def legacy_update(body: UpdateRequest) -> None:
+    async def legacy_update(request: Request, body: UpdateRequest) -> None:
+        _check_update_access(request)
         payload = _normalize_update_payload(body.update)
         if not payload:
             msg = "update payload has no valid primitive values"
@@ -860,6 +1036,76 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         content = path.read_text(encoding="utf-8")
         return Response(content=content, media_type="text/markdown; charset=utf-8")
 
+    @app.get("/api/health", summary="Daemon health check")
+    async def get_health() -> dict[str, object]:
+        """Return daemon health including getter statuses and active templates."""
+        base: dict[str, object] = {
+            "status": "ok",
+            "panels": [
+                {
+                    "name": panel["name"],
+                    "current_template": store.get(
+                        f"{_TEMPLATE_CURRENT_PREFIX}{panel['name']}", ""
+                    ),
+                }
+                for panel in panels
+            ],
+        }
+        if health_provider is not None:
+            health_data = health_provider()
+            base.update(health_data)
+            # Degrade overall status when any getter is erroring.
+            getters = health_data.get("getters", [])
+            if isinstance(getters, list) and any(
+                g.get("status") == "error" for g in getters
+            ):
+                base["status"] = "degraded"
+        return base
+
+    @app.get("/api/metrics", summary="Prometheus-format metrics")
+    async def get_metrics() -> Response:
+        """Return Prometheus-compatible plain-text metrics."""
+        lines: list[str] = []
+        if health_provider is not None:
+            health_data = health_provider()
+            uptime = health_data.get("uptime_seconds")
+            if isinstance(uptime, (int, float)):
+                lines.append("# HELP casedd_uptime_seconds Daemon uptime in seconds")
+                lines.append("# TYPE casedd_uptime_seconds gauge")
+                lines.append(f"casedd_uptime_seconds {uptime:.1f}")
+            render_count = health_data.get("render_count")
+            if isinstance(render_count, (int, float)):
+                lines.append("# HELP casedd_render_total Total frames rendered")
+                lines.append("# TYPE casedd_render_total counter")
+                lines.append(f"casedd_render_total {int(render_count)}")
+            getters = health_data.get("getters", [])
+            if isinstance(getters, list):
+                lines.append(
+                    "# HELP casedd_getter_errors_total Total fetch errors per getter"
+                )
+                lines.append("# TYPE casedd_getter_errors_total counter")
+                for getter in getters:
+                    name = str(getter.get("name", "unknown"))
+                    count = int(getter.get("error_count") or 0)
+                    lines.append(
+                        f'casedd_getter_errors_total{{getter="{name}"}} {count}'
+                    )
+                lines.append(
+                    "# HELP casedd_getter_up Whether the getter is healthy (1=ok)"
+                )
+                lines.append("# TYPE casedd_getter_up gauge")
+                for getter in getters:
+                    name = str(getter.get("name", "unknown"))
+                    up = 1 if getter.get("status") == "ok" else 0
+                    lines.append(f'casedd_getter_up{{getter="{name}"}} {up}')
+        # Data-store size as a lightweight cardinality metric.
+        store_size = len(store.snapshot())
+        lines.append("# HELP casedd_store_keys Total keys in data store")
+        lines.append("# TYPE casedd_store_keys gauge")
+        lines.append(f"casedd_store_keys {store_size}")
+        body = "\n".join(lines) + "\n"
+        return Response(content=body, media_type="text/plain; version=0.0.4")
+
     # Mount the production-built React SPA last so it never shadows API routes.
     # When web/dist/index.html exists (i.e. ``npm run build`` was run), the SPA
     # is served directly from casedd at /app/ so browser API calls (which use
@@ -891,6 +1137,11 @@ class HttpViewerOutput:
         rotation_updater: (
             Callable[[str, list[str], float, list[RotationEntry] | None], None] | None
         ) = None,
+        health_provider: Callable[[], dict[str, object]] | None = None,
+        api_key: str | None = None,
+        api_basic_user: str | None = None,
+        api_basic_password: str | None = None,
+        api_rate_limit: int = 0,
     ) -> None:
         """Initialize HTTP viewer output."""
         self._host = host
@@ -901,6 +1152,9 @@ class HttpViewerOutput:
         _rot_provider: Callable[[str], dict[str, object]] = rotation_provider or (lambda _n: {})
         _rot_updater: Callable[[str, list[str], float, list[RotationEntry] | None], None] = (
             rotation_updater or (lambda _n, _t, _i, _e: None)
+        )
+        _limiter: _RateLimiter | None = (
+            _RateLimiter(api_rate_limit) if api_rate_limit > 0 else None
         )
         self._app = _build_app(
             store=store,
@@ -914,6 +1168,11 @@ class HttpViewerOutput:
             simulation=self._simulation,
             rotation_provider=_rot_provider,
             rotation_updater=_rot_updater,
+            health_provider=health_provider,
+            api_key=api_key,
+            api_basic_user=api_basic_user,
+            api_basic_password=api_basic_password,
+            rate_limiter=_limiter,
         )
         self._task: asyncio.Task[None] | None = None
 

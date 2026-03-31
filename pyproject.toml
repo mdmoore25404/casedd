@@ -12,6 +12,7 @@ license = { text = "MIT" }
 
 [project.scripts]
 casedd = "casedd.__main__:main"
+casedd-ctl = "casedd.cli:main"
 
 # ---------------------------------------------------------------------------
 # Ruff — linting and formatting (replaces flake8, isort, pyupgrade, bandit)
@@ -86,3 +87,60 @@ module = [
     "uvicorn.*",
 ]
 ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# pytest
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+# ---------------------------------------------------------------------------
+# coverage
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["casedd"]
+omit = [
+    # Hardware-dependent output sinks — require a real framebuffer/display
+    "casedd/outputs/framebuffer.py",
+    "casedd/outputs/websocket.py",
+    "casedd/usb_display.py",
+    # PIL-heavy renderer — requires a display surface; tested visually
+    "casedd/renderer/*",
+    # Individual getter implementations — each needs its hardware/service
+    "casedd/getters/apod.py",
+    "casedd/getters/cpu.py",
+    "casedd/getters/disk.py",
+    "casedd/getters/fans.py",
+    "casedd/getters/gpu.py",
+    "casedd/getters/htop.py",
+    "casedd/getters/memory.py",
+    "casedd/getters/net_ports.py",
+    "casedd/getters/network.py",
+    "casedd/getters/ollama.py",
+    "casedd/getters/speedtest.py",
+    "casedd/getters/sysinfo.py",
+    "casedd/getters/system.py",
+    "casedd/getters/ups.py",
+    "casedd/getters/weather.py",
+    # Top-level daemon entry points — require full process lifecycle
+    "casedd/__main__.py",
+    "casedd/daemon.py",
+    # Peripheral subsystems not yet unit-tested
+    "casedd/input_detect.py",
+    "casedd/ingestion/*",
+    "casedd/logging_setup.py",
+    "casedd/notifications/*",
+    "casedd/template/registry.py",
+    "casedd/template/selector.py",
+    # CSS grid layout math — integration-tested through the daemon render loop
+    "casedd/template/grid.py",
+]
+
+[tool.coverage.report]
+fail_under = 60
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    '\\.\\.\\.', 
+]

@@ -71,12 +71,19 @@ def load_template(path: Path) -> Template:
     try:
         template = Template.model_validate(raw)
     except ValidationError as exc:
-        # Summarise all validation errors into one readable message
-        errors = "; ".join(
-            f"{'.'  .join(str(loc_part) for loc_part in e['loc'])}: {e['msg']}"
-            for e in exc.errors()
+        errs = exc.errors()
+        # Log each failure individually so hot-reload in the editor clearly
+        # highlights the offending field without digging through one long string.
+        for e in errs:
+            loc = ".".join(str(p) for p in e["loc"])
+            _log.warning("  %s: %s  [%s]", loc, e["msg"], e["type"])
+        count = len(errs)
+        summary = "; ".join(
+            f"{'.' .join(str(p) for p in e['loc'])}: {e['msg']}" for e in errs
         )
-        raise TemplateError(path, f"validation failed — {errors}") from exc
+        raise TemplateError(
+            path, f"{count} validation error{'s' if count != 1 else ''} — {summary}"
+        ) from exc
 
     _log.debug("Loaded template '%s' from %s", template.name, path)
     return template

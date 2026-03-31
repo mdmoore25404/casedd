@@ -24,14 +24,14 @@ The OpenAPI descriptor (JSON) is available at:
 
 ### `GET /image`
 
-Returns the most recently rendered frame as a PNG image.
+Returns the most recently rendered frame as a JPEG image.
 
 | Parameter | Type   | Default | Description              |
 |-----------|--------|---------|--------------------------|
 | `panel`   | string | primary | Panel name to view       |
 
 ```bash
-curl http://localhost:8080/image --output frame.png
+curl http://localhost:8080/image --output frame.jpg
 ```
 
 ---
@@ -96,10 +96,68 @@ curl -X PUT http://localhost:8080/api/panels/primary/rotation \
 
 Pushes data values into the store. Same format as the Unix socket receiver.
 
+Authentication options:
+
+- `X-API-Key: <secret>` when `CASEDD_API_KEY` is configured
+- HTTP Basic Auth when `CASEDD_API_BASIC_USER` and `CASEDD_API_BASIC_PASSWORD` are configured
+
+Rate limiting:
+
+- When `CASEDD_API_RATE_LIMIT` is greater than `0`, excess requests return `429`
+
 ```bash
 curl -X POST http://localhost:8080/api/update \
   -H "Content-Type: application/json" \
   -d '{"update": {"outside_temp_f": 72.0, "custom.note": "hello"}}'
+```
+
+With API key:
+
+```bash
+curl -X POST http://localhost:8080/api/update \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-shared-secret" \
+  -d '{"update": {"outside_temp_f": 72.0}}'
+```
+
+With HTTP Basic Auth:
+
+```bash
+curl -X POST http://localhost:8080/api/update \
+  -H "Content-Type: application/json" \
+  -u devuser:devpass \
+  -d '{"update": {"outside_temp_f": 72.0}}'
+```
+
+The legacy endpoint `POST /update` enforces the same auth and rate-limit rules.
+
+---
+
+### `GET /api/health`
+
+Returns daemon health, active panel template selection, uptime, render count,
+and per-getter state.
+
+Getter statuses include:
+
+- `inactive` for getters that are registered but not currently scheduled
+- `starting` for getters that are running but have not reported success yet
+- `ok` for healthy getters
+- `error` for getters currently failing
+
+```bash
+curl http://localhost:8080/api/health
+```
+
+---
+
+### `GET /api/metrics`
+
+Returns Prometheus-format metrics for daemon uptime, render count, getter
+error counts, getter up/down state, and store key count.
+
+```bash
+curl http://localhost:8080/api/metrics
 ```
 
 ---

@@ -85,17 +85,17 @@ class OllamaGetter(BaseGetter):
                 raw = resp.read().decode("utf-8")
         except URLError as exc:
             _log.debug("Ollama API unavailable (%s): %s", url, exc)
-            return {}
+            raise RuntimeError(f"Ollama API unavailable: {exc}") from exc
 
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError as exc:
             _log.warning("Failed to parse Ollama API response: %s", exc)
-            return {}
+            raise RuntimeError(f"Invalid JSON from Ollama API: {exc}") from exc
 
         models_obj = payload.get("models")
         if not isinstance(models_obj, list):
-            return {}
+            raise RuntimeError("Unexpected Ollama API response: 'models' missing or invalid")
 
         models = [m for m in models_obj if isinstance(m, dict)]
         count = len(models)

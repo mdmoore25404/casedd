@@ -24,6 +24,10 @@ Stack: Python 3.12, FastAPI, uvicorn, Pillow (PIL), Pydantic v2 strict, psutil, 
   are only acceptable inside third-party library calls that require them.
 - **Lightweight and high-performance.** Avoid unnecessary allocations in hot paths
   (render loop, WebSocket broadcast). Profile before optimising, but never add bloat.
+- **Always add automated tests for changes.** New behaviour and bug fixes must ship with
+  unit tests and, when the boundary is externally observable, integration tests as well.
+  If a true integration test is impractical, explain why and add the closest automated
+  coverage possible before considering the task complete.
 
 ### Lint anti-pattern blacklist (must avoid while generating code)
 
@@ -57,6 +61,9 @@ Use this section as a pre-flight checklist during implementation, not only at cl
 - **Do not add imports without running `ruff check . --fix` immediately.**  Ruff enforces
   isort ordering (I001) and will flag out-of-order imports.  After adding any `import`
   statement, run `ruff check . --fix` to auto-correct ordering before moving on.
+ - **Do not use axios for JavaScript/TypeScript API calls.** All JavaScript/TypeScript
+   API requests must use the native `fetch` API (or the platform's fetch polyfill).
+   Adding `axios` as a dependency or introducing code that uses it is disallowed.
 - **Do not write PLR0915-violating functions** (too many statements, limit ≈ 50).  For
   table/widget renderers, always extract `_paint_header`, `_paint_rows`, `_paint_row`
   helpers rather than inlining all drawing logic into `draw()`.

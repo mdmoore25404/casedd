@@ -16,7 +16,7 @@ Public API:
 import os
 from pathlib import Path
 import re
-from typing import Literal, cast
+from typing import Literal, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.dataclasses import dataclass
@@ -303,6 +303,17 @@ class Config:
             URL here.  When a trigger rule with ``notify: true`` activates,
             CASEDD posts a JSON payload to this URL.
         test_mode: Disable all getters globally when true.
+        api_key: Optional shared secret for the ``POST /api/update`` endpoint.
+            When set, all update requests must include an ``X-API-Key`` header
+            matching this value.  Leave unset (default) to allow unauthenticated
+            pushes (suitable for trusted LAN deployments).
+        api_basic_user: Optional HTTP Basic Auth username for update endpoints.
+            When set together with ``api_basic_password``, update requests may
+            authenticate with an ``Authorization: Basic ...`` header.
+        api_basic_password: Optional HTTP Basic Auth password for update endpoints.
+            Must be configured together with ``api_basic_user``.
+        api_rate_limit: Maximum update requests per minute accepted from a
+            single source IP.  ``0`` (default) disables rate limiting.
     """
 
     log_level: str = Field(default="INFO")
@@ -357,10 +368,10 @@ class Config:
     ups_command: str | None = Field(default=None)
     ups_upsc_target: str = Field(default="ups@localhost")
     net_interfaces: list[str] = Field(default_factory=list)
-    nasa_api_key: str | None = Field(default=None)
+    nasa_api_key: str | None = Field(default=None, repr=False)
     apod_interval: float = Field(default=3600.0, gt=0)
     apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data
-    pushover_webhook_url: str | None = Field(default=None)
+    pushover_webhook_url: str | None = Field(default=None, repr=False)
     template_rotation: list[str] = Field(default_factory=list)
     template_rotation_interval: float = Field(default=30.0)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
@@ -369,6 +380,20 @@ class Config:
     panels: list[PanelConfig] = Field(default_factory=list)
     always_collect_prefixes: list[str] = Field(default_factory=list)
     test_mode: bool = Field(default=False)
+    api_key: str | None = Field(default=None, repr=False)
+    api_basic_user: str | None = Field(default=None)
+    api_basic_password: str | None = Field(default=None, repr=False)
+    api_rate_limit: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _validate_api_basic_credentials(self) -> Self:
+        """Ensure Basic Auth credentials are either both set or both unset."""
+        has_user = self.api_basic_user is not None
+        has_password = self.api_basic_password is not None
+        if has_user != has_password:
+            msg = "api_basic_user and api_basic_password must be set together"
+            raise ValueError(msg)
+        return self
 
     @field_validator("log_level")
     @classmethod
@@ -838,4 +863,14 @@ def load_config() -> Config:
         always_collect_prefixes=_get_always_collect_prefixes(),
         test_mode=str(_get("CASEDD_TEST_MODE", "test_mode", "0"))
         not in {"0", "false", "False", ""},
+        api_key=str(_get("CASEDD_API_KEY", "api_key", "")).strip() or None,
+        api_basic_user=str(
+            _get("CASEDD_API_BASIC_USER", "api_basic_user", "")
+        ).strip()
+        or None,
+        api_basic_password=str(
+            _get("CASEDD_API_BASIC_PASSWORD", "api_basic_password", "")
+        ).strip()
+        or None,
+        api_rate_limit=int(str(_get("CASEDD_API_RATE_LIMIT", "api_rate_limit", 0))),
     )
