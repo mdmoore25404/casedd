@@ -451,3 +451,41 @@ class TestNZBGetGetter:
         assert "xxx" in categories
         assert "adult" in categories
         assert "tv" in categories
+
+
+class TestHelperFunctions:
+    """Unit tests for module-level helper functions."""
+
+    @pytest.mark.parametrize("seconds,expected", [
+        (0, "--:--:--"),
+        (-5, "--:--:--"),
+        (1, "00:00:01"),
+        (59, "00:00:59"),
+        (60, "00:01:00"),
+        (3599, "00:59:59"),
+        (3600, "01:00:00"),
+        (3661, "01:01:01"),
+        (86399, "23:59:59"),
+        (90061, "25:01:01"),  # >24h edge case
+    ])
+    def test_seconds_to_hms(self, seconds: int, expected: str) -> None:
+        """_seconds_to_hms formats seconds as HH:MM:SS."""
+        from casedd.getters.nzbget import _seconds_to_hms
+        assert _seconds_to_hms(seconds) == expected
+
+    @pytest.mark.parametrize("size_mb,expected", [
+        (0, "0 MB"),
+        (-1, "0 MB"),
+        (1, "1 MB"),
+        (512, "512 MB"),
+        (1023, "1023 MB"),
+        (1024, "1.00 GB"),
+        (2048, "2.00 GB"),
+        (1536, "1.50 GB"),
+        (1048576, "1.00 TB"),
+        (2097152, "2.00 TB"),
+    ])
+    def test_format_size_mb(self, size_mb: int, expected: str) -> None:
+        """_format_size_mb converts MB to human-readable MB/GB/TB strings."""
+        from casedd.getters.nzbget import _format_size_mb
+        assert _format_size_mb(size_mb) == expected

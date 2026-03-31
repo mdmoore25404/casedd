@@ -11,8 +11,10 @@ Store keys written:
     - ``nzbget.queue.total``
     - ``nzbget.queue.active_count``
     - ``nzbget.queue.remaining_mb``
+    - ``nzbget.queue.remaining_size``  — human-readable size string (MB/GB/TB)
     - ``nzbget.rate.mbps``
     - ``nzbget.eta_seconds``
+    - ``nzbget.eta_hms``  — ETA formatted as ``HH:MM:SS``
     - ``nzbget.postprocess.active_count``
     - ``nzbget.history.success_count``
     - ``nzbget.history.failed_count``
@@ -49,6 +51,45 @@ _METHOD_STATUS = "status"
 _METHOD_QUEUE = "listgroups"
 _METHOD_HISTORY = "history"
 _METHOD_VERSION = "version"
+
+
+def _seconds_to_hms(seconds: int) -> str:
+    """Format a duration in seconds as HH:MM:SS.
+
+    Args:
+        seconds: Duration in whole seconds.
+
+    Returns:
+        Formatted string like ``"01:23:45"``.
+    """
+    if seconds <= 0:
+        return "--:--:--"
+    h = seconds // 3600
+    m = (seconds % 3600) // 60
+    s = seconds % 60
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+
+def _format_size_mb(size_mb: int) -> str:
+    """Format a size in megabytes as a human-readable string.
+
+    Automatically selects MB, GB, or TB units.
+
+    Args:
+        size_mb: Size in megabytes.
+
+    Returns:
+        Formatted string like ``"1.23 GB"``.
+    """
+    if size_mb <= 0:
+        return "0 MB"
+    if size_mb < 1024:
+        return f"{size_mb} MB"
+    gb = size_mb / 1024.0
+    if gb < 1024.0:
+        return f"{gb:.2f} GB"
+    tb = gb / 1024.0
+    return f"{tb:.2f} TB"
 
 
 @dataclass(frozen=True)
@@ -223,8 +264,10 @@ class NZBGetGetter(BaseGetter):
         updates["nzbget.queue.total"] = len(queue_items)
         updates["nzbget.queue.active_count"] = active_count
         updates["nzbget.queue.remaining_mb"] = int(total_mb)
+        updates["nzbget.queue.remaining_size"] = _format_size_mb(int(total_mb))
         updates["nzbget.rate.mbps"] = round(current_rate, 2)
         updates["nzbget.eta_seconds"] = eta_seconds
+        updates["nzbget.eta_hms"] = _seconds_to_hms(eta_seconds)
 
         # Process postprocess status
         postprocess_count = sum(

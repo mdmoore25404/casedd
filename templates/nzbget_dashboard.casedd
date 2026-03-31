@@ -21,20 +21,14 @@ widgets:
     padding: 6
     grid:
       template_areas: |
-        "logo version queue active speed eta"
-      columns: "0.7fr 0.8fr 0.7fr 0.7fr 0.8fr 0.8fr"
+        "logo queue active speed eta"
+      columns: "0.9fr 0.9fr 0.9fr 1fr 1fr"
       rows: "1fr"
     children_named:
       logo:
         type: text
         content: "NZBGet"
         color: "#60e6a5"
-        font_size: auto
-      version:
-        type: value
-        source: nzbget.version
-        label: "Ver"
-        color: "#adc8ff"
         font_size: auto
       queue:
         type: value
@@ -56,9 +50,9 @@ widgets:
         color: "#ff9f6f"
         font_size: auto
       eta:
-        type: value
-        source: nzbget.eta_seconds
-        label: "ETA s"
+        type: text
+        source: nzbget.eta_hms
+        label: "ETA"
         color: "#6fa8ff"
         font_size: auto
 
@@ -75,9 +69,9 @@ widgets:
       rows: "1fr 1fr 1fr"
     children_named:
       remaining:
-        type: value
-        source: nzbget.queue.remaining_mb
-        label: "Remaining MB"
+        type: text
+        source: nzbget.queue.remaining_size
+        label: "Disk Remaining"
         color: "#dfe7ef"
         font_size: auto
       post:
