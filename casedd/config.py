@@ -301,6 +301,11 @@ class Config:
             ``["enp8s0"]``). Traffic from all other interfaces (Docker bridges,
             veth pairs, loopback) is excluded. Empty list falls back to the
             psutil aggregate across all interfaces.
+        nzbget_url: NZBGet API server URL.
+        nzbget_username: Optional username for NZBGet RPC authentication.
+        nzbget_password: Optional password for NZBGet RPC authentication.
+        nzbget_interval: NZBGet polling interval in seconds.
+        nzbget_timeout: NZBGet HTTP request timeout in seconds.
         template_rotation: Additional template names to cycle through.
         template_rotation_interval: Seconds spent on each rotated template.
         template_schedule: Local-time schedule rules overriding rotation.
@@ -394,6 +399,11 @@ class Config:
     plex_privacy_filter_libraries: list[str] = Field(default_factory=list)
     plex_privacy_redaction_text: str = Field(default="[hidden]")
     net_interfaces: list[str] = Field(default_factory=list)
+    nzbget_url: str = Field(default="http://localhost:6789")
+    nzbget_username: str | None = Field(default=None)
+    nzbget_password: str | None = Field(default=None, repr=False)
+    nzbget_interval: float = Field(default=5.0)
+    nzbget_timeout: float = Field(default=3.0)
     nasa_api_key: str | None = Field(default=None, repr=False)
     apod_interval: float = Field(default=3600.0, gt=0)
     apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data

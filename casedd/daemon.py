@@ -47,6 +47,7 @@ from casedd.getters.htop import HtopGetter
 from casedd.getters.memory import MemoryGetter
 from casedd.getters.net_ports import NetPortsGetter
 from casedd.getters.network import NetworkGetter
+from casedd.getters.nzbget import NZBGetGetter
 from casedd.getters.ollama import OllamaGetter
 from casedd.getters.plex import PlexGetter
 from casedd.getters.speedtest import SpeedtestGetter
@@ -920,6 +921,14 @@ class Daemon:
                 privacy_filter_libraries=self._cfg.plex_privacy_filter_libraries,
                 privacy_redaction_text=self._cfg.plex_privacy_redaction_text,
             ),
+            NZBGetGetter(
+                self._store,
+                url=self._cfg.nzbget_url,
+                username=self._cfg.nzbget_username,
+                password=self._cfg.nzbget_password,
+                interval=self._cfg.nzbget_interval,
+                timeout=self._cfg.nzbget_timeout,
+            ),
             WeatherGetter(
                 self._store,
                 provider=self._cfg.weather_provider,
@@ -1042,6 +1051,7 @@ class Daemon:
             ("ups.", "UpsGetter"),
             ("htop.", "HtopGetter"),
             ("plex.", "PlexGetter"),
+            ("nzbget.", "NZBGetGetter"),
             ("weather.", "WeatherGetter"),
             ("apod.", "ApodGetter"),
             ("netports.", "NetPortsGetter"),
