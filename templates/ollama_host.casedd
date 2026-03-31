@@ -1,0 +1,70 @@
+name: ollama_host
+description: Local AI host dashboard for Ollama runtime and model inventory
+background: "#0a1016"
+refresh_rate: 1.0
+
+grid:
+  template_areas: |
+    host host host
+    summary runtime runtime
+    inventory inventory stats
+    inventory inventory stats
+  columns: 1.4fr 1.8fr 1fr
+  rows: 0.55fr 0.9fr 1fr 1fr
+
+widgets:
+  host:
+    type: text
+    label: "Local AI Host"
+    source: system.hostname
+    color: "#d6e3ef"
+    padding: [8, 10]
+
+  summary:
+    type: text
+    label: "Runtime Summary"
+    source: ollama.summary
+    color: "#a9d9c4"
+    padding: [8, 10]
+
+  runtime:
+    type: ollama
+    source: ollama
+    label: "Running Models"
+    color: "#7ee7b6"
+    max_items: 8
+    padding: [8, 10]
+
+  inventory:
+    type: table
+    source: ollama.models.rows
+    label: "Local Model Inventory"
+    color: "#dfe7f0"
+    table_fit_text: true
+    max_items: 12
+    padding: [8, 10]
+
+  stats:
+    type: panel
+    direction: column
+    gap: 6
+    padding: [8, 10]
+    children:
+      - type: value
+        label: "API Version"
+        source: ollama.version
+        color: "#b8c9dc"
+      - type: value
+        label: "Local Models"
+        source: ollama.models.local_count
+        precision: 0
+        color: "#b8c9dc"
+      - type: value
+        label: "Running"
+        source: ollama.models.running_count
+        precision: 0
+        color: "#b8c9dc"
+      - type: text
+        label: "Primary"
+        source: ollama.primary_model
+        color: "#b8c9dc"

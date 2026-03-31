@@ -284,6 +284,8 @@ class Config:
         ollama_api_base: Base URL for Ollama HTTP API.
         ollama_interval: Ollama polling interval in seconds.
         ollama_timeout: Ollama request timeout in seconds.
+        ollama_detailed: Enable optional detailed polling (/api/version,/api/tags).
+        ollama_detail_max_models: Maximum running/local model entries emitted.
         ups_interval: UPS polling interval in seconds.
         ups_command: Optional custom UPS command override.
         ups_upsc_target: Target argument for ``upsc`` fallback mode.
@@ -400,6 +402,8 @@ class Config:
     ollama_api_base: str = Field(default="http://localhost:11434")
     ollama_interval: float = Field(default=10.0)
     ollama_timeout: float = Field(default=3.0)
+    ollama_detailed: bool = Field(default=False)
+    ollama_detail_max_models: int = Field(default=8, ge=1, le=100)
     ups_interval: float = Field(default=5.0)
     ups_command: str | None = Field(default=None)
     ups_upsc_target: str = Field(default="ups@localhost")
@@ -646,6 +650,25 @@ class Config:
         """
         if v <= 0.0:
             msg = f"ollama_timeout must be > 0, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("ollama_detail_max_models")
+    @classmethod
+    def _validate_ollama_detail_max_models(cls, v: int) -> int:
+        """Ensure detailed Ollama key expansion remains bounded.
+
+        Args:
+            v: Max running/local model entries to emit.
+
+        Returns:
+            Validated model-entry cap.
+
+        Raises:
+            ValueError: If value is outside accepted bounds.
+        """
+        if not (1 <= v <= 100):
+            msg = f"ollama_detail_max_models must be between 1 and 100, got {v}"
             raise ValueError(msg)
         return v
 
@@ -1078,6 +1101,11 @@ def load_config() -> Config:
         ollama_api_base=str(_get("CASEDD_OLLAMA_API_BASE", "ollama_api_base", "http://localhost:11434")),
         ollama_interval=float(str(_get("CASEDD_OLLAMA_INTERVAL", "ollama_interval", 10.0))),
         ollama_timeout=float(str(_get("CASEDD_OLLAMA_TIMEOUT", "ollama_timeout", 3.0))),
+        ollama_detailed=str(_get("CASEDD_OLLAMA_DETAILED", "ollama_detailed", "0"))
+        not in {"0", "false", "False", ""},
+        ollama_detail_max_models=int(
+            str(_get("CASEDD_OLLAMA_DETAIL_MAX_MODELS", "ollama_detail_max_models", 8))
+        ),
         ups_interval=float(str(_get("CASEDD_UPS_INTERVAL", "ups_interval", 5.0))),
         ups_command=str(_get("CASEDD_UPS_COMMAND", "ups_command", "")).strip() or None,
         ups_upsc_target=str(_get("CASEDD_UPS_UPSC_TARGET", "ups_upsc_target", "ups@localhost")),

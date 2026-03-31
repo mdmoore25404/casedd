@@ -203,9 +203,14 @@ Module: casedd/getters/ollama.py
 API endpoint used:
 - GET {CASEDD_OLLAMA_API_BASE}/api/ps
 
+Optional detailed endpoints (when CASEDD_OLLAMA_DETAILED=1):
+- GET {CASEDD_OLLAMA_API_BASE}/api/version
+- GET {CASEDD_OLLAMA_API_BASE}/api/tags
+
 Emits:
 - ollama.active_count
 - ollama.active_models
+- ollama.active_compact
 - ollama.primary_model
 - ollama.primary_size_gb
 - ollama.primary_gpu_percent
@@ -213,9 +218,33 @@ Emits:
 - ollama.primary_ttl
 - ollama.summary
 
+Detailed mode emits:
+- ollama.version
+- ollama.models.local_count
+- ollama.models.running_count
+- ollama.models.rows
+- ollama.running.rows
+- ollama.running_1.name
+- ollama.running_1.size_bytes
+- ollama.running_1.size_vram_bytes
+- ollama.running_1.expires_at
+- ollama.running_1.ttl
+- ollama.running_1.family
+- ollama.running_1.parameter_size
+- ollama.running_1.quantization_level
+- ollama.model_1.name
+- ollama.model_1.modified_at
+- ollama.model_1.size_bytes
+- ollama.model_1.family
+- ollama.model_1.parameter_size
+- ollama.model_1.quantization_level
+- ... continued up to CASEDD_OLLAMA_DETAIL_MAX_MODELS
+
 Notes:
 - This getter uses the HTTP API only and does not require the ollama command.
 - CPU/GPU percentages are parsed from optional processor text when present in API payload.
+- Per-request live token/sec telemetry is intentionally not exposed because
+    Ollama does not publish that as a pull-based metric endpoint.
 
 ## Plex getter
 

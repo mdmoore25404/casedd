@@ -73,6 +73,15 @@ def test_load_pihole_template_file() -> None:
     assert tmpl.name == "pihole"
 
 
+def test_load_ollama_host_template_file() -> None:
+    """ollama_host.casedd in templates/ loads without validation errors."""
+    real = Path("templates/ollama_host.casedd")
+    if not real.exists():
+        pytest.skip("templates/ollama_host.casedd not present")
+    tmpl = load_template(real)
+    assert tmpl.name == "ollama_host"
+
+
 # ---------------------------------------------------------------------------
 # File-not-found errors
 # ---------------------------------------------------------------------------

@@ -48,7 +48,7 @@ from casedd.getters.memory import MemoryGetter
 from casedd.getters.net_ports import NetPortsGetter
 from casedd.getters.network import NetworkGetter
 from casedd.getters.nzbget import NZBGetGetter
-from casedd.getters.ollama import OllamaGetter
+from casedd.getters.ollama import OllamaDetailOptions, OllamaGetter
 from casedd.getters.pihole import PiHoleGetter
 from casedd.getters.plex import PlexGetter
 from casedd.getters.speedtest import SpeedtestGetter
@@ -897,6 +897,10 @@ class Daemon:
                 base_url=self._cfg.ollama_api_base,
                 interval=self._cfg.ollama_interval,
                 timeout=self._cfg.ollama_timeout,
+                detail=OllamaDetailOptions(
+                    enabled=self._cfg.ollama_detailed,
+                    max_models=self._cfg.ollama_detail_max_models,
+                ),
             ),
             UpsGetter(
                 self._store,

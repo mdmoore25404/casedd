@@ -196,6 +196,30 @@ Additional fields: `max_items` (optional row cap), `table_fit_text`
 
 ---
 
+### `ollama`
+
+Displays a compact runtime table for currently loaded Ollama models using
+enumerated keys from the detailed Ollama getter mode.
+
+```yaml
+running_models:
+  type: ollama
+  source: ollama
+  label: "Running Models"
+  max_items: 8
+  color: "#7ee7b6"
+```
+
+Required data source keys (from detailed getter mode):
+- `<source>.models.local_count`
+- `<source>.models.running_count`
+- `<source>.version`
+- `<source>.running_<n>.name`
+- `<source>.running_<n>.size_vram_bytes`
+- `<source>.running_<n>.ttl`
+
+---
+
 ### `bar`
 
 Horizontal progress bar. Value is clamped to `[min, max]`.

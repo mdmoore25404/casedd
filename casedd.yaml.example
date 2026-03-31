@@ -7,6 +7,15 @@ log_level: INFO
 template: system_stats
 refresh_rate: 2.0
 
+# Ollama polling configuration.
+# Detailed mode adds /api/version and /api/tags polling plus expanded
+# ollama.running_<n> / ollama.model_<n> keys for local-AI dashboards.
+# ollama_api_base: http://localhost:11434
+# ollama_interval: 10.0
+# ollama_timeout: 3.0
+# ollama_detailed: false
+# ollama_detail_max_models: 8
+
 # Framebuffer device.  Override when you have multiple /dev/fb* devices.
 # fb_device: /dev/fb1
 

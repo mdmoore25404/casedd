@@ -1,23 +1,20 @@
 """Ollama API getter.
 
-Polls the Ollama HTTP API (``/api/ps``) and publishes active-model telemetry
+Polls Ollama HTTP endpoints and publishes runtime/model inventory telemetry
 under the ``ollama.*`` namespace.
 
-Store keys written:
-    - ``ollama.active_count`` (float)
-    - ``ollama.active_models`` (str)
-    - ``ollama.active_compact`` (str)
-    - ``ollama.primary_model`` (str)
-    - ``ollama.primary_size_gb`` (float)
-    - ``ollama.primary_gpu_percent`` (float)
-    - ``ollama.primary_cpu_percent`` (float)
-    - ``ollama.primary_ttl`` (str)
-    - ``ollama.summary`` (str)
+Default mode keeps polling lightweight and backward-compatible by querying
+only ``/api/ps``.
+
+Detailed mode (optional) adds ``/api/version`` and ``/api/tags`` polling and
+emits enumerated running/local model keys (``ollama.running_1.*``,
+``ollama.model_1.*``) suitable for dashboards.
 """
 
 from __future__ import annotations
 
 import asyncio
+from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 import logging
@@ -33,6 +30,14 @@ _log = logging.getLogger(__name__)
 _GB = 1_000_000_000
 _GPU_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%\s*GPU", flags=re.IGNORECASE)
 _CPU_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%\s*CPU", flags=re.IGNORECASE)
+
+
+@dataclass(frozen=True)
+class OllamaDetailOptions:
+    """Optional detailed polling controls for :class:`OllamaGetter`."""
+
+    enabled: bool = False
+    max_models: int = 8
 
 
 class OllamaGetter(BaseGetter):
@@ -51,6 +56,7 @@ class OllamaGetter(BaseGetter):
         base_url: str = "http://localhost:11434",
         interval: float = 10.0,
         timeout: float = 3.0,
+        detail: OllamaDetailOptions | None = None,
     ) -> None:
         """Initialise Ollama API getter.
 
@@ -61,8 +67,11 @@ class OllamaGetter(BaseGetter):
             timeout: HTTP timeout in seconds.
         """
         super().__init__(store, interval)
+        detail_opts = detail if detail is not None else OllamaDetailOptions()
         self._base_url = base_url.rstrip("/")
         self._timeout = timeout
+        self._detailed = detail_opts.enabled
+        self._detail_max_models = detail_opts.max_models
 
     async def fetch(self) -> dict[str, StoreValue]:
         """Fetch current active-model state from Ollama.
@@ -78,20 +87,7 @@ class OllamaGetter(BaseGetter):
         Returns:
             Mapping of ``ollama.*`` keys.
         """
-        url = f"{self._base_url}/api/ps"
-        req = Request(url, method="GET")  # noqa: S310 -- configurable local API endpoint
-        try:
-            with urlopen(req, timeout=self._timeout) as resp:  # noqa: S310 -- configurable local API endpoint
-                raw = resp.read().decode("utf-8")
-        except URLError as exc:
-            _log.debug("Ollama API unavailable (%s): %s", url, exc)
-            raise RuntimeError(f"Ollama API unavailable: {exc}") from exc
-
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            _log.warning("Failed to parse Ollama API response: %s", exc)
-            raise RuntimeError(f"Invalid JSON from Ollama API: {exc}") from exc
+        payload = self._request_json("/api/ps")
 
         models_obj = payload.get("models")
         if not isinstance(models_obj, list):
@@ -120,7 +116,7 @@ class OllamaGetter(BaseGetter):
         if primary_name and primary is not None:
             summary = f"{_display_model_name(primary)} ({_model_ttl_compact(primary)})"
 
-        return {
+        result: dict[str, StoreValue] = {
             "ollama.active_count": float(count),
             "ollama.active_models": names,
             "ollama.active_compact": compact,
@@ -131,6 +127,176 @@ class OllamaGetter(BaseGetter):
             "ollama.primary_ttl": primary_ttl,
             "ollama.summary": summary,
         }
+
+        if self._detailed:
+            result.update(self._sample_detailed(models))
+
+        return result
+
+    def _sample_detailed(self, running_models: list[dict[str, object]]) -> dict[str, StoreValue]:
+        """Collect additional inventory/model metadata when detailed mode is enabled."""
+        version_payload = self._request_json_optional("/api/version")
+        version = _extract_version(version_payload)
+
+        tags_payload = self._request_json_optional("/api/tags")
+        models_obj = tags_payload.get("models")
+        if models_obj is None:
+            local_models: list[dict[str, object]] = []
+        elif isinstance(models_obj, list):
+            local_models = [model for model in models_obj if isinstance(model, dict)]
+        else:
+            raise RuntimeError("Unexpected Ollama API response: '/api/tags.models' must be a list")
+
+        result: dict[str, StoreValue] = {
+            "ollama.version": version,
+            "ollama.models.local_count": float(len(local_models)),
+            "ollama.models.running_count": float(len(running_models)),
+            "ollama.models.rows": _local_models_rows(local_models),
+            "ollama.running.rows": _running_models_rows(running_models),
+        }
+
+        result.update(_enumerate_running_models(running_models, self._detail_max_models))
+        result.update(_enumerate_local_models(local_models, self._detail_max_models))
+        return result
+
+    def _request_json(self, endpoint: str) -> dict[str, object]:
+        """Fetch and parse one Ollama JSON endpoint.
+
+        Args:
+            endpoint: Endpoint path beginning with ``/api/``.
+
+        Returns:
+            Parsed JSON object.
+
+        Raises:
+            RuntimeError: If the HTTP request fails or response JSON is invalid.
+        """
+        url = f"{self._base_url}{endpoint}"
+        req = Request(url, method="GET")  # noqa: S310 -- configurable local API endpoint
+        try:
+            with urlopen(req, timeout=self._timeout) as resp:  # noqa: S310 -- configurable local API endpoint
+                raw = resp.read().decode("utf-8")
+        except URLError as exc:
+            _log.debug("Ollama API unavailable (%s): %s", url, exc)
+            raise RuntimeError(f"Ollama API unavailable: {exc}") from exc
+
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            _log.warning("Failed to parse Ollama API response from %s: %s", endpoint, exc)
+            raise RuntimeError(f"Invalid JSON from Ollama API: {exc}") from exc
+
+        if isinstance(payload, dict):
+            return payload
+
+        raise RuntimeError(f"Unexpected Ollama API response: '{endpoint}' was not a JSON object")
+
+    def _request_json_optional(self, endpoint: str) -> dict[str, object]:
+        """Fetch optional endpoint JSON, returning an empty mapping on request failure."""
+        try:
+            return self._request_json(endpoint)
+        except RuntimeError as exc:
+            _log.debug("Optional Ollama endpoint unavailable (%s): %s", endpoint, exc)
+            return {}
+
+
+def _extract_version(payload: dict[str, object]) -> str:
+    """Return Ollama version from ``/api/version`` payload."""
+    value = payload.get("version")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return ""
+
+
+def _local_models_rows(models: list[dict[str, object]]) -> str:
+    """Return compact ``name|meta`` rows for local model inventory."""
+    rows: list[str] = []
+    for model in models:
+        name = _display_model_name(model) or "-"
+        family = _detail_text(model, "family")
+        param_size = _detail_text(model, "parameter_size")
+        quant = _detail_text(model, "quantization_level")
+        right = " ".join(part for part in [family, param_size, quant] if part)
+        rows.append(f"{name}|{right or '-'}")
+    return "\n".join(rows) if rows else "—|—"
+
+
+def _running_models_rows(models: list[dict[str, object]]) -> str:
+    """Return compact ``name|meta`` rows for running-model inventory."""
+    rows: list[str] = []
+    for model in models:
+        name = _display_model_name(model) or "-"
+        vram_gb = _bytes_to_gb(_numeric_value(model, "size_vram"))
+        ttl = _model_ttl_compact(model)
+        rows.append(f"{name}|{vram_gb:.1f}GB VRAM {ttl}")
+    return "\n".join(rows) if rows else "—|—"
+
+
+def _enumerate_running_models(
+    models: list[dict[str, object]],
+    limit: int,
+) -> dict[str, StoreValue]:
+    """Emit ``ollama.running_<n>.*`` keys for dashboards/widgets."""
+    result: dict[str, StoreValue] = {}
+    for index, model in enumerate(models[:limit], start=1):
+        prefix = f"ollama.running_{index}"
+        result[f"{prefix}.name"] = _display_model_name(model)
+        result[f"{prefix}.size_bytes"] = float(_numeric_value(model, "size"))
+        result[f"{prefix}.size_vram_bytes"] = float(_numeric_value(model, "size_vram"))
+        result[f"{prefix}.expires_at"] = _string_value(model.get("expires_at"))
+        result[f"{prefix}.ttl"] = _model_ttl_compact(model)
+        result[f"{prefix}.family"] = _detail_text(model, "family")
+        result[f"{prefix}.parameter_size"] = _detail_text(model, "parameter_size")
+        result[f"{prefix}.quantization_level"] = _detail_text(model, "quantization_level")
+    return result
+
+
+def _enumerate_local_models(
+    models: list[dict[str, object]],
+    limit: int,
+) -> dict[str, StoreValue]:
+    """Emit ``ollama.model_<n>.*`` keys for local model inventory."""
+    result: dict[str, StoreValue] = {}
+    for index, model in enumerate(models[:limit], start=1):
+        prefix = f"ollama.model_{index}"
+        result[f"{prefix}.name"] = _display_model_name(model)
+        result[f"{prefix}.modified_at"] = _string_value(model.get("modified_at"))
+        result[f"{prefix}.size_bytes"] = float(_numeric_value(model, "size"))
+        result[f"{prefix}.family"] = _detail_text(model, "family")
+        result[f"{prefix}.parameter_size"] = _detail_text(model, "parameter_size")
+        result[f"{prefix}.quantization_level"] = _detail_text(model, "quantization_level")
+    return result
+
+
+def _numeric_value(model: dict[str, object], key: str) -> float:
+    """Return numeric model field as float, or ``0.0`` when unavailable."""
+    raw = model.get(key)
+    if isinstance(raw, int | float):
+        return float(raw)
+    return 0.0
+
+
+def _bytes_to_gb(value: float) -> float:
+    """Convert bytes to decimal GB."""
+    if value <= 0.0:
+        return 0.0
+    return value / _GB
+
+
+def _string_value(value: object) -> str:
+    """Return an object as display string if it is a string value."""
+    if isinstance(value, str):
+        return value
+    return ""
+
+
+def _detail_text(model: dict[str, object], key: str) -> str:
+    """Return detail field from model.details when available."""
+    details = model.get("details")
+    if not isinstance(details, dict):
+        return ""
+    value = details.get(key)
+    return value if isinstance(value, str) else ""
 
 
 def _model_name(model: dict[str, object] | None) -> str:
