@@ -270,23 +270,29 @@ class NZBGetGetter(BaseGetter):
             self._rpc_call(_METHOD_HISTORY),
         )
 
-        # Process status — store as int (1=paused, 0=active) so widgets
-        # can display numeric comparisons and bar widgets work cleanly.
-        updates["nzbget.status.download_paused"] = int(
-            bool(status_data.get("DownloadPaused"))
-        )
-        updates["nzbget.status.postprocess_paused"] = int(
-            bool(status_data.get("PostPaused"))
-        )
-        updates["nzbget.status.scan_paused"] = int(
-            bool(status_data.get("ScanPaused"))
-        )
-
         # Process queue metrics
         queue_items: list[Any] = queue_data if isinstance(queue_data, list) else []
         current_download_items = [
             item for item in queue_items if int(item.get("RemainingSizeMB", 0)) > 0
         ]
+        paused_download_count = sum(
+            1
+            for item in current_download_items
+            if self._is_paused_item(
+                item,
+                int(item.get("RemainingSizeMB", 0)),
+            )
+        )
+        postprocess_count = sum(
+            1
+            for item in queue_items
+            if bool(item.get("PostProcessing", False))
+        )
+        # When post-processing is globally paused, treat all active post-process
+        # rows as paused; this clears to 0 automatically when no rows remain.
+        paused_postprocess_count = (
+            postprocess_count if bool(status_data.get("PostPaused")) else 0
+        )
         active_count = sum(
             1
             for item in current_download_items
@@ -308,6 +314,13 @@ class NZBGetGetter(BaseGetter):
             total_mb / current_rate if current_rate > 0 else 0
         )
 
+        # Store pause metrics as counts so dashboard counters reflect live queue
+        # state and clear immediately when items are removed/completed.
+        updates["nzbget.status.download_paused"] = paused_download_count
+        updates["nzbget.status.postprocess_paused"] = paused_postprocess_count
+        updates["nzbget.status.scan_paused"] = int(
+            bool(status_data.get("ScanPaused"))
+        )
         updates["nzbget.queue.total"] = len(queue_items)
         updates["nzbget.queue.active_count"] = active_count
         updates["nzbget.queue.current_count"] = current_count
@@ -319,11 +332,6 @@ class NZBGetGetter(BaseGetter):
         updates["nzbget.eta_hms"] = _seconds_to_hms(eta_seconds)
 
         # Process postprocess status
-        postprocess_count = sum(
-            1
-            for item in queue_items
-            if bool(item.get("PostProcessing", False))
-        )
         updates["nzbget.postprocess.active_count"] = postprocess_count
 
         # Process history

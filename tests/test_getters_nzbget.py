@@ -576,6 +576,7 @@ class TestNZBGetGetter:
         assert updates["nzbget.queue.current_count"] == 2
         assert updates["nzbget.queue.active_count"] == 1
         assert updates["nzbget.queue.active_download_percent"] == 50.0
+        assert updates["nzbget.status.download_paused"] == 1
 
     async def test_fetch_clears_current_slots_when_queue_empties(
         self,
@@ -623,6 +624,8 @@ class TestNZBGetGetter:
         assert first_updates["nzbget.queue.current_count"] == 1
 
         assert second_updates["nzbget.queue.current_count"] == 0
+        assert second_updates["nzbget.status.download_paused"] == 0
+        assert second_updates["nzbget.status.postprocess_paused"] == 0
         assert second_updates["nzbget.current_1.name"] == ""
         assert second_updates["nzbget.current_1.progress_percent"] == 0.0
         assert second_updates["nzbget.current_1.category"] == ""
