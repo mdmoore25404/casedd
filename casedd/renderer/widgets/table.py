@@ -250,8 +250,11 @@ def _fit_font(
         right_w = _max_text_width(draw, font, [row.right for row in rows])
         gap = max(2, size // 3)
         full_left_w = _max_text_width(draw, font, [row.left for row in rows])
-        if spec.fit_text and right_w + gap + full_left_w <= max_w:
-            return font, row_h, full_left_w, gap, True
+        if spec.fit_text:
+            # Keep shrinking until both columns fit fully on one line
+            if right_w + gap + full_left_w <= max_w:
+                return font, row_h, full_left_w, gap, True
+            continue  # try a smaller font size
 
         left_w = max_w - right_w - gap
         if left_w < max(8, max_w // 4):
@@ -263,6 +266,10 @@ def _fit_font(
     fallback_gap = max(1, dynamic_min // 3)
     fallback_right = _max_text_width(draw, fallback, [row.right for row in rows])
     fallback_left = max(1, max_w - fallback_right - fallback_gap)
+    # In fit_text mode use full left-column width — text overflows rather than truncates
+    if spec.fit_text:
+        full_left = _max_text_width(draw, fallback, [row.left for row in rows])
+        return fallback, fallback_h, full_left, fallback_gap, True
     return fallback, fallback_h, fallback_left, fallback_gap, False
 
 
