@@ -139,10 +139,17 @@ export async function fetchRotation(panelName) {
   return readJson(response);
 }
 
-export async function updateRotation(panelName, rotationTemplates, rotationInterval, rotationEntries) {
+export async function updateRotation(
+  panelName,
+  rotationTemplates,
+  rotationInterval,
+  rotationEnabled,
+  rotationEntries,
+) {
   const body = {
     rotation_templates: rotationTemplates,
     rotation_interval: rotationInterval,
+    rotation_enabled: rotationEnabled,
   };
   if (rotationEntries && rotationEntries.length > 0) {
     body.rotation_entries = rotationEntries;

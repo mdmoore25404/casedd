@@ -548,6 +548,7 @@ truth by both daemon startup and the advanced web UI.
 
 ```yaml
 template: system_stats
+template_rotation_enabled: true
 template_rotation:
   - template: apod
     seconds: 10
@@ -558,6 +559,10 @@ template_rotation_interval: 30
 
 In this example, `template_rotation_interval` is the default hold time and
 entries with `seconds` override it per template.
+
+`template` is not automatically included in rotation; add it explicitly to
+`template_rotation` when you want it in the cycle. Set
+`template_rotation_enabled: false` to disable rotation and pin to `template`.
 
 Schedules and triggers are also configured in `casedd.yaml`.
 See [casedd.yaml.example](casedd.yaml.example) for a complete sample:
@@ -586,7 +591,7 @@ Selection priority is:
 1. Trigger rules
 2. Schedule rules
 3. Rotation list
-4. Base `CASEDD_TEMPLATE`
+4. Base template (`template` in `casedd.yaml`)
 
 ---
 

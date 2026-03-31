@@ -193,6 +193,7 @@ class PanelConfig(BaseModel):
             either template names or :class:`RotationEntry` objects with
             per-template dwell times.
         template_rotation_interval: Optional per-panel rotation interval seconds.
+        template_rotation_enabled: Optional per-panel rotation enable flag.
         template_schedule: Optional per-panel schedule rules.
         template_triggers: Optional per-panel trigger rules.
     """
@@ -208,6 +209,7 @@ class PanelConfig(BaseModel):
     template: str | None = None
     template_rotation: list[str | RotationEntry] = Field(default_factory=list)
     template_rotation_interval: float | None = Field(default=None, gt=0)
+    template_rotation_enabled: bool | None = None
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
     rotation: int | None = None
@@ -312,6 +314,9 @@ class Config:
             either template names or :class:`RotationEntry` objects with
             per-template dwell times.
         template_rotation_interval: Seconds spent on each rotated template.
+        template_rotation_enabled: Enables/disables template rotation.
+            When ``False``, only ``template`` is shown (unless a trigger or
+            schedule rule overrides it).
         template_schedule: Local-time schedule rules overriding rotation.
         template_triggers: Data-value trigger rules overriding schedule/rotation.
         trigger_border_color: Border color painted around trigger-held frames.
@@ -415,6 +420,7 @@ class Config:
     pushover_webhook_url: str | None = Field(default=None, repr=False)
     template_rotation: list[str | RotationEntry] = Field(default_factory=list)
     template_rotation_interval: float = Field(default=30.0)
+    template_rotation_enabled: bool = Field(default=True)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
     trigger_border_color: str = Field(default="#dc1e1e")
@@ -723,6 +729,24 @@ def _read_yaml(path: Path) -> dict[str, object]:
     return raw if isinstance(raw, dict) else {}
 
 
+def _get_yaml_bool(yaml_data: dict[str, object], key: str, default: bool) -> bool:
+    """Read a bool value from YAML with string-safe normalization.
+
+    Args:
+        yaml_data: Parsed YAML mapping.
+        key: Top-level YAML key.
+        default: Value used when key is absent.
+
+    Returns:
+        Parsed boolean value.
+    """
+    raw = yaml_data.get(key, default)
+    if isinstance(raw, bool):
+        return raw
+    text = str(raw).strip().lower()
+    return text not in {"0", "false", "no", "off", ""}
+
+
 def get_config_path() -> Path:
     """Return the active config path from env or default.
 
@@ -754,6 +778,7 @@ def save_rotation_config_to_yaml(
     panel_name: str,
     rotation_templates: list[str],
     rotation_interval: float,
+    rotation_enabled: bool,
     rotation_entries: list[RotationEntry] | None,
 ) -> Path:
     """Persist rotation settings to ``casedd.yaml``.
@@ -766,6 +791,7 @@ def save_rotation_config_to_yaml(
         rotation_templates: Ordered template names when no per-entry payload
             is provided.
         rotation_interval: Default dwell time in seconds.
+        rotation_enabled: Whether rotation is enabled.
         rotation_entries: Optional per-entry records including seconds/skip_if.
 
     Returns:
@@ -798,6 +824,7 @@ def save_rotation_config_to_yaml(
             raise ValueError(msg)
         target_panel["template_rotation"] = serialized_rotation
         target_panel["template_rotation_interval"] = float(rotation_interval)
+        target_panel["template_rotation_enabled"] = bool(rotation_enabled)
     else:
         if panel_name != "primary":
             msg = (
@@ -807,6 +834,7 @@ def save_rotation_config_to_yaml(
             raise ValueError(msg)
         yaml_data["template_rotation"] = serialized_rotation
         yaml_data["template_rotation_interval"] = float(rotation_interval)
+        yaml_data["template_rotation_enabled"] = bool(rotation_enabled)
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
     yaml_text = yaml.safe_dump(yaml_data, sort_keys=False)
@@ -1067,6 +1095,7 @@ def load_config() -> Config:
         ).strip() or None,
         template_rotation=_get_rotation_templates(),
         template_rotation_interval=float(str(yaml_data.get("template_rotation_interval", 30.0))),
+        template_rotation_enabled=_get_yaml_bool(yaml_data, "template_rotation_enabled", True),
         template_schedule=cast(
             "list[TemplateScheduleRule]",
             _get_yaml_list("template_schedule"),

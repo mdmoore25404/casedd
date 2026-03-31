@@ -127,6 +127,7 @@ def test_save_rotation_config_to_yaml_single_panel(
                 "primary",
                 ["apod", "nzbget_queue"],
                 20.0,
+                True,
                 [
                         RotationEntry(template="apod", seconds=10),
                         RotationEntry(template="nzbget_queue", seconds=15),
@@ -136,6 +137,7 @@ def test_save_rotation_config_to_yaml_single_panel(
         loaded = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
         assert isinstance(loaded, dict)
         assert loaded.get("template_rotation_interval") == 20.0
+        assert loaded.get("template_rotation_enabled") is True
         rotation = loaded.get("template_rotation")
         assert isinstance(rotation, list)
         assert rotation == [
@@ -173,6 +175,7 @@ def test_save_rotation_config_to_yaml_panel(
                 "side",
                 ["apod", "nzbget_queue"],
                 25.0,
+                False,
                 [
                         RotationEntry(template="apod", seconds=10),
                         RotationEntry(template="nzbget_queue", seconds=15),
@@ -189,6 +192,7 @@ def test_save_rotation_config_to_yaml_panel(
                 if isinstance(panel, dict) and str(panel.get("name", "")) == "side"
         )
         assert panel_side["template_rotation_interval"] == 25.0
+        assert panel_side["template_rotation_enabled"] is False
         assert panel_side["template_rotation"] == [
                 {"template": "apod", "seconds": 10.0, "skip_if": []},
                 {"template": "nzbget_queue", "seconds": 15.0, "skip_if": []},

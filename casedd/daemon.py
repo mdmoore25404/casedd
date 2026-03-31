@@ -118,6 +118,7 @@ class _PanelRuntime:
     base_template: str
     rotation_templates: list[str]
     rotation_interval: float
+    rotation_enabled: bool
     rotation_entries: list[RotationEntry]
     schedule_rules: list[TemplateScheduleRule]
     trigger_rules: list[TemplateTriggerRule]
@@ -234,6 +235,7 @@ class Daemon:
             await ws_output.stop()
             await http_output.stop()
             await registry.stop()
+            await self._blackout_framebuffers(panel_runtimes)
             _log.info("Daemon shutdown complete.")
 
     def _setup_framebuffer_detection(self) -> None:
@@ -294,10 +296,11 @@ class Daemon:
                 return {}
             return {
                 "base_template": runtime.base_template,
-                "rotation_templates": list(runtime.selector.rotation_templates),
-                "rotation_interval": runtime.selector.rotation_interval,
+                "rotation_templates": list(runtime.rotation_templates),
+                "rotation_interval": runtime.rotation_interval,
+                "rotation_enabled": runtime.rotation_enabled,
                 "rotation_entries": [
-                    e.model_dump(mode="json") for e in runtime.selector.rotation_entries
+                    e.model_dump(mode="json") for e in runtime.rotation_entries
                 ],
             }
 
@@ -305,20 +308,27 @@ class Daemon:
             panel_name: str,
             templates: list[str],
             interval: float,
+            enabled: bool,
             entries: list[RotationEntry] | None = None,
         ) -> None:
             runtime = next((r for r in panel_runtimes if r.name == panel_name), None)
             if runtime is None:
                 return
-            runtime.selector.update_rotation(templates, interval, entries)
-            runtime.rotation_templates = templates
+            runtime.selector.update_rotation(templates, interval, enabled, entries)
+            runtime.rotation_templates = (
+                [entry.template for entry in entries]
+                if entries is not None
+                else templates
+            )
             runtime.rotation_interval = interval
+            runtime.rotation_enabled = enabled
             runtime.rotation_entries = list(runtime.selector.rotation_entries)
             try:
                 save_rotation_config_to_yaml(
                     panel_name,
                     templates,
                     interval,
+                    enabled,
                     entries,
                 )
             except (OSError, ValueError):
@@ -351,6 +361,7 @@ class Daemon:
                     "base_template": panel.base_template,
                     "rotation_templates": list(panel.rotation_templates),
                     "rotation_interval": panel.rotation_interval,
+                    "rotation_enabled": panel.rotation_enabled,
                     "rotation_entries": [
                         e.model_dump(mode="json") for e in panel.rotation_entries
                     ],
@@ -564,6 +575,13 @@ class Daemon:
             image = self._build_status_frame(panel.width, panel.height, "CASEDD stopping", lines)
             await self._display_panel_frame(panel, image, ws_output, http_output)
 
+    async def _blackout_framebuffers(self, panel_runtimes: list[_PanelRuntime]) -> None:
+        """Write a final black frame to all framebuffers before process exit."""
+        _log.info("Writing final black frame to framebuffer(s)")
+        for panel in panel_runtimes:
+            black = Image.new("RGB", (panel.width, panel.height), (0, 0, 0))
+            await asyncio.to_thread(panel.framebuffer.write, black)
+
     def _make_trigger_callback(
         self,
     ) -> Callable[[TemplateTriggerRule, StoreValue | None], None] | None:
@@ -642,6 +660,7 @@ class Daemon:
                 template=self._cfg.template,
                 template_rotation=self._cfg.template_rotation,
                 template_rotation_interval=self._cfg.template_rotation_interval,
+                template_rotation_enabled=self._cfg.template_rotation_enabled,
                 template_schedule=self._cfg.template_schedule,
                 template_triggers=self._cfg.template_triggers,
             )
@@ -662,6 +681,11 @@ class Daemon:
                 if panel.template_rotation_interval is not None
                 else self._cfg.template_rotation_interval
             )
+            rotation_enabled = (
+                panel.template_rotation_enabled
+                if panel.template_rotation_enabled is not None
+                else self._cfg.template_rotation_enabled
+            )
             rotation_entries: list[RotationEntry] | None = configured_rotation_entries
 
             force_key = f"{_TEMPLATE_FORCE_PREFIX}{panel_name}"
@@ -669,6 +693,7 @@ class Daemon:
                 base_template=base_template,
                 rotation_templates=rotation_templates,
                 rotation_interval=rotation_interval,
+                rotation_enabled=rotation_enabled,
                 schedule_rules=schedule_rules,
                 trigger_rules=trigger_rules,
                 force_store_key=force_key,
@@ -735,6 +760,7 @@ class Daemon:
                 base_template=base_template,
                 rotation_templates=rotation_templates,
                 rotation_interval=rotation_interval,
+                rotation_enabled=rotation_enabled,
                 rotation_entries=list(selector.rotation_entries),
                 schedule_rules=schedule_rules,
                 trigger_rules=trigger_rules,

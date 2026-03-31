@@ -154,12 +154,14 @@ class RotationUpdateRequest(BaseModel):
 
     Attributes:
         rotation_templates: Ordered list of template names to rotate through
-            (excluding the base template, which always leads the cycle).
-            Only used when ``rotation_entries`` is not provided.
+            in the configured order. Only used when ``rotation_entries`` is
+            not provided.
         rotation_interval: Default dwell in seconds per template.
         rotation_entries: Full ordered rotation entry list with per-entry
             dwell times and skip conditions.  When provided,
             ``rotation_templates`` is ignored.
+        rotation_enabled: Enables/disables rotation. When false, the panel
+            stays on its base template (unless triggers/schedules override).
     """
 
     model_config = ConfigDict(strict=True, frozen=True)
@@ -167,6 +169,7 @@ class RotationUpdateRequest(BaseModel):
     rotation_templates: list[str] = Field(default_factory=list)
     rotation_interval: float = Field(default=30.0, gt=0)
     rotation_entries: list[dict[str, object]] = Field(default_factory=list)
+    rotation_enabled: bool = True
 
 
 class ReplayRecord(BaseModel):
@@ -635,7 +638,7 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     history_provider: Callable[[], dict[str, object]],
     simulation: _SimulationController,
     rotation_provider: Callable[[str], dict[str, object]],
-    rotation_updater: Callable[[str, list[str], float, list[RotationEntry] | None], None],
+    rotation_updater: Callable[[str, list[str], float, bool, list[RotationEntry] | None], None],
     health_provider: Callable[[], dict[str, object]] | None = None,
     api_key: str | None = None,
     api_basic_user: str | None = None,
@@ -859,7 +862,11 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
                 )
 
         rotation_updater(
-            name, list(body.rotation_templates), body.rotation_interval, parsed_entries
+            name,
+            list(body.rotation_templates),
+            body.rotation_interval,
+            body.rotation_enabled,
+            parsed_entries,
         )
         return rotation_provider(name)
 
@@ -1135,7 +1142,7 @@ class HttpViewerOutput:
         history_provider: Callable[[], dict[str, object]],
         rotation_provider: Callable[[str], dict[str, object]] | None = None,
         rotation_updater: (
-            Callable[[str, list[str], float, list[RotationEntry] | None], None] | None
+            Callable[[str, list[str], float, bool, list[RotationEntry] | None], None] | None
         ) = None,
         health_provider: Callable[[], dict[str, object]] | None = None,
         api_key: str | None = None,
@@ -1150,8 +1157,8 @@ class HttpViewerOutput:
         self._simulation = _SimulationController(store)
         # Provide no-op stubs if rotation callables are not wired (e.g. tests).
         _rot_provider: Callable[[str], dict[str, object]] = rotation_provider or (lambda _n: {})
-        _rot_updater: Callable[[str, list[str], float, list[RotationEntry] | None], None] = (
-            rotation_updater or (lambda _n, _t, _i, _e: None)
+        _rot_updater: Callable[[str, list[str], float, bool, list[RotationEntry] | None], None] = (
+            rotation_updater or (lambda _n, _t, _i, _en, _e: None)
         )
         _limiter: _RateLimiter | None = (
             _RateLimiter(api_rate_limit) if api_rate_limit > 0 else None

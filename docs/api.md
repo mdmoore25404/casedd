@@ -53,6 +53,7 @@ Returns all configured panels and their current state.
       "base_template": "system_stats",
       "rotation_templates": [],
       "rotation_interval": 30.0,
+      "rotation_enabled": true,
       "current_template": "system_stats",
       "forced_template": ""
     }
@@ -74,7 +75,8 @@ curl http://localhost:8080/api/panels/primary/rotation
 {
   "base_template": "system_stats",
   "rotation_templates": ["htop", "slideshow"],
-  "rotation_interval": 30.0
+  "rotation_interval": 30.0,
+  "rotation_enabled": true
 }
 ```
 
@@ -87,7 +89,7 @@ Updates the rotation configuration for a panel at runtime.
 ```bash
 curl -X PUT http://localhost:8080/api/panels/primary/rotation \
   -H "Content-Type: application/json" \
-  -d '{"rotation_templates": ["htop", "slideshow"], "rotation_interval": 30}'
+  -d '{"rotation_templates": ["htop", "slideshow"], "rotation_interval": 30, "rotation_enabled": true}'
 ```
 
 ---
