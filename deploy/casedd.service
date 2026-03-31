@@ -12,6 +12,12 @@ EnvironmentFile=/etc/casedd/casedd.env
 Environment=CASEDD_LOG_LEVEL=NONE
 Environment=CASEDD_DEBUG_FRAME_LOGS=0
 Environment=CASEDD_NO_FB=0
+# Run pre-start hooks as root even though the main daemon runs as
+# @CASEDD_USER@. This lets us write fbcon sysfs controls safely.
+PermissionsStartOnly=true
+# Hide the kernel framebuffer text cursor to prevent a blinking TTY cursor
+# overlaying the rendered dashboard on dedicated panel installs.
+ExecStartPre=/bin/sh -c '[ -w /sys/class/graphics/fbcon/cursor_blink ] && echo 0 > /sys/class/graphics/fbcon/cursor_blink || true'
 ExecStart=@CASEDD_REPO_ROOT@/.venv/bin/python -m casedd
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
