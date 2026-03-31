@@ -404,6 +404,7 @@ class Config:
     nzbget_password: str | None = Field(default=None, repr=False)
     nzbget_interval: float = Field(default=5.0)
     nzbget_timeout: float = Field(default=3.0)
+    nzbget_category_filter_regex: str | None = Field(default=None)
     nasa_api_key: str | None = Field(default=None, repr=False)
     apod_interval: float = Field(default=3600.0, gt=0)
     apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data
@@ -938,6 +939,13 @@ def load_config() -> Config:
         nzbget_password=str(_get("CASEDD_NZBGET_PASSWORD", "nzbget_password", "")).strip() or None,
         nzbget_interval=float(str(_get("CASEDD_NZBGET_INTERVAL", "nzbget_interval", 5.0))),
         nzbget_timeout=float(str(_get("CASEDD_NZBGET_TIMEOUT", "nzbget_timeout", 3.0))),
+        nzbget_category_filter_regex=str(
+            _get(
+                "CASEDD_NZBGET_CATEGORY_FILTER_REGEX",
+                "nzbget_category_filter_regex",
+                "",
+            )
+        ).strip() or None,
         nasa_api_key=str(_get("CASEDD_NASA_API_KEY", "nasa_api_key", "")).strip() or None,
         apod_interval=float(str(_get("CASEDD_APOD_INTERVAL", "apod_interval", 3600.0))),
         apod_cache_dir=str(_get("CASEDD_APOD_CACHE_DIR", "apod_cache_dir", "/tmp/casedd-apod")),  # noqa: S108

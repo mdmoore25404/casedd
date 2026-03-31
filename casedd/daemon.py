@@ -928,6 +928,7 @@ class Daemon:
                 password=self._cfg.nzbget_password,
                 interval=self._cfg.nzbget_interval,
                 timeout=self._cfg.nzbget_timeout,
+                category_filter_regex=self._cfg.nzbget_category_filter_regex,
             ),
             WeatherGetter(
                 self._store,

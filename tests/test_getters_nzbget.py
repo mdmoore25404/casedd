@@ -357,3 +357,97 @@ class TestNZBGetGetter:
         # Should extract only active jobs (first two), sorted by progress (highest first)
         assert len(jobs) >= 1
         assert jobs[0].name in ("Show.S01E02.1080p", "Show.S01E01.1080p")
+
+    async def test_category_filter_regex(self, data_store: DataStore) -> None:
+        """Test category filtering with regex patterns."""
+        # Create getter with regex to hide 'xxx' and 'adult' categories
+        getter = NZBGetGetter(
+            data_store,
+            interval=1.0,
+            timeout=3.0,
+            category_filter_regex=r"(xxx|adult)",
+        )
+
+        queue_items = [
+            {
+                "NZBName": "Movie.2024.1080p",
+                "FileSizeMB": 5000,
+                "RemainingSizeMB": 2500,
+                "ActiveDownloads": 1,
+                "Category": "movies",
+            },
+            {
+                "NZBName": "Content.Private",
+                "FileSizeMB": 3000,
+                "RemainingSizeMB": 1500,
+                "ActiveDownloads": 1,
+                "Category": "xxx > premium",
+            },
+            {
+                "NZBName": "Show.S01E01",
+                "FileSizeMB": 2000,
+                "RemainingSizeMB": 1000,
+                "ActiveDownloads": 1,
+                "Category": "tv",
+            },
+            {
+                "NZBName": "Adult.Content",
+                "FileSizeMB": 4000,
+                "RemainingSizeMB": 2000,
+                "ActiveDownloads": 1,
+                "Category": "adult content",
+            },
+        ]
+
+        jobs = getter._extract_current_jobs(queue_items)
+
+        # Should filter out items matching regex (xxx and adult categories)
+        # Only movies and tv should remain
+        assert len(jobs) == 2
+        categories = {job.category for job in jobs}
+        assert "movies" in categories
+        assert "tv" in categories
+        assert "xxx > premium" not in categories
+        assert "adult content" not in categories
+
+    async def test_category_filter_no_regex(self, data_store: DataStore) -> None:
+        """Test that all categories are included when no filter regex is set."""
+        getter = NZBGetGetter(
+            data_store,
+            interval=1.0,
+            timeout=3.0,
+            category_filter_regex=None,
+        )
+
+        queue_items = [
+            {
+                "NZBName": "Content1",
+                "FileSizeMB": 1000,
+                "RemainingSizeMB": 500,
+                "ActiveDownloads": 1,
+                "Category": "xxx",
+            },
+            {
+                "NZBName": "Content2",
+                "FileSizeMB": 2000,
+                "RemainingSizeMB": 1000,
+                "ActiveDownloads": 1,
+                "Category": "adult",
+            },
+            {
+                "NZBName": "Content3",
+                "FileSizeMB": 1500,
+                "RemainingSizeMB": 750,
+                "ActiveDownloads": 1,
+                "Category": "tv",
+            },
+        ]
+
+        jobs = getter._extract_current_jobs(queue_items)
+
+        # Should include all items when no filter is set
+        assert len(jobs) == 3
+        categories = {job.category for job in jobs}
+        assert "xxx" in categories
+        assert "adult" in categories
+        assert "tv" in categories

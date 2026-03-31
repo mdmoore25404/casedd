@@ -33,6 +33,7 @@ import base64
 from dataclasses import dataclass
 import json
 import logging
+import re
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
@@ -89,6 +90,7 @@ class NZBGetGetter(BaseGetter):
         password: str | None = None,
         interval: float = 5.0,
         timeout: float = 3.0,
+        category_filter_regex: str | None = None,
     ) -> None:
         """Initialize the NZBGetGetter.
 
@@ -99,6 +101,7 @@ class NZBGetGetter(BaseGetter):
             password: Optional password for HTTP auth.
             interval: Seconds between each poll (default: 5.0).
             timeout: HTTP request timeout in seconds (default: 3.0).
+            category_filter_regex: Optional regex to hide matching categories for privacy.
         """
         super().__init__(store, interval)
         self._config = _NZBGetConfig(
@@ -106,6 +109,10 @@ class NZBGetGetter(BaseGetter):
             username=username,
             password=password,
             timeout=timeout,
+        )
+        # Compile regex for category filtering (if provided)
+        self._category_filter_regex = (
+            re.compile(category_filter_regex) if category_filter_regex else None
         )
 
     def _make_auth_header(self) -> dict[str, str] | None:
@@ -255,9 +262,12 @@ class NZBGetGetter(BaseGetter):
 
         return updates
 
-    @staticmethod
-    def _extract_current_jobs(queue_items: list[dict[str, Any]]) -> list[_CurrentJob]:
+    def _extract_current_jobs(
+        self, queue_items: list[dict[str, Any]]
+    ) -> list[_CurrentJob]:
         """Extract actively downloading jobs from queue list.
+
+        Filters out jobs matching the category filter regex (if configured).
 
         Args:
             queue_items: Raw queue list from NZBGet API.
@@ -279,6 +289,12 @@ class NZBGetGetter(BaseGetter):
                     else round(100.0 * (total - remaining) / total, 1)
                 )
                 category = item.get("Category", "")
+
+                # Skip categories matching filter regex (for privacy)
+                if self._category_filter_regex and self._category_filter_regex.search(
+                    category
+                ):
+                    continue
 
                 jobs.append(
                     _CurrentJob(

@@ -1,0 +1,20 @@
+{
+  "entries": [
+    {
+      "template": "plex_dashboard",
+      "seconds": null,
+      "skip_if": []
+    },
+    {
+      "template": "system_stats",
+      "seconds": null,
+      "skip_if": []
+    },
+    {
+      "template": "apod",
+      "seconds": null,
+      "skip_if": []
+    }
+  ],
+  "rotation_interval": 30.0
+}
