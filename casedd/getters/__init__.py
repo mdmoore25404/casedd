@@ -14,6 +14,7 @@ Available getters:
     - :mod:`casedd.getters.network` — Network byte rates
     - :mod:`casedd.getters.nzbget` — NZBGet downloader queue and history
     - :mod:`casedd.getters.ollama` — Ollama API runtime state
+    - :mod:`casedd.getters.pihole` — Pi-hole DNS filtering/query telemetry
     - :mod:`casedd.getters.plex` — Plex server/session/library telemetry
     - :mod:`casedd.getters.speedtest` — Ookla speed test sampling
     - :mod:`casedd.getters.system` — Hostname, uptime, load average

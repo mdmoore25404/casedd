@@ -197,3 +197,24 @@ def test_save_rotation_config_to_yaml_panel(
                 {"template": "apod", "seconds": 10.0, "skip_if": []},
                 {"template": "nzbget_queue", "seconds": 15.0, "skip_if": []},
         ]
+
+
+def test_pihole_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
+        """Pi-hole env vars should map into typed config fields."""
+        monkeypatch_obj = monkeypatch
+        monkeypatch_obj.setenv("CASEDD_CONFIG", str(tmp_path / "missing.yaml"))
+        monkeypatch_obj.setenv("CASEDD_PIHOLE_BASE_URL", "https://pi.hole")
+        monkeypatch_obj.setenv("CASEDD_PIHOLE_API_TOKEN", "token")
+        monkeypatch_obj.setenv("CASEDD_PIHOLE_SESSION_SID", "sid")
+        monkeypatch_obj.setenv("CASEDD_PIHOLE_TIMEOUT", "6")
+        monkeypatch_obj.setenv("CASEDD_PIHOLE_VERIFY_TLS", "0")
+        monkeypatch_obj.setenv("CASEDD_PIHOLE_INTERVAL", "15")
+
+        cfg = load_config()
+
+        assert cfg.pihole_base_url == "https://pi.hole"
+        assert cfg.pihole_api_token == "token"
+        assert cfg.pihole_session_sid == "sid"
+        assert cfg.pihole_timeout == 6.0
+        assert cfg.pihole_verify_tls is False
+        assert cfg.pihole_interval == 15.0

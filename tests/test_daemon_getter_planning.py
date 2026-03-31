@@ -79,3 +79,8 @@ def test_needed_getters_include_forced_template() -> None:
 
     assert "CpuGetter" in needed
     assert "PlexGetter" in needed
+
+
+def test_getter_name_for_source_includes_pihole() -> None:
+    """Pi-hole namespace should resolve to PiHoleGetter."""
+    assert Daemon._getter_name_for_source("pihole.queries.total") == "PiHoleGetter"
