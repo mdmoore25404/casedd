@@ -865,6 +865,9 @@ def load_config() -> Config:
         speedtest_critical_ratio=float(
             str(_get("CASEDD_SPEEDTEST_CRITICAL_RATIO", "speedtest_critical_ratio", 0.7))
         ),
+        speedtest_passive=str(
+            _get("CASEDD_SPEEDTEST_PASSIVE", "speedtest_passive", "0")
+        ) not in {"0", "false", "False", ""},
         speedtest_binary=str(_get("CASEDD_SPEEDTEST_BINARY", "speedtest_binary", "speedtest")),
         speedtest_server_id=str(
             _get("CASEDD_SPEEDTEST_SERVER_ID", "speedtest_server_id", "")
