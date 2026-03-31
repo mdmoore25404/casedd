@@ -85,6 +85,9 @@ Use this section as a pre-flight checklist during implementation, not only at cl
   scaling logic in the widget's `draw()` method. Example: for a 100-pixel wide label with
   5px padding, scale the font to fit `(100 - 10) = 90` pixels. This ensures widgets adapt to
   all display resolutions (800×480, 1024×600, 4K) without requiring per-resolution tuning.
+- **Do not use fixed font-size floors for wrapped/multiline text** (for example hardcoded
+  minima like `8`/`10` or fixed `+2` line spacing). Compute minimum size and line gap from
+  the widget container dimensions so dense lists remain readable across resolutions.
 ### Self-learning anti-pattern protocol
 
 When the agent encounters a new ruff or mypy violation during an implementation session

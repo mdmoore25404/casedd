@@ -24,7 +24,7 @@ from casedd.renderer.color import parse_color
 from casedd.renderer.fonts import fit_font, get_font
 from casedd.renderer.widgets.base import (
     BaseWidget,
-    choose_font_for_box,
+    content_rect,
     draw_label,
     fill_background,
     resolve_value,
@@ -45,8 +45,8 @@ def _wrap_text(
 ) -> list[str]:
     """Wrap a string to fit within ``max_width`` pixels using the given font.
 
-    Uses a greedy word-wrapping algorithm. Long words that exceed the width
-    on their own are not broken and will overflow.
+    Uses a greedy word-wrapping algorithm. Tokens that exceed width are
+    split into width-fitting chunks so long domains/clients stay legible.
 
     Args:
         text: The full string to wrap.
@@ -66,18 +66,73 @@ def _wrap_text(
 
         current = ""
         for word in words:
-            candidate = f"{current} {word}".strip() if current else word
+            token = word
+            parts = _split_token_to_fit(token, font, max_width)
+            if len(parts) > 1:
+                if current:
+                    wrapped.append(current)
+                    current = ""
+                wrapped.extend(parts[:-1])
+                token = parts[-1]
+
+            candidate = f"{current} {token}".strip() if current else token
             bbox = font.getbbox(candidate)
             if bbox[2] - bbox[0] <= max_width:
                 current = candidate
             else:
                 if current:
                     wrapped.append(current)
-                current = word
+                current = token
         if current:
             wrapped.append(current)
 
     return wrapped if wrapped else [""]
+
+
+def _split_token_to_fit(
+    token: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    max_width: int,
+) -> list[str]:
+    """Split one oversized token into width-fitting chunks.
+
+    Args:
+        token: Word-like token to split.
+        font: Font used for width checks.
+        max_width: Maximum line width in pixels.
+
+    Returns:
+        One or more chunks that each fit within ``max_width``.
+    """
+    if not token:
+        return [""]
+    if font.getbbox(token)[2] - font.getbbox(token)[0] <= max_width:
+        return [token]
+
+    chunks: list[str] = []
+    current = ""
+    for char in token:
+        candidate = f"{current}{char}"
+        bbox = font.getbbox(candidate)
+        if bbox[2] - bbox[0] <= max_width:
+            current = candidate
+            continue
+        if current:
+            chunks.append(current)
+        current = char
+    if current:
+        chunks.append(current)
+    return chunks if chunks else [token]
+
+
+def _line_height(font: ImageFont.FreeTypeFont | ImageFont.ImageFont) -> int:
+    """Return a responsive line height for wrapped text blocks."""
+    line_bbox = font.getbbox("Ag")
+    base_h = int(line_bbox[3] - line_bbox[1])
+    raw_size = getattr(font, "size", base_h)
+    font_size = int(raw_size) if isinstance(raw_size, int | float) else base_h
+    line_gap = max(1, font_size // 6)
+    return int(base_h + line_gap)
 
 
 class TextWidget(BaseWidget):
@@ -101,23 +156,24 @@ class TextWidget(BaseWidget):
             _state: Unused for this widget type.
         """
         fill_background(img, rect, cfg.background)
+        inner = content_rect(rect, cfg.padding)
         draw = ImageDraw.Draw(img)
         color = parse_color(cfg.color, fallback=(200, 200, 200))
 
         label_h = 0
         if cfg.label:
-            label_h = draw_label(draw, rect, cfg.label, color=(150, 150, 150))
+            label_h = draw_label(draw, inner, cfg.label, color=(150, 150, 150))
 
         raw = resolve_value(cfg, data)
         text = str(raw) if raw is not None else "--"
 
-        available_w = rect.w - 8
-        available_h = rect.h - label_h
+        available_w = inner.w
+        available_h = max(1, inner.h - label_h)
         font, lines = self._fit_wrapped_font(text, available_w, available_h, cfg.font_size)
 
         if cfg.source == "speedtest.simple_summary" and self._draw_speedtest_simple(
             draw,
-            rect,
+            inner,
             cfg,
             data,
             font,
@@ -126,17 +182,16 @@ class TextWidget(BaseWidget):
             return
 
         # Calculate total text block height to vertically center it
-        line_bbox = font.getbbox("Ag")
-        line_h = line_bbox[3] - line_bbox[1] + 2
+        line_h = _line_height(font)
         total_h = line_h * len(lines)
-        available_h = rect.h - label_h
-        y_start = rect.y + label_h + max(0, (available_h - total_h) // 2)
+        y_start = inner.y + label_h + max(0, (available_h - total_h) // 2)
 
         for i, line in enumerate(lines):
             bbox = font.getbbox(line)
             lw = bbox[2] - bbox[0]
-            x = rect.x + (rect.w - lw) // 2
-            draw.text((x, y_start + i * line_h), line, fill=color, font=font)
+            x = inner.x + (inner.w - lw) // 2 - bbox[0]
+            y = y_start + i * line_h - bbox[1]
+            draw.text((x, y), line, fill=color, font=font)
 
     def _fit_wrapped_font(
         self,
@@ -146,20 +201,23 @@ class TextWidget(BaseWidget):
         font_size: int | str,
     ) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, list[str]]:
         """Choose a responsive font size and wrapped lines for a text block."""
-        seed_font = choose_font_for_box(text or "--", max_w, max_h, font_size, min_size=10)
-        start_size = getattr(seed_font, "size", 10)
-        min_size = 8
+        dynamic_min = max(1, min(max_w, max_h) // 28)
+        start_size = (
+            max(1, max_h) if font_size == "auto" else max(dynamic_min, int(font_size))
+        )
 
-        for size in range(start_size, min_size - 1, -1):
+        for size in range(start_size, dynamic_min - 1, -1):
             candidate = get_font(size)
             lines = _wrap_text(text, candidate, max_w)
-            line_bbox = candidate.getbbox("Ag")
-            line_h = line_bbox[3] - line_bbox[1] + 2
+            line_h = _line_height(candidate)
             total_h = line_h * len(lines)
-            if total_h <= max_h:
+            widest_line = max(
+                (candidate.getbbox(line)[2] - candidate.getbbox(line)[0]) for line in lines
+            )
+            if total_h <= max_h and widest_line <= max_w:
                 return candidate, lines
 
-        fallback = get_font(min_size)
+        fallback = get_font(dynamic_min)
         return fallback, _wrap_text(text, fallback, max_w)
 
     def _draw_speedtest_simple(  # noqa: PLR0913 -- render helper needs explicit context

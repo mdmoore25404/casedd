@@ -9,13 +9,19 @@ refresh_rate: 2.0
 
 grid:
   template_areas: |
-    blocked_pct total_q    blocked_q  blocking
-    clients     domains    top_hits   top_q
-    top_blocked top_blocked top_client top_client
-  columns: 1fr 1fr 1fr 1fr
-  rows: 1fr 1fr 1.35fr
+    logo        blocked_pct total_q    blocked_q  blocking
+    logo        clients     domains    top_hits   top_q
+    top_blocked top_blocked top_blocked top_client top_client
+  columns: 0.7fr 1fr 1fr 1fr 1fr
+  rows: 1fr 1fr 1.6fr
 
 widgets:
+  logo:
+    type: image
+    path: assets/pihole/pihole-logo.png
+    scale: fit
+    padding: [6, 8]
+
   blocked_pct:
     type: value
     label: Blocked %
@@ -92,7 +98,7 @@ widgets:
     source: pihole.top_blocked.list
     color: "#f0f5ff"
     font_size: auto
-    padding: [4, 8]
+    padding: [4, 12]
 
   top_client:
     type: text
@@ -100,4 +106,4 @@ widgets:
     source: pihole.top_client.list
     color: "#f0f5ff"
     font_size: auto
-    padding: [4, 8]
+    padding: [4, 12]
