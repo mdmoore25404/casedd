@@ -650,10 +650,12 @@ class Daemon:
                 display_name="Primary",
                 fb_device=self._cfg.fb_device,
                 no_fb=self._cfg.no_fb,
-                # Keep unset for legacy single-panel mode so width/height can
-                # be auto-detected from the framebuffer when available.
-                width=None,
-                height=None,
+                # Pass cfg.width/height explicitly so the probe doesn't
+                # override an intentional user setting (e.g. CASEDD_WIDTH=1024).
+                # For multi-panel configs, panels that omit width/height keep
+                # None and still benefit from framebuffer auto-probing.
+                width=self._cfg.width,
+                height=self._cfg.height,
                 template=self._cfg.template,
                 template_rotation=self._cfg.template_rotation,
                 template_rotation_interval=self._cfg.template_rotation_interval,
@@ -706,8 +708,29 @@ class Daemon:
             fb_device = panel.fb_device if panel.fb_device is not None else self._cfg.fb_device
             no_fb = panel.no_fb if panel.no_fb is not None else self._cfg.no_fb
 
-            # Probe the configured framebuffer device (if present) to inherit
-            # its resolution when per-panel width/height are not set.
+            # USB auto-detect: select the target framebuffer device BEFORE probing
+            # for resolution.  When fb_auto_detect is enabled and a USB display was
+            # found, always prefer that display — even if the configured device exists
+            # (it may be the GPU's framebuffer reporting an unusable 4K resolution).
+            # Without auto-detect, fall back to the USB display only when the
+            # configured device is absent.
+            if self._auto_detected_fb is not None:
+                if self._cfg.fb_auto_detect:
+                    fb_device = self._auto_detected_fb.device
+                    _log.info(
+                        "Panel '%s': fb_auto_detect — using USB display %s",
+                        panel_name, fb_device,
+                    )
+                elif not fb_device.exists():
+                    fb_device = self._auto_detected_fb.device
+                    _log.info(
+                        "Panel '%s': configured framebuffer absent, "
+                        "falling back to USB display %s",
+                        panel_name, fb_device,
+                    )
+
+            # Probe the selected device for its native resolution so that the
+            # render canvas matches the physical display without manual config.
             try:
                 probe_info = probe_framebuffer(fb_device)
                 if probe_info is not None:
@@ -718,30 +741,8 @@ class Daemon:
             except Exception:
                 _log.debug("Could not probe framebuffer %s for dimensions", fb_device)
 
-            # USB auto-detect: if configured device is absent, use detected display.
-            if self._auto_detected_fb is not None and not fb_device.exists():
-                fb_device = self._auto_detected_fb.device
-                _log.info(
-                    "Panel '%s': using auto-detected USB display %s",
-                    panel_name, fb_device,
-                )
-
-            # Inherit resolution from auto-detected display when not overridden.
-            if (
-                self._auto_detected_fb is not None
-                and self._auto_detected_fb.width > 0
-                and panel.width is None
-            ):
-                width = self._auto_detected_fb.width
-            if (
-                self._auto_detected_fb is not None
-                and self._auto_detected_fb.height > 0
-                and panel.height is None
-            ):
-                height = self._auto_detected_fb.height
-
             # Final fallback to configured defaults when resolution is still
-            # unknown (e.g., missing sysfs virtual_size).
+            # unknown (e.g., device not yet connected, missing sysfs virtual_size).
             if width <= 0:
                 width = self._cfg.width
             if height <= 0:

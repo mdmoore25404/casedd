@@ -217,13 +217,22 @@ class FramebufferOutput:
         # Ensure correct pixel format before conversion
         img = image.convert("RGB")
 
-        # Resize to match framebuffer resolution if needed
         if img.size != (self._fb_w, self._fb_h):
-            # Prefer a faster resampler than LANCZOS for real-time dashboards.
-            img = img.resize(
-                (self._fb_w, self._fb_h),
-                Image.Resampling.BILINEAR,
-            )
+            img_w, img_h = img.size
+            if img_w <= self._fb_w and img_h <= self._fb_h:
+                # Render canvas is smaller than the physical framebuffer (e.g.
+                # GPU outputs 4K over HDMI to a 1024x600 panel).  Place the
+                # image at the top-left corner of a black full-fb canvas so the
+                # display shows pixel-perfect content without upscaling.
+                canvas = Image.new("RGB", (self._fb_w, self._fb_h), (0, 0, 0))
+                canvas.paste(img, (0, 0))
+                img = canvas
+            else:
+                # Render canvas exceeds the framebuffer — scale down to fit.
+                img = img.resize(
+                    (self._fb_w, self._fb_h),
+                    Image.Resampling.BILINEAR,
+                )
 
         raw_bytes = self._rgb_to_rgb565(img) if self._bpp == 16 else self._rgb_to_xrgb8888(img)
 
