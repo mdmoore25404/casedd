@@ -543,15 +543,23 @@ CASEDD_DEV_WS_PORT=18765
 
 ## Template rotation, schedule, and triggers
 
-Rotation can be configured from environment variables:
+Rotation is configured in `casedd.yaml` and used as the single source of
+truth by both daemon startup and the advanced web UI.
 
-```bash
-CASEDD_TEMPLATE=system_stats
-CASEDD_TEMPLATE_ROTATION=fans,slideshow
-CASEDD_TEMPLATE_ROTATION_INTERVAL=30
+```yaml
+template: system_stats
+template_rotation:
+  - template: apod
+    seconds: 10
+  - template: nzbget_queue
+    seconds: 15
+template_rotation_interval: 30
 ```
 
-Schedules and triggers are configured in `casedd.yaml`.
+In this example, `template_rotation_interval` is the default hold time and
+entries with `seconds` override it per template.
+
+Schedules and triggers are also configured in `casedd.yaml`.
 See [casedd.yaml.example](casedd.yaml.example) for a complete sample:
 
 ```yaml

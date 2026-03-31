@@ -19,7 +19,6 @@ from collections.abc import Callable
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
-import json
 import logging
 from pathlib import Path
 import signal
@@ -34,6 +33,7 @@ from casedd.config import (
     RotationEntry,
     TemplateScheduleRule,
     TemplateTriggerRule,
+    save_rotation_config_to_yaml,
 )
 from casedd.data_store import DataStore, StoreValue
 from casedd.getter_health import GetterHealthRegistry
@@ -83,9 +83,6 @@ _TEST_MODE_STORE_KEY = "casedd.test_mode"
 _TEMPLATE_FORCE_PREFIX = "casedd.template.force."
 _TEMPLATE_CURRENT_PREFIX = "casedd.template.current."
 
-# Directory that holds per-panel rotation state files (survives restarts).
-_ROTATION_STATE_DIR = Path("run")
-
 # Visual indicator painted over trigger-held frames so the viewer knows
 # the template is being forced by an out-of-spec condition.
 _TRIGGER_BORDER_WIDTH: int = 6
@@ -108,63 +105,6 @@ def _draw_trigger_border(
             (offset, offset, w - 1 - offset, h - 1 - offset),
             outline=color,
         )
-
-
-def _rotation_state_path(panel_name: str) -> Path:
-    """Return the path for a panel's persisted rotation state file."""
-    return _ROTATION_STATE_DIR / f"rotation-{panel_name}.json"
-
-
-def _save_rotation_state(
-    panel_name: str,
-    entries: list[RotationEntry],
-    default_interval: float,
-) -> None:
-    """Persist rotation entries to a JSON file under ``run/``.
-
-    Args:
-        panel_name: Stable panel identifier.
-        entries: Full ordered entry list to persist.
-        default_interval: Default dwell interval in seconds.
-    """
-    path = _rotation_state_path(panel_name)
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        data: dict[str, object] = {
-            "entries": [e.model_dump(mode="json") for e in entries],
-            "rotation_interval": default_interval,
-        }
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    except OSError:
-        _log.warning("Could not save rotation state for panel '%s'", panel_name)
-
-
-def _load_rotation_state(
-    panel_name: str,
-) -> tuple[list[RotationEntry], float] | None:
-    """Load persisted rotation state previously written by :func:`_save_rotation_state`.
-
-    Args:
-        panel_name: Stable panel identifier.
-
-    Returns:
-        ``(entries, default_interval)`` tuple, or ``None`` when no saved state
-        exists or the file cannot be parsed.
-    """
-    path = _rotation_state_path(panel_name)
-    if not path.exists():
-        return None
-    try:
-        raw = json.loads(path.read_text(encoding="utf-8"))
-        entries = [
-            RotationEntry.model_validate(item)
-            for item in raw.get("entries", [])
-        ]
-        interval = float(raw.get("rotation_interval", 30.0))
-        return entries, interval
-    except Exception:  # best-effort load; fall back to defaults
-        _log.warning("Could not load rotation state for panel '%s' — using defaults", panel_name)
-        return None
 
 
 @dataclass
@@ -374,7 +314,18 @@ class Daemon:
             runtime.rotation_templates = templates
             runtime.rotation_interval = interval
             runtime.rotation_entries = list(runtime.selector.rotation_entries)
-            _save_rotation_state(panel_name, runtime.rotation_entries, interval)
+            try:
+                save_rotation_config_to_yaml(
+                    panel_name,
+                    templates,
+                    interval,
+                    entries,
+                )
+            except (OSError, ValueError):
+                _log.warning(
+                    "Could not persist rotation config to YAML for panel '%s'",
+                    panel_name,
+                )
 
         ws_output = WebSocketOutput(_BIND_HOST, self._cfg.ws_port)
 
@@ -711,18 +662,7 @@ class Daemon:
                 if panel.template_rotation_interval is not None
                 else self._cfg.template_rotation_interval
             )
-
-            # Load persisted rotation state (saved between restarts via UI).
-            # Persisted state takes priority over config-file defaults.
-            saved_state = _load_rotation_state(panel_name)
             rotation_entries: list[RotationEntry] | None = configured_rotation_entries
-            if saved_state is not None:
-                rotation_entries, rotation_interval = saved_state
-                _log.info(
-                    "Panel '%s': loaded persisted rotation state (%d entries)",
-                    panel_name,
-                    len(rotation_entries),
-                )
 
             force_key = f"{_TEMPLATE_FORCE_PREFIX}{panel_name}"
             selector = TemplateSelector(

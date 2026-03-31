@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from casedd.config import RotationEntry, load_config
+import yaml
+
+from casedd.config import RotationEntry, load_config, save_rotation_config_to_yaml
 
 
 def test_speedtest_passive_env_true(monkeypatch: object, tmp_path: Path) -> None:
@@ -99,3 +101,95 @@ def test_panel_template_rotation_entries_parse_from_yaml(
         assert cfg.panels[0].template_rotation[0].template == "apod"
         assert cfg.panels[0].template_rotation[0].seconds == 10.0
         assert cfg.panels[0].template_rotation[1] == "nzbget_queue"
+
+
+def test_save_rotation_config_to_yaml_single_panel(
+        monkeypatch: object,
+        tmp_path: Path,
+) -> None:
+        """Rotation updates are persisted to top-level keys for single-panel config."""
+        cfg_path = tmp_path / "casedd.yaml"
+        cfg_path.write_text(
+                "\n".join(
+                        [
+                                "template: system_stats",
+                                "template_rotation:",
+                                "  - apod",
+                                "template_rotation_interval: 30",
+                        ]
+                ),
+                encoding="utf-8",
+        )
+        monkeypatch_obj = monkeypatch
+        monkeypatch_obj.setenv("CASEDD_CONFIG", str(cfg_path))
+
+        save_rotation_config_to_yaml(
+                "primary",
+                ["apod", "nzbget_queue"],
+                20.0,
+                [
+                        RotationEntry(template="apod", seconds=10),
+                        RotationEntry(template="nzbget_queue", seconds=15),
+                ],
+        )
+
+        loaded = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+        assert isinstance(loaded, dict)
+        assert loaded.get("template_rotation_interval") == 20.0
+        rotation = loaded.get("template_rotation")
+        assert isinstance(rotation, list)
+        assert rotation == [
+                {"template": "apod", "seconds": 10.0, "skip_if": []},
+                {"template": "nzbget_queue", "seconds": 15.0, "skip_if": []},
+        ]
+
+
+def test_save_rotation_config_to_yaml_panel(
+        monkeypatch: object,
+        tmp_path: Path,
+) -> None:
+        """Rotation updates are persisted into matching panel entry for multi-panel YAML."""
+        cfg_path = tmp_path / "casedd.yaml"
+        cfg_path.write_text(
+                "\n".join(
+                        [
+                                "template: system_stats",
+                                "panels:",
+                                "  - name: primary",
+                                "    template: system_stats",
+                                "  - name: side",
+                                "    template: sysinfo",
+                                "    template_rotation:",
+                                "      - apod",
+                                "    template_rotation_interval: 30",
+                        ]
+                ),
+                encoding="utf-8",
+        )
+        monkeypatch_obj = monkeypatch
+        monkeypatch_obj.setenv("CASEDD_CONFIG", str(cfg_path))
+
+        save_rotation_config_to_yaml(
+                "side",
+                ["apod", "nzbget_queue"],
+                25.0,
+                [
+                        RotationEntry(template="apod", seconds=10),
+                        RotationEntry(template="nzbget_queue", seconds=15),
+                ],
+        )
+
+        loaded = yaml.safe_load(cfg_path.read_text(encoding="utf-8"))
+        assert isinstance(loaded, dict)
+        panels = loaded.get("panels")
+        assert isinstance(panels, list)
+        panel_side = next(
+                panel
+                for panel in panels
+                if isinstance(panel, dict) and str(panel.get("name", "")) == "side"
+        )
+        assert panel_side["template_rotation_interval"] == 25.0
+        assert panel_side["template_rotation"] == [
+                {"template": "apod", "seconds": 10.0, "skip_if": []},
+                {"template": "nzbget_queue", "seconds": 15.0, "skip_if": []},
+        ]
