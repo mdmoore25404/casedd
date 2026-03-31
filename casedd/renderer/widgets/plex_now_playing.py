@@ -73,12 +73,12 @@ class PlexNowPlayingWidget(BaseWidget):
         body_size = (
             cfg.font_size
             if isinstance(cfg.font_size, int)
-            else max(10, min(24, inner.h // 12))
+            else max(12, min(inner.h // 16, inner.w // 34))
         )
         body_font = get_font(body_size)
-        head_font = get_font(body_size + 1)
+        head_font = get_font(max(12, int(body_size * 1.05)))
         row_bb = draw.textbbox((0, 0), "Ag", font=body_font)
-        row_h = int(row_bb[3] - row_bb[1]) + 3
+        row_h = int(row_bb[3] - row_bb[1]) + max(4, body_size // 4)
 
         left = inner.x + 4
         avail_w = inner.w - 8
@@ -97,6 +97,7 @@ class PlexNowPlayingWidget(BaseWidget):
             title_left,
             mode_left,
             prog_right,
+            row_h,
         )
         y += row_h
 
@@ -135,6 +136,7 @@ def _draw_header(  # noqa: PLR0913 -- explicit column positions keep draw path f
     title_left: int,
     mode_left: int,
     prog_right: int,
+    row_h: int,
 ) -> None:
     """Draw now-playing table headers."""
     color = (188, 196, 208)
@@ -142,7 +144,8 @@ def _draw_header(  # noqa: PLR0913 -- explicit column positions keep draw path f
     draw.text((title_left, y), "TITLE", fill=color, font=font)
     draw.text((mode_left, y), "MODE", fill=color, font=font)
     _draw_right(draw, font, y, prog_right, "%", color)
-    draw.line((left, y + 16, prog_right, y + 16), fill=(52, 62, 72), width=1)
+    underline_y = y + max(12, row_h - 2)
+    draw.line((left, underline_y, prog_right, underline_y), fill=(52, 62, 72), width=1)
 
 
 def _draw_row(  # noqa: PLR0913 -- explicit table geometry is clearer than packing dicts

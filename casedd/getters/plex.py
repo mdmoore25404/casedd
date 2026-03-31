@@ -316,7 +316,7 @@ def _parse_sessions(root: ET.Element) -> list[_SessionRow]:
         media_type = item.tag.lower()
         progress_percent = _session_progress(item)
         decision = _transcode_decision(item)
-        bitrate_kbps = _to_float(item.get("bitrate", "0"))
+        bitrate_kbps = _session_bitrate_kbps(item)
         library = str(item.get("librarySectionTitle") or "")
         rows.append(
             _SessionRow(
@@ -383,6 +383,30 @@ def _session_progress(item: ET.Element) -> float:
     if duration <= 0.0:
         return 0.0
     return max(0.0, min(100.0, (offset / duration) * 100.0))
+
+
+def _session_bitrate_kbps(item: ET.Element) -> float:
+    """Extract best-available session bitrate in Kb/s.
+
+    Prefers the active-session ``Session@bandwidth`` value when present,
+    then falls back through media/part/stream bitrate metadata.
+    """
+    session_node = item.find("Session")
+    if session_node is not None:
+        session_bandwidth = _to_float(session_node.get("bandwidth", "0"))
+        if session_bandwidth > 0.0:
+            return session_bandwidth
+
+    candidates: list[float] = [_to_float(item.get("bitrate", "0"))]
+    media = item.find("Media")
+    if media is not None:
+        candidates.append(_to_float(media.get("bitrate", "0")))
+        for part in media.findall("Part"):
+            candidates.append(_to_float(part.get("bitrate", "0")))
+            for stream in part.findall("Stream"):
+                candidates.append(_to_float(stream.get("bitrate", "0")))
+
+    return max(candidates)
 
 
 def _transcode_decision(item: ET.Element) -> str:

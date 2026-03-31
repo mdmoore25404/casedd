@@ -71,12 +71,12 @@ class PlexRecentlyAddedWidget(BaseWidget):
         body_size = (
             cfg.font_size
             if isinstance(cfg.font_size, int)
-            else max(10, min(22, inner.h // 12))
+            else max(12, min(inner.h // 16, inner.w // 34))
         )
         body_font = get_font(body_size)
-        head_font = get_font(body_size + 1)
+        head_font = get_font(max(12, int(body_size * 1.05)))
         row_bb = draw.textbbox((0, 0), "Ag", font=body_font)
-        row_h = int(row_bb[3] - row_bb[1]) + 3
+        row_h = int(row_bb[3] - row_bb[1]) + max(4, body_size // 4)
 
         left = inner.x + 4
         avail_w = inner.w - 8
@@ -95,6 +95,7 @@ class PlexRecentlyAddedWidget(BaseWidget):
             library_left,
             title_left,
             right,
+            row_h,
         )
         y += row_h
 
@@ -132,13 +133,15 @@ def _draw_header(  # noqa: PLR0913 -- explicit column positions keep draw path f
     library_left: int,
     title_left: int,
     right: int,
+    row_h: int,
 ) -> None:
     """Draw recently-added table header row."""
     color = (188, 196, 208)
     _draw_right(draw, font, y, type_right, "TYPE", color)
     draw.text((library_left, y), "LIBRARY", fill=color, font=font)
     draw.text((title_left, y), "TITLE", fill=color, font=font)
-    draw.line((left, y + 16, right, y + 16), fill=(52, 62, 72), width=1)
+    underline_y = y + max(12, row_h - 2)
+    draw.line((left, underline_y, right, underline_y), fill=(52, 62, 72), width=1)
 
 
 def _draw_row(  # noqa: PLR0913 -- explicit table geometry is clearer than packing dicts

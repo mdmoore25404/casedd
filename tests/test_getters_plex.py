@@ -250,3 +250,25 @@ def test_parse_sessions_normalization_fixture() -> None:
         "transcode",
     ]
     assert rows[0].progress_percent == 10.0
+
+
+def test_parse_sessions_uses_nested_bitrate_sources() -> None:
+        """Session bandwidth should be read from nested nodes when item bitrate is absent."""
+        xml = """
+        <MediaContainer>
+            <Video title="One" duration="1000" viewOffset="100">
+                <User title="u1" />
+                <Session bandwidth="5843" />
+                <Media bitrate="2782">
+                    <Part>
+                        <Stream bitrate="2398" />
+                    </Part>
+                </Media>
+            </Video>
+        </MediaContainer>
+        """
+        root = ET.fromstring(xml)
+        rows = _parse_sessions(root)
+
+        assert len(rows) == 1
+        assert rows[0].bitrate_kbps == 5843.0
