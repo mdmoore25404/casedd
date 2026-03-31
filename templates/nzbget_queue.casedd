@@ -1,0 +1,117 @@
+# nzbget_queue.casedd — NZBGet queue status summary
+
+name: nzbget_queue
+description: NZBGet queue depth, speed, ETA, and pause status.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0b1118"
+refresh_rate: 5.0
+skip_if:
+  - source: nzbget.queue.total
+    operator: eq
+    value: 0
+
+grid:
+  template_areas: |
+    "logo status"
+    "queue speed"
+    "eta pause"
+  columns: "1fr 1.5fr"
+  rows: "0.3fr 0.35fr 0.35fr"
+
+widgets:
+  logo:
+    type: panel
+    background: "#101822"
+    padding: 8
+    grid:
+      template_areas: |
+        content
+      columns: 1fr
+      rows: 1fr
+    children_named:
+      content:
+        type: text
+        content: "NZBGet"
+        color: "#60e6a5"
+        font_size: 24
+        bold: true
+
+  status:
+    type: panel
+    background: "#101822"
+    padding: 8
+    grid:
+      template_areas: |
+        "version online"
+      columns: "1fr 1fr"
+      rows: "1fr"
+    children_named:
+      version:
+        type: value
+        source: nzbget.version
+        label: "Version"
+        color: "#dfe7ef"
+        font_size: auto
+      online:
+        type: text
+        content: "✓ Online"
+        color: "#74d680"
+        font_size: auto
+
+  queue:
+    type: value
+    source: nzbget.queue.total
+    label: "Queue Items"
+    color: "#89b7ff"
+    background: "#0f1a24"
+    font_size: auto
+    padding: 6
+
+  speed:
+    type: value
+    source: nzbget.rate.mbps
+    label: "Download Speed Mb/s"
+    precision: 1
+    color: "#ff9f6f"
+    background: "#0f1a24"
+    font_size: auto
+    padding: 6
+
+  eta:
+    type: value
+    source: nzbget.eta_seconds
+    label: "ETA (seconds)"
+    color: "#6fa8ff"
+    background: "#0f1a24"
+    font_size: auto
+    padding: 6
+
+  pause:
+    type: panel
+    background: "#0f1a24"
+    padding: 6
+    grid:
+      template_areas: |
+        "dl post scan"
+      columns: "1fr 1fr 1fr"
+      rows: "1fr"
+    children_named:
+      dl:
+        type: text
+        source: nzbget.status.download_paused
+        format: "DL: {0}"
+        color: "#dfe7ef"
+        font_size: auto
+      post:
+        type: text
+        source: nzbget.status.postprocess_paused
+        format: "Post: {0}"
+        color: "#dfe7ef"
+        font_size: auto
+      scan:
+        type: text
+        source: nzbget.status.scan_paused
+        format: "Scan: {0}"
+        color: "#dfe7ef"
+        font_size: auto
