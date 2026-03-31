@@ -197,15 +197,16 @@ class NZBGetGetter(BaseGetter):
             self._rpc_call(_METHOD_HISTORY),
         )
 
-        # Process status
-        updates["nzbget.status.download_paused"] = bool(
-            status_data.get("DownloadPaused")
+        # Process status — store as int (1=paused, 0=active) so widgets
+        # can display numeric comparisons and bar widgets work cleanly.
+        updates["nzbget.status.download_paused"] = int(
+            bool(status_data.get("DownloadPaused"))
         )
-        updates["nzbget.status.postprocess_paused"] = bool(
-            status_data.get("PostPaused")
+        updates["nzbget.status.postprocess_paused"] = int(
+            bool(status_data.get("PostPaused"))
         )
-        updates["nzbget.status.scan_paused"] = bool(
-            status_data.get("ScanPaused")
+        updates["nzbget.status.scan_paused"] = int(
+            bool(status_data.get("ScanPaused"))
         )
 
         # Process queue metrics

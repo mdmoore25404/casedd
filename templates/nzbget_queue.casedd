@@ -34,7 +34,7 @@ widgets:
         type: text
         content: "NZBGet"
         color: "#60e6a5"
-        font_size: 26
+        font_size: auto
 
   status:
     type: panel

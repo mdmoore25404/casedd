@@ -12,137 +12,104 @@ grid:
     "header header"
     "summary current"
   columns: "1fr 1.2fr"
-  rows: "0.25fr 0.75fr"
+  rows: "0.28fr 0.72fr"
 
 widgets:
   header:
     type: panel
     background: "#101822"
-    padding: 8
+    padding: 6
     grid:
       template_areas: |
-        "logo version status active"
-      columns: "0.6fr 1fr 1fr 1fr"
+        "logo version queue active speed eta"
+      columns: "0.7fr 0.8fr 0.7fr 0.7fr 0.8fr 0.8fr"
       rows: "1fr"
     children_named:
       logo:
         type: text
         content: "NZBGet"
         color: "#60e6a5"
-        font_size: 20
+        font_size: auto
       version:
         type: value
         source: nzbget.version
         label: "Ver"
-        color: "#dfe7ef"
+        color: "#adc8ff"
         font_size: auto
-      status:
-        type: text
+      queue:
+        type: value
         source: nzbget.queue.total
-        format: "Queue: {0}"
+        label: "Queue"
         color: "#89b7ff"
         font_size: auto
       active:
         type: value
         source: nzbget.queue.active_count
-        label: "Downloading"
+        label: "Active"
         color: "#74d680"
         font_size: auto
-
-  summary:
-    type: panel
-    background: "#0f1a24"
-    padding: 8
-    grid:
-      template_areas: |
-        "speed eta"
-        "remaining rate"
-        "history paused"
-      columns: "1fr 1fr"
-      rows: "0.3fr 0.33fr 0.37fr"
-    children_named:
       speed:
         type: value
         source: nzbget.rate.mbps
-        label: "Speed Mb/s"
+        label: "Mb/s"
         precision: 1
         color: "#ff9f6f"
         font_size: auto
       eta:
         type: value
         source: nzbget.eta_seconds
-        label: "ETA (s)"
+        label: "ETA s"
         color: "#6fa8ff"
         font_size: auto
+
+  summary:
+    type: panel
+    background: "#0f1a24"
+    padding: 6
+    grid:
+      template_areas: |
+        "remaining post"
+        "success failed"
+        "dl_paused pp_paused"
+      columns: "1fr 1fr"
+      rows: "1fr 1fr 1fr"
+    children_named:
       remaining:
         type: value
         source: nzbget.queue.remaining_mb
         label: "Remaining MB"
         color: "#dfe7ef"
         font_size: auto
-      rate:
-        type: panel
-        background: transparent
-        grid:
-          template_areas: |
-            post
-          columns: 1fr
-          rows: 1fr
-        children_named:
-          post:
-            type: value
-            source: nzbget.postprocess.active_count
-            label: "Post-Processing"
-            color: "#dfe7ef"
-            font_size: auto
-      history:
-        type: panel
-        background: transparent
-        grid:
-          template_areas: |
-            "success failed"
-          columns: "1fr 1fr"
-          rows: "1fr"
-        children_named:
-          success:
-            type: value
-            source: nzbget.history.success_count
-            label: "Success"
-            color: "#74d680"
-            font_size: auto
-          failed:
-            type: value
-            source: nzbget.history.failed_count
-            label: "Failed"
-            color: "#ff6b6b"
-            font_size: auto
-      paused:
-        type: panel
-        background: transparent
-        grid:
-          template_areas: |
-            "dl post scan"
-          columns: "1fr 1fr 1fr"
-          rows: "1fr"
-        children_named:
-          dl:
-            type: text
-            source: nzbget.status.download_paused
-            format: "DL: {0}"
-            color: "#dfe7ef"
-            font_size: 11
-          post:
-            type: text
-            source: nzbget.status.postprocess_paused
-            format: "Post: {0}"
-            color: "#dfe7ef"
-            font_size: 11
-          scan:
-            type: text
-            source: nzbget.status.scan_paused
-            format: "Scan: {0}"
-            color: "#dfe7ef"
-            font_size: 11
+      post:
+        type: value
+        source: nzbget.postprocess.active_count
+        label: "Post-Proc"
+        color: "#dfe7ef"
+        font_size: auto
+      success:
+        type: value
+        source: nzbget.history.success_count
+        label: "Success"
+        color: "#74d680"
+        font_size: auto
+      failed:
+        type: value
+        source: nzbget.history.failed_count
+        label: "Failed"
+        color: "#ff6b6b"
+        font_size: auto
+      dl_paused:
+        type: value
+        source: nzbget.status.download_paused
+        label: "DL Paused"
+        color: "#dfe7ef"
+        font_size: auto
+      pp_paused:
+        type: value
+        source: nzbget.status.postprocess_paused
+        label: "PP Paused"
+        color: "#dfe7ef"
+        font_size: auto
 
   current:
     type: panel
@@ -155,13 +122,13 @@ widgets:
         "job2"
         "job3"
       columns: "1fr"
-      rows: "0.1fr 0.3fr 0.3fr 0.3fr"
+      rows: "0.12fr 0.29fr 0.29fr 0.30fr"
     children_named:
       title:
         type: text
         content: "Current Downloads"
         color: "#60e6a5"
-        font_size: 14
+        font_size: auto
       job1:
         type: panel
         background: transparent
@@ -175,13 +142,13 @@ widgets:
             type: text
             source: nzbget.current_1.name
             color: "#dfe7ef"
-            font_size: 11
+            font_size: auto
           progress:
             type: bar
             source: nzbget.current_1.progress_percent
             label: "%"
             color: "#60e6a5"
-            font_size: 9
+            font_size: auto
       job2:
         type: panel
         background: transparent
@@ -195,13 +162,13 @@ widgets:
             type: text
             source: nzbget.current_2.name
             color: "#dfe7ef"
-            font_size: 11
+            font_size: auto
           progress:
             type: bar
             source: nzbget.current_2.progress_percent
             label: "%"
             color: "#60e6a5"
-            font_size: 9
+            font_size: auto
       job3:
         type: panel
         background: transparent
@@ -215,10 +182,10 @@ widgets:
             type: text
             source: nzbget.current_3.name
             color: "#dfe7ef"
-            font_size: 11
+            font_size: auto
           progress:
             type: bar
             source: nzbget.current_3.progress_percent
             label: "%"
             color: "#60e6a5"
-            font_size: 9
+            font_size: auto

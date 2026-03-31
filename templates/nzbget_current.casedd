@@ -65,7 +65,7 @@ widgets:
         type: text
         source: nzbget.current_1.name
         color: "#dfe7ef"
-        font_size: 14
+        font_size: auto
       progress:
         type: bar
         source: nzbget.current_1.progress_percent
@@ -87,7 +87,7 @@ widgets:
         type: text
         source: nzbget.current_2.name
         color: "#dfe7ef"
-        font_size: 14
+        font_size: auto
       progress:
         type: bar
         source: nzbget.current_2.progress_percent
@@ -109,7 +109,7 @@ widgets:
         type: text
         source: nzbget.current_3.name
         color: "#dfe7ef"
-        font_size: 14
+        font_size: auto
       progress:
         type: bar
         source: nzbget.current_3.progress_percent
