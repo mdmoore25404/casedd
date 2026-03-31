@@ -42,3 +42,32 @@ def test_table_widget_strips_rank_prefixes() -> None:
     widget.draw(img, Rect(x=0, y=0, w=320, h=160), cfg, store, {})
 
     assert img.getbbox() is not None
+
+
+def test_table_widget_fit_text_and_cache_reuse() -> None:
+    """Fit-text mode should render repeatedly without overflow regressions."""
+    img = Image.new("RGB", (520, 220), (0, 0, 0))
+    store = DataStore()
+    store.set(
+        "pihole.top_blocked.list",
+        "arcus-uswest.amazon.com|1142\n"
+        "sdk.iad-02.braze.com|2195\n"
+        "dcape-na.amazon.com|9710",
+    )
+
+    widget = TableWidget()
+    cfg = WidgetConfig(
+        type=WidgetType.TABLE,
+        source="pihole.top_blocked.list",
+        label="Top Blocked Domains",
+        font_size="auto",
+        table_fit_text=True,
+        max_items=5,
+    )
+    state: dict[str, object] = {}
+
+    widget.draw(img, Rect(x=0, y=0, w=520, h=220), cfg, store, state)
+    widget.draw(img, Rect(x=0, y=0, w=520, h=220), cfg, store, state)
+
+    assert img.getbbox() is not None
+    assert "table_layout" in state

@@ -187,10 +187,12 @@ top_domains:
   label: "Top Blocked Domains"
   source: pihole.top_blocked.list
   font_size: auto
+  table_fit_text: true
   max_items: 5
 ```
 
-Additional fields: `max_items` (optional row cap).
+Additional fields: `max_items` (optional row cap), `table_fit_text`
+(try to shrink font so both columns fit fully before truncating column one).
 
 ---
 

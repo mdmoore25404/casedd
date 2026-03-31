@@ -37,6 +37,35 @@ class _Row:
     right: str
 
 
+@dataclass(frozen=True)
+class _PreparedRow:
+    """One measured/render-ready row."""
+
+    left: str
+    right: str
+    right_width: int
+
+
+@dataclass(frozen=True)
+class _PreparedLayout:
+    """Cached table layout for a specific content+rect configuration."""
+
+    font: FreeTypeFont | ImageFont
+    row_h: int
+    left_w: int
+    rows: tuple[_PreparedRow, ...]
+
+
+@dataclass(frozen=True)
+class _LayoutSpec:
+    """Inputs that control table layout fitting."""
+
+    max_w: int
+    max_h: int
+    font_size: int | str
+    fit_text: bool
+
+
 class TableWidget(BaseWidget):
     """Render a compact two-column table with dynamic font scaling."""
 
@@ -77,27 +106,86 @@ class TableWidget(BaseWidget):
 
         avail_w = max(1, inner.w - 2)
         avail_h = max(1, inner.h - label_h)
-        font, row_h, left_w, _gap = _fit_font(draw, rows, avail_w, avail_h, cfg.font_size)
+        fit_text = bool(cfg.table_fit_text)
+        cache_key = (
+            source_text,
+            tuple((row.left, row.right) for row in rows),
+            avail_w,
+            avail_h,
+            cfg.font_size,
+            fit_text,
+        )
+        prepared = _layout_from_cache(_state, cache_key)
+        if prepared is None:
+            spec = _LayoutSpec(
+                max_w=avail_w,
+                max_h=avail_h,
+                font_size=cfg.font_size,
+                fit_text=fit_text,
+            )
+            prepared = _prepare_layout(draw, rows, spec)
+            _state["table_layout_key"] = cache_key
+            _state["table_layout"] = prepared
 
         color = parse_color(cfg.color, fallback=(220, 225, 230))
-        total_h = row_h * len(rows)
+        total_h = prepared.row_h * len(prepared.rows)
         y = inner.y + label_h + max(0, (avail_h - total_h) // 2)
 
         left_x = inner.x + 1
         right_x = inner.x + inner.w - 2
 
-        for row in rows:
-            left_text = _ellipsize(draw, font, row.left, left_w)
-            left_bb = draw.textbbox((0, 0), left_text, font=font)
+        for row in prepared.rows:
+            left_bb = draw.textbbox((0, 0), row.left, font=prepared.font)
             left_y = y - int(left_bb[1])
-            draw.text((left_x, left_y), left_text, fill=color, font=font)
+            draw.text((left_x, left_y), row.left, fill=color, font=prepared.font)
 
-            right_text = row.right
-            right_bb = draw.textbbox((0, 0), right_text, font=font)
-            right_w = int(right_bb[2] - right_bb[0])
+            right_y = y
+            right_bb = draw.textbbox((0, 0), row.right, font=prepared.font)
             right_y = y - int(right_bb[1])
-            draw.text((right_x - right_w, right_y), right_text, fill=color, font=font)
-            y += row_h
+            draw.text(
+                (right_x - row.right_width, right_y),
+                row.right,
+                fill=color,
+                font=prepared.font,
+            )
+            y += prepared.row_h
+
+
+def _layout_from_cache(
+    state: dict[str, object],
+    cache_key: tuple[object, ...],
+) -> _PreparedLayout | None:
+    """Return cached table layout when the current draw key matches."""
+    cached_key = state.get("table_layout_key")
+    cached_layout = state.get("table_layout")
+    if cached_key != cache_key:
+        return None
+    if isinstance(cached_layout, _PreparedLayout):
+        return cached_layout
+    return None
+
+
+def _prepare_layout(
+    draw: ImageDraw.ImageDraw,
+    rows: list[_Row],
+    spec: _LayoutSpec,
+) -> _PreparedLayout:
+    """Measure and prepare row text for drawing."""
+    font, row_h, left_w, _gap, keep_full_left = _fit_font(draw, rows, spec)
+    width_cache: dict[str, int] = {}
+    prepared_rows: list[_PreparedRow] = []
+    for row in rows:
+        left = row.left
+        if not keep_full_left:
+            left = _ellipsize(draw, font, left, left_w, width_cache)
+        right_width = _text_width(draw, font, row.right, width_cache)
+        prepared_rows.append(_PreparedRow(left=left, right=row.right, right_width=right_width))
+    return _PreparedLayout(
+        font=font,
+        row_h=row_h,
+        left_w=left_w,
+        rows=tuple(prepared_rows),
+    )
 
 
 def _parse_rows(source_text: str) -> list[_Row]:
@@ -139,12 +227,13 @@ def _strip_rank_prefix(value: str) -> str:
 def _fit_font(
     draw: ImageDraw.ImageDraw,
     rows: list[_Row],
-    max_w: int,
-    max_h: int,
-    font_size: int | str,
-) -> tuple[FreeTypeFont | ImageFont, int, int, int]:
+    spec: _LayoutSpec,
+) -> tuple[FreeTypeFont | ImageFont, int, int, int, bool]:
     """Pick the largest font and row geometry that fit the table box."""
     row_count = max(1, len(rows))
+    max_w = spec.max_w
+    max_h = spec.max_h
+    font_size = spec.font_size
     dynamic_min = max(1, min(max_w, max_h) // 34)
     if font_size == "auto":
         start_size = max(dynamic_min, max_h // row_count)
@@ -160,17 +249,21 @@ def _fit_font(
 
         right_w = _max_text_width(draw, font, [row.right for row in rows])
         gap = max(2, size // 3)
+        full_left_w = _max_text_width(draw, font, [row.left for row in rows])
+        if spec.fit_text and right_w + gap + full_left_w <= max_w:
+            return font, row_h, full_left_w, gap, True
+
         left_w = max_w - right_w - gap
         if left_w < max(8, max_w // 4):
             continue
-        return font, row_h, left_w, gap
+        return font, row_h, left_w, gap, False
 
     fallback = get_font(dynamic_min)
     fallback_h = _line_height(draw, fallback, dynamic_min)
     fallback_gap = max(1, dynamic_min // 3)
     fallback_right = _max_text_width(draw, fallback, [row.right for row in rows])
     fallback_left = max(1, max_w - fallback_right - fallback_gap)
-    return fallback, fallback_h, fallback_left, fallback_gap
+    return fallback, fallback_h, fallback_left, fallback_gap, False
 
 
 def _line_height(
@@ -193,8 +286,25 @@ def _max_text_width(
     """Measure the widest text in values."""
     width = 0
     for value in values:
-        bb = draw.textbbox((0, 0), value, font=font)
-        width = max(width, int(bb[2] - bb[0]))
+        width = max(width, _text_width(draw, font, value, None))
+    return width
+
+
+def _text_width(
+    draw: ImageDraw.ImageDraw,
+    font: FreeTypeFont | ImageFont,
+    text: str,
+    cache: dict[str, int] | None,
+) -> int:
+    """Return text width, optionally memoized for repeated measurements."""
+    if cache is not None:
+        cached = cache.get(text)
+        if cached is not None:
+            return cached
+    bb = draw.textbbox((0, 0), text, font=font)
+    width = int(bb[2] - bb[0])
+    if cache is not None:
+        cache[text] = width
     return width
 
 
@@ -203,26 +313,31 @@ def _ellipsize(
     font: FreeTypeFont | ImageFont,
     text: str,
     max_w: int,
+    width_cache: dict[str, int],
 ) -> str:
     """Trim text with ellipsis so it fits within max_w pixels."""
     if max_w <= 0:
         return ""
 
-    full_bb = draw.textbbox((0, 0), text, font=font)
-    if int(full_bb[2] - full_bb[0]) <= max_w:
+    if _text_width(draw, font, text, width_cache) <= max_w:
         return text
 
     ellipsis = "..."
-    ell_bb = draw.textbbox((0, 0), ellipsis, font=font)
-    ell_w = int(ell_bb[2] - ell_bb[0])
+    ell_w = _text_width(draw, font, ellipsis, width_cache)
     if ell_w >= max_w:
         return ""
 
-    current = text
-    while current:
-        candidate = f"{current}{ellipsis}"
-        bb = draw.textbbox((0, 0), candidate, font=font)
-        if int(bb[2] - bb[0]) <= max_w:
-            return candidate
-        current = current[:-1]
+    lo = 0
+    hi = len(text)
+    best = ""
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        candidate = f"{text[:mid]}{ellipsis}"
+        if _text_width(draw, font, candidate, width_cache) <= max_w:
+            best = candidate
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    if best:
+        return best
     return ""
