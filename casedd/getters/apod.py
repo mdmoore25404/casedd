@@ -97,6 +97,13 @@ class ApodGetter(BaseGetter):
 
         metadata = self._fetch_metadata()
         if metadata is None:
+            cached = self._latest_cached_image()
+            if cached is not None:
+                _log.info("APOD metadata fetch failed; using cached image %s", cached)
+                return {
+                    "apod.available": 1.0,
+                    "apod.image_path": str(cached),
+                }
             return {"apod.available": 0.0}
 
         media_type = str(metadata.get("media_type", ""))
@@ -111,32 +118,26 @@ class ApodGetter(BaseGetter):
             "apod.copyright": copyright_text,
             "apod.explanation": explanation,
             "apod.media_type": media_type,
+            "apod.available": 0.0,
+            "apod.image_path": "",
         }
 
-        if media_type != "image":
+        image_url = ""
+        if media_type == "image":
+            # Prefer the HD URL; fall back to the standard URL.
+            image_url = str(metadata.get("hdurl") or metadata.get("url", ""))
+        else:
             _log.info("APOD for %s is a %s (not an image); skipping.", apod_date, media_type)
-            result["apod.available"] = 0.0
-            result["apod.image_path"] = ""
-            return result
 
-        # Prefer the HD URL; fall back to the standard URL.
-        image_url = str(metadata.get("hdurl") or metadata.get("url", ""))
-        if not image_url:
+        image_path = self._download_image(image_url, apod_date) if image_url else None
+        if image_path is not None:
+            self._cached_date = apod_date
+            result["apod.available"] = 1.0
+            result["apod.image_path"] = str(image_path)
+            _log.info("APOD fetched: '%s' (%s) → %s", title, apod_date, image_path)
+        elif media_type == "image" and not image_url:
             _log.warning("APOD metadata has no image URL for %s", apod_date)
-            result["apod.available"] = 0.0
-            result["apod.image_path"] = ""
-            return result
 
-        image_path = self._download_image(image_url, apod_date)
-        if image_path is None:
-            result["apod.available"] = 0.0
-            result["apod.image_path"] = ""
-            return result
-
-        self._cached_date = apod_date
-        result["apod.available"] = 1.0
-        result["apod.image_path"] = str(image_path)
-        _log.info("APOD fetched: '%s' (%s) → %s", title, apod_date, image_path)
         return result
 
     def _fetch_metadata(self) -> dict[str, object] | None:
@@ -151,7 +152,7 @@ class ApodGetter(BaseGetter):
         try:
             with urlopen(req, timeout=_TIMEOUT) as resp:  # noqa: S310 -- fixed HTTPS URL, not user input
                 body = resp.read()
-        except URLError as exc:
+        except (TimeoutError, URLError) as exc:
             _log.warning("APOD API request failed: %s", exc)
             return None
 
@@ -186,7 +187,7 @@ class ApodGetter(BaseGetter):
         try:
             with urlopen(req, timeout=_TIMEOUT) as resp:  # noqa: S310 -- HTTPS URL from trusted API
                 data = resp.read()
-        except URLError as exc:
+        except (TimeoutError, URLError) as exc:
             _log.warning("Failed to download APOD image from %s: %s", url, exc)
             return None
 
@@ -197,3 +198,18 @@ class ApodGetter(BaseGetter):
             return None
 
         return dest
+
+    def _latest_cached_image(self) -> Path | None:
+        """Return the most recent cached APOD image path, if one exists."""
+        if not self._cache_dir.is_dir():
+            return None
+
+        candidates = [
+            path
+            for path in self._cache_dir.glob("apod_*.*")
+            if path.is_file()
+        ]
+        if not candidates:
+            return None
+
+        return max(candidates, key=lambda path: path.stem)

@@ -64,6 +64,15 @@ def test_load_from_real_template_file() -> None:
     assert tmpl.name == "system_stats"
 
 
+def test_load_pihole_template_file() -> None:
+    """pihole.casedd in templates/ loads without validation errors."""
+    real = Path("templates/pihole.casedd")
+    if not real.exists():
+        pytest.skip("templates/pihole.casedd not present")
+    tmpl = load_template(real)
+    assert tmpl.name == "pihole"
+
+
 # ---------------------------------------------------------------------------
 # File-not-found errors
 # ---------------------------------------------------------------------------
