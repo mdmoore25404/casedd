@@ -189,7 +189,9 @@ class PanelConfig(BaseModel):
         width: Optional panel width override in pixels.
         height: Optional panel height override in pixels.
         template: Optional per-panel base template name.
-        template_rotation: Optional per-panel rotation templates.
+        template_rotation: Optional per-panel rotation templates. Accepts
+            either template names or :class:`RotationEntry` objects with
+            per-template dwell times.
         template_rotation_interval: Optional per-panel rotation interval seconds.
         template_schedule: Optional per-panel schedule rules.
         template_triggers: Optional per-panel trigger rules.
@@ -204,7 +206,7 @@ class PanelConfig(BaseModel):
     width: int | None = Field(default=None, gt=0)
     height: int | None = Field(default=None, gt=0)
     template: str | None = None
-    template_rotation: list[str] = Field(default_factory=list)
+    template_rotation: list[str | RotationEntry] = Field(default_factory=list)
     template_rotation_interval: float | None = Field(default=None, gt=0)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
@@ -306,7 +308,9 @@ class Config:
         nzbget_password: Optional password for NZBGet RPC authentication.
         nzbget_interval: NZBGet polling interval in seconds.
         nzbget_timeout: NZBGet HTTP request timeout in seconds.
-        template_rotation: Additional template names to cycle through.
+        template_rotation: Additional templates to cycle through. Accepts
+            either template names or :class:`RotationEntry` objects with
+            per-template dwell times.
         template_rotation_interval: Seconds spent on each rotated template.
         template_schedule: Local-time schedule rules overriding rotation.
         template_triggers: Data-value trigger rules overriding schedule/rotation.
@@ -409,7 +413,7 @@ class Config:
     apod_interval: float = Field(default=3600.0, gt=0)
     apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data
     pushover_webhook_url: str | None = Field(default=None, repr=False)
-    template_rotation: list[str] = Field(default_factory=list)
+    template_rotation: list[str | RotationEntry] = Field(default_factory=list)
     template_rotation_interval: float = Field(default=30.0)
     template_schedule: list[TemplateScheduleRule] = Field(default_factory=list)
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
@@ -753,15 +757,31 @@ def load_config() -> Config:
             return default
         return int(raw)
 
-    def _get_rotation_templates() -> list[str]:
+    def _get_rotation_templates() -> list[str | RotationEntry]:
         """Parse template rotation list from env or YAML.
 
         Returns:
-            Ordered list of template names.
+            Ordered list of template names and/or rotation entry objects.
         """
         raw = _get("CASEDD_TEMPLATE_ROTATION", "template_rotation", [])
         if isinstance(raw, list):
-            return [str(item).strip() for item in raw if str(item).strip()]
+            out: list[str | RotationEntry] = []
+            for item in raw:
+                if isinstance(item, str):
+                    name = item.strip()
+                    if name:
+                        out.append(name)
+                    continue
+                if isinstance(item, RotationEntry):
+                    out.append(item)
+                    continue
+                if isinstance(item, dict):
+                    out.append(RotationEntry.model_validate(item))
+                    continue
+                name = str(item).strip()
+                if name:
+                    out.append(name)
+            return out
         text = str(raw)
         return [item.strip() for item in text.split(",") if item.strip()]
 

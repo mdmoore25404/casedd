@@ -636,6 +636,37 @@ class Daemon:
 
         return _notify
 
+    def _resolve_rotation_config(
+        self,
+        panel: PanelConfig,
+    ) -> tuple[list[str], list[RotationEntry] | None]:
+        """Normalize panel rotation config into templates and optional entries.
+
+        Supports mixed config lists containing plain template names and
+        :class:`RotationEntry` records with per-template dwell times.
+
+        Args:
+            panel: Panel configuration to normalize.
+
+        Returns:
+            Tuple of ``(rotation_templates, rotation_entries_or_none)``.
+        """
+        if not panel.template_rotation:
+            return [], None
+
+        rotation_templates = [
+            item.template if isinstance(item, RotationEntry) else item
+            for item in panel.template_rotation
+        ]
+        if not any(isinstance(item, RotationEntry) for item in panel.template_rotation):
+            return rotation_templates, None
+
+        rotation_entries = [
+            item if isinstance(item, RotationEntry) else RotationEntry(template=item)
+            for item in panel.template_rotation
+        ]
+        return rotation_templates, rotation_entries
+
     def _build_panel_runtimes(self, registry: TemplateRegistry) -> list[_PanelRuntime]:
         """Create panel runtimes from config or legacy single-panel settings.
 
@@ -672,7 +703,7 @@ class Daemon:
             width = panel.width if panel.width is not None else 0
             height = panel.height if panel.height is not None else 0
             base_template = panel.template if panel.template is not None else self._cfg.template
-            rotation_templates = list(panel.template_rotation)
+            rotation_templates, configured_rotation_entries = self._resolve_rotation_config(panel)
             schedule_rules = list(panel.template_schedule)
             trigger_rules = list(panel.template_triggers)
             rotation_interval = (
@@ -684,7 +715,7 @@ class Daemon:
             # Load persisted rotation state (saved between restarts via UI).
             # Persisted state takes priority over config-file defaults.
             saved_state = _load_rotation_state(panel_name)
-            rotation_entries: list[RotationEntry] | None = None
+            rotation_entries: list[RotationEntry] | None = configured_rotation_entries
             if saved_state is not None:
                 rotation_entries, rotation_interval = saved_state
                 _log.info(
