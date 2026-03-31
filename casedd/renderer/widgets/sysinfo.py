@@ -72,10 +72,11 @@ class SysinfoWidget(BaseWidget):
             body_sz = cfg.font_size
         else:
             # Calculate font size based on available space
-            # Use height as primary constraint, but ensure readability
+            # Use height as primary constraint, but ensure readability.
+            # Scale the max cap based on width for larger displays.
             auto_sz = avail_h // max(1, num_rows + 1)
-            # Cap at a maximum that keeps text readable at wide widths
-            body_sz = min(36, max(12, auto_sz))
+            max_cap = max(28, min(56, inner.w // 20))  # scale max cap by width
+            body_sz = max(12, min(max_cap, auto_sz))
 
         body_font = get_font(body_sz)
         sample_bb = draw.textbbox((0, 0), "Ag", font=body_font)

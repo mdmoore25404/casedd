@@ -18,7 +18,7 @@ widgets:
     type: sysinfo
     label: "System Info"
     source: sysinfo.rows
-    font_size: 18
+    font_size: "auto"
     color: "#60e6a5"
     background: "#101822"
     padding: [8, 10]
