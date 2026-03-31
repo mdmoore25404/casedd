@@ -66,6 +66,7 @@ class PiHoleGetter(BaseGetter):
         self._password_session_sid = ""
         self._timeout = timeout
         self._ssl_context: ssl.SSLContext | None = None
+        self._auth_error_logged = False
         if self._base_url.startswith("https://") and not verify_tls:
             self._ssl_context = ssl._create_unverified_context()  # noqa: S323
 
@@ -75,7 +76,24 @@ class PiHoleGetter(BaseGetter):
 
     def _sample(self) -> dict[str, StoreValue]:
         """Blocking Pi-hole poll implementation."""
-        payload = self._request_json("/api/stats/summary")
+        try:
+            payload = self._request_json("/api/stats/summary")
+        except RuntimeError as exc:
+            if "auth failed" in str(exc).lower():
+                if not self._auth_error_logged:
+                    _log.error(
+                        "Pi-hole auth failed. Please verify credentials:\n"
+                        "  1. Log into http://%s (or configure CASEDD_PIHOLE_BASE_URL)\n"
+                        "  2. Settings → API/Web Interface → Create/Copy API Token\n"
+                        "  3. Update CASEDD_PIHOLE_PASSWORD in .env with the token\n"
+                        "  4. Restart with: ./dev.sh restart\n"
+                        "Error: %s",
+                        self._base_url.split("://")[-1].split(":")[0] or "pi.hole",
+                        exc,
+                    )
+                    self._auth_error_logged = True
+                return self._placeholder_sample()
+            raise
 
         total_queries = _first_number(
             payload,
@@ -256,6 +274,26 @@ class PiHoleGetter(BaseGetter):
             raise RuntimeError("Pi-hole auth response did not include a session sid")
         self._password_session_sid = sid
         return sid
+
+    def _placeholder_sample(self) -> dict[str, StoreValue]:
+        """Return a placeholder sample when API auth fails.
+
+        This allows the template to display "-" for values instead of crashing,
+        and gives the user time to fix credentials before data resumes.
+        """
+        return {
+            "pihole.version": "—",
+            "pihole.blocking.enabled": 0.0,
+            "pihole.queries.total": 0.0,
+            "pihole.queries.blocked": 0.0,
+            "pihole.queries.blocked_percent": 0.0,
+            "pihole.clients.active_count": 0.0,
+            "pihole.domains.blocked_count": 0.0,
+            "pihole.top_blocked.domain": "—",
+            "pihole.top_blocked.hits": 0.0,
+            "pihole.top_client.name": "—",
+            "pihole.top_client.queries": 0.0,
+        }
 
 
 def _extract_blocking_enabled(payload: dict[str, object]) -> bool:

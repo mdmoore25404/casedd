@@ -95,7 +95,7 @@ async def test_pihole_getter_blocking_disabled(monkeypatch) -> None:
 
 
 async def test_pihole_getter_auth_failure(monkeypatch) -> None:
-    """HTTP 401/403 should raise a clear auth failure runtime error."""
+    """HTTP 401/403 auth failures should return placeholder data gracefully."""
 
     def _raise_auth(req, timeout: float, context=None):
         raise HTTPError(req.full_url, 401, "Unauthorized", hdrs=None, fp=None)
@@ -103,8 +103,11 @@ async def test_pihole_getter_auth_failure(monkeypatch) -> None:
     monkeypatch.setattr("casedd.getters.pihole.urlopen", _raise_auth)
 
     getter = PiHoleGetter(DataStore(), api_token="bad")
-    with pytest.raises(RuntimeError, match="auth failed"):
-        await getter.fetch()
+    payload = await getter.fetch()
+    # Auth failure returns placeholder dict with "-" and 0.0 values
+    assert payload["pihole.version"] == "—"
+    assert payload["pihole.queries.total"] == 0.0
+    assert payload["pihole.top_blocked.domain"] == "—"
 
 
 async def test_pihole_getter_partial_payload(monkeypatch) -> None:
