@@ -49,6 +49,7 @@ from casedd.getters.net_ports import NetPortsGetter
 from casedd.getters.network import NetworkGetter
 from casedd.getters.nzbget import NZBGetGetter
 from casedd.getters.ollama import OllamaGetter
+from casedd.getters.pihole import PiHoleGetter
 from casedd.getters.plex import PlexGetter
 from casedd.getters.speedtest import SpeedtestGetter
 from casedd.getters.sysinfo import SysinfoGetter
@@ -903,6 +904,16 @@ class Daemon:
                 command=self._cfg.ups_command,
                 upsc_target=self._cfg.ups_upsc_target,
             ),
+            PiHoleGetter(
+                self._store,
+                base_url=self._cfg.pihole_base_url,
+                api_token=self._cfg.pihole_api_token,
+                password=self._cfg.pihole_password,
+                session_sid=self._cfg.pihole_session_sid,
+                interval=self._cfg.pihole_interval,
+                timeout=self._cfg.pihole_timeout,
+                verify_tls=self._cfg.pihole_verify_tls,
+            ),
             PlexGetter(
                 self._store,
                 base_url=self._cfg.plex_base_url,
@@ -1047,6 +1058,7 @@ class Daemon:
             ("speedtest.", "SpeedtestGetter"),
             ("ollama.", "OllamaGetter"),
             ("ups.", "UpsGetter"),
+            ("pihole.", "PiHoleGetter"),
             ("htop.", "HtopGetter"),
             ("plex.", "PlexGetter"),
             ("nzbget.", "NZBGetGetter"),

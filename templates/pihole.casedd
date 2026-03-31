@@ -1,0 +1,113 @@
+# pihole.casedd — Pi-hole DNS/privacy status dashboard
+
+name: pihole
+description: Pi-hole query volume, blocking ratio, and top offenders/clients.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0f1714"
+refresh_rate: 2.0
+
+grid:
+  template_areas: |
+    logo        blocked_pct total_q    blocked_q  blocking
+    logo        clients     domains    top_hits   top_q
+    top_blocked top_blocked top_blocked top_client top_client
+  columns: 0.7fr 1fr 1fr 1fr 1fr
+  rows: 1fr 1fr 1.6fr
+
+widgets:
+  logo:
+    type: image
+    path: assets/pihole/pihole-logo.png
+    scale: fit
+    padding: [6, 8]
+
+  blocked_pct:
+    type: value
+    label: Blocked %
+    source: pihole.queries.blocked_percent
+    precision: 1
+    unit: "%"
+    color: "#6de58f"
+    color_stops:
+      - [0, "#6de58f"]
+      - [20, "#f2cc3d"]
+      - [45, "#e45555"]
+    min: 0
+    max: 100
+    padding: [4, 8]
+
+  total_q:
+    type: value
+    label: Total Queries
+    source: pihole.queries.total
+    precision: 0
+    color: "#9bd6ff"
+    padding: [4, 8]
+
+  blocked_q:
+    type: value
+    label: Blocked Queries
+    source: pihole.queries.blocked
+    precision: 0
+    color: "#c5f08b"
+    padding: [4, 8]
+
+  blocking:
+    type: boolean
+    label: Blocking
+    source: pihole.blocking.enabled
+    color: "#6de58f"
+    padding: [4, 8]
+
+  clients:
+    type: value
+    label: Active Clients
+    source: pihole.clients.active_count
+    precision: 0
+    color: "#9bd6ff"
+    padding: [4, 8]
+
+  domains:
+    type: value
+    label: Blocked Domains
+    source: pihole.domains.blocked_count
+    precision: 0
+    color: "#caa6ff"
+    padding: [4, 8]
+
+  top_hits:
+    type: value
+    label: Top Blocked Hits
+    source: pihole.top_blocked.hits
+    precision: 0
+    color: "#ffd080"
+    padding: [4, 8]
+
+  top_q:
+    type: value
+    label: Top Client Queries
+    source: pihole.top_client.queries
+    precision: 0
+    color: "#ffd080"
+    padding: [4, 8]
+
+  top_blocked:
+    type: table
+    label: Top Blocked Domains
+    source: pihole.top_blocked.list
+    color: "#f0f5ff"
+    font_size: auto
+    table_fit_text: true
+    max_items: 5
+    padding: [4, 12]
+
+  top_client:
+    type: table
+    label: Top Clients
+    source: pihole.top_client.list
+    color: "#f0f5ff"
+    font_size: auto
+    table_fit_text: true
+    max_items: 5
+    padding: [4, 12]

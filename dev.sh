@@ -278,8 +278,9 @@ cmd_start() {
 
     echo "Starting casedd..."
     # cd to REPO_ROOT so `python -m casedd` resolves the package regardless of
-    # the caller's working directory.
-    nohup sh -c "cd '$REPO_ROOT' && exec python -m casedd" >> "$DEV_LOG_FILE" 2>&1 &
+    # the caller's working directory. Source .env so env vars from config file
+    # are available to the daemon.
+    nohup sh -c "cd '$REPO_ROOT' && [ -f '$REPO_ROOT/.env' ] && set -a && . '$REPO_ROOT/.env' && set +a; exec python -m casedd" >> "$DEV_LOG_FILE" 2>&1 &
     local launcher_pid=$!
 
     # The daemon writes CASEDD_PID_FILE itself; wait briefly for that file

@@ -6,9 +6,11 @@ Image.
 
 Modules:
     - :mod:`casedd.renderer.widgets.base` — abstract base + shared helpers
+    - :mod:`casedd.renderer.widgets.boolean` — boolean status icon display
     - :mod:`casedd.renderer.widgets.panel` — container widget
     - :mod:`casedd.renderer.widgets.value` — numeric value display
     - :mod:`casedd.renderer.widgets.text` — string display
+    - :mod:`casedd.renderer.widgets.table` — generic two-column row table
     - :mod:`casedd.renderer.widgets.bar` — horizontal progress bar
     - :mod:`casedd.renderer.widgets.gauge` — tachometer arc gauge
     - :mod:`casedd.renderer.widgets.histogram` — rolling bar chart

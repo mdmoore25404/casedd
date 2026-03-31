@@ -134,24 +134,13 @@ class HtopWidget(BaseWidget):
         if isinstance(cfg.font_size, int):
             body_sz = cfg.font_size
         else:
-            target_rows = max(8, min(max(1, len(entries)) + 3, 18))
-            body_sz = max(12, min(44, inner.h // target_rows))
+            body_sz = _auto_body_size(draw_ctx, inner, len(entries))
         body_font = get_font(body_sz)
         header_font = get_font(body_sz + 1)
 
         sample_bb = draw_ctx.textbbox((0, 0), "Ag", font=body_font)
         row_h = int(sample_bb[3] - sample_bb[1]) + 3
-
-        avail_w = inner.w - 8
-        offset = inner.x + 4
-        col = _ColLayout(
-            left=offset,
-            pid_right=offset + int(avail_w * 0.10),
-            cpu_right=offset + int(avail_w * 0.23),
-            mem_right=offset + int(avail_w * 0.36),
-            name_left=offset + int(avail_w * 0.36) + 8,
-            name_right=inner.x + inner.w - 4,
-        )
+        col = _build_columns(draw_ctx, header_font, body_font, inner)
 
         y = inner.y + label_h + 4
         body_ctx = _DrawCtx(draw=draw_ctx, font=body_font)
@@ -200,8 +189,8 @@ def _paint_header(
     sort_color: tuple[int, int, int] = (255, 220, 100)
 
     # ▼ (U+25BC) — wide side at top — signals descending order (highest first).
-    cpu_label = "CPU% \u25bc" if sort_by == "cpu" else "CPU%"
-    mem_label = "MEM% \u25bc" if sort_by == "mem" else "MEM%"
+    cpu_label = "CPU \u25bc" if sort_by == "cpu" else "CPU"
+    mem_label = "MEM \u25bc" if sort_by == "mem" else "MEM"
 
     rd = _RightDraw(draw=ctx.draw, font=ctx.font, y=y)
     rd.emit(col.pid_right, "PID", hdr_color)
@@ -245,6 +234,77 @@ def _paint_row(
             break
         name = name[:-1]
     ctx.draw.text((col.name_left, y), name, fill=(220, 225, 230), font=ctx.font)
+
+
+def _build_columns(
+    draw: ImageDraw.ImageDraw,
+    header_font: FreeTypeFont | ImageFont,
+    body_font: FreeTypeFont | ImageFont,
+    inner: Rect,
+) -> _ColLayout:
+    """Compute robust column boundaries based on rendered text widths."""
+    left = inner.x + 4
+    right = inner.x + inner.w - 4
+
+    pid_w = max(_text_width(draw, header_font, "PID"), _text_width(draw, body_font, "99999")) + 8
+    cpu_w = max(
+        _text_width(draw, header_font, "CPU \u25bc"),
+        _text_width(draw, body_font, "100.0%"),
+    ) + 10
+    mem_w = max(
+        _text_width(draw, header_font, "MEM \u25bc"),
+        _text_width(draw, body_font, "100.0%"),
+    ) + 10
+
+    pid_right = left + pid_w
+    cpu_right = pid_right + cpu_w
+    mem_right = cpu_right + mem_w
+    min_name_w = max(80, inner.w // 5)
+    name_left = mem_right + 8
+
+    if right - name_left < min_name_w:
+        overflow = min_name_w - (right - name_left)
+        shrink = min(overflow, max(0, cpu_w - 36))
+        cpu_right -= shrink
+        mem_right -= shrink
+        name_left -= shrink
+
+    return _ColLayout(
+        left=left,
+        pid_right=pid_right,
+        cpu_right=cpu_right,
+        mem_right=mem_right,
+        name_left=name_left,
+        name_right=right,
+    )
+
+
+def _auto_body_size(draw: ImageDraw.ImageDraw, inner: Rect, rows_count: int) -> int:
+    """Choose a readable auto font size that avoids column collisions."""
+    target_rows = max(8, min(max(1, rows_count) + 3, 18))
+    candidate = max(12, min(30, inner.h // target_rows))
+
+    while candidate > 11:
+        font = get_font(candidate)
+        pid_w = _text_width(draw, font, "99999") + 8
+        cpu_w = _text_width(draw, font, "100.0%") + 10
+        mem_w = _text_width(draw, font, "100.0%") + 10
+        min_name_w = max(80, inner.w // 5)
+        total = pid_w + cpu_w + mem_w + min_name_w + 20
+        if total <= inner.w - 8:
+            return candidate
+        candidate -= 1
+    return 11
+
+
+def _text_width(
+    draw: ImageDraw.ImageDraw,
+    font: FreeTypeFont | ImageFont,
+    text: str,
+) -> int:
+    """Measure text width in pixels for the given draw context and font."""
+    bb = draw.textbbox((0, 0), text, font=font)
+    return int(bb[2] - bb[0])
 
 
 def _parse_rows(text: str) -> list[_ProcEntry]:

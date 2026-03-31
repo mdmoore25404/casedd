@@ -30,8 +30,10 @@ class WidgetType(StrEnum):
     """All supported widget type identifiers."""
 
     PANEL = "panel"
+    BOOLEAN = "boolean"
     VALUE = "value"
     TEXT = "text"
+    TABLE = "table"
     BAR = "bar"
     GAUGE = "gauge"
     HISTOGRAM = "histogram"
@@ -206,8 +208,10 @@ class WidgetConfig(BaseModel):
         sort_key: Sort column for htop widget ("cpu" or "mem").
         filter_regex: Optional Python regex used to hide matching rows for
             table-like widgets (htop and Plex list widgets).
-        max_items: Optional row cap for list-like widgets (htop and Plex
-            tables). When unset, widgets render as many rows as fit.
+        max_items: Optional row cap for list-like widgets (table, htop, and
+            Plex tables). When unset, widgets render as many rows as fit.
+        table_fit_text: When true, table widgets try to shrink font so both
+            columns fit fully before falling back to ellipsis in column one.
         border_style: Widget border style (none/solid/dashed/dotted/inset/outset).
         border_color: Border color string.
         border_width: Border line width in pixels.
@@ -278,6 +282,7 @@ class WidgetConfig(BaseModel):
     sort_key: str = Field(default="cpu")
     filter_regex: str | None = Field(default=None)
     max_items: int | None = Field(default=None, ge=1, le=200)
+    table_fit_text: bool = False
 
     # Widget border
     border_style: BorderStyle = BorderStyle.NONE

@@ -287,6 +287,14 @@ class Config:
         ups_interval: UPS polling interval in seconds.
         ups_command: Optional custom UPS command override.
         ups_upsc_target: Target argument for ``upsc`` fallback mode.
+        pihole_base_url: Pi-hole API base URL.
+        pihole_api_token: Pi-hole API token for Authorization bearer auth.
+        pihole_password: Pi-hole app/web password used with ``POST /api/auth``
+            to obtain a session SID.
+        pihole_session_sid: Optional Pi-hole session SID for direct API auth.
+        pihole_timeout: Pi-hole HTTP request timeout in seconds.
+        pihole_verify_tls: Verify Pi-hole HTTPS certificates when true.
+        pihole_interval: Pi-hole polling interval in seconds.
         plex_base_url: Plex server base URL.
         plex_token: Plex API token for authenticated requests.
         plex_client_identifier: Client identifier sent as X-Plex-Client-Identifier.
@@ -395,6 +403,13 @@ class Config:
     ups_interval: float = Field(default=5.0)
     ups_command: str | None = Field(default=None)
     ups_upsc_target: str = Field(default="ups@localhost")
+    pihole_base_url: str = Field(default="http://pi.hole")
+    pihole_api_token: str | None = Field(default=None, repr=False)
+    pihole_password: str | None = Field(default=None, repr=False)
+    pihole_session_sid: str | None = Field(default=None, repr=False)
+    pihole_timeout: float = Field(default=4.0)
+    pihole_verify_tls: bool = Field(default=True)
+    pihole_interval: float = Field(default=5.0)
     plex_base_url: str = Field(default="http://localhost:32400")
     plex_token: str | None = Field(default=None, repr=False)
     plex_client_identifier: str = Field(default="casedd")
@@ -650,6 +665,24 @@ class Config:
         """
         if not (1.0 <= v <= 3600.0):
             msg = f"ups_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("pihole_timeout")
+    @classmethod
+    def _validate_pihole_timeout(cls, v: float) -> float:
+        """Ensure Pi-hole timeout is a positive value."""
+        if v <= 0.0:
+            msg = f"pihole_timeout must be > 0, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("pihole_interval")
+    @classmethod
+    def _validate_pihole_interval(cls, v: float) -> float:
+        """Ensure Pi-hole polling interval is positive and practical."""
+        if not (1.0 <= v <= 3600.0):
+            msg = f"pihole_interval must be between 1 and 3600 seconds, got {v}"
             raise ValueError(msg)
         return v
 
@@ -1048,6 +1081,17 @@ def load_config() -> Config:
         ups_interval=float(str(_get("CASEDD_UPS_INTERVAL", "ups_interval", 5.0))),
         ups_command=str(_get("CASEDD_UPS_COMMAND", "ups_command", "")).strip() or None,
         ups_upsc_target=str(_get("CASEDD_UPS_UPSC_TARGET", "ups_upsc_target", "ups@localhost")),
+        pihole_base_url=str(_get("CASEDD_PIHOLE_BASE_URL", "pihole_base_url", "http://pi.hole")),
+        pihole_api_token=str(_get("CASEDD_PIHOLE_API_TOKEN", "pihole_api_token", "")).strip()
+        or None,
+        pihole_password=str(_get("CASEDD_PIHOLE_PASSWORD", "pihole_password", "")).strip()
+        or None,
+        pihole_session_sid=str(_get("CASEDD_PIHOLE_SESSION_SID", "pihole_session_sid", "")).strip()
+        or None,
+        pihole_timeout=float(str(_get("CASEDD_PIHOLE_TIMEOUT", "pihole_timeout", 4.0))),
+        pihole_verify_tls=str(_get("CASEDD_PIHOLE_VERIFY_TLS", "pihole_verify_tls", "1"))
+        not in {"0", "false", "False", ""},
+        pihole_interval=float(str(_get("CASEDD_PIHOLE_INTERVAL", "pihole_interval", 5.0))),
         plex_base_url=str(_get("CASEDD_PLEX_BASE_URL", "plex_base_url", "http://localhost:32400")),
         plex_token=str(_get("CASEDD_PLEX_TOKEN", "plex_token", "")).strip() or None,
         plex_client_identifier=str(

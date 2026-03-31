@@ -144,6 +144,24 @@ Additional fields: `unit` (string), `precision` (int, default 0)
 
 ---
 
+### `boolean`
+
+Displays a boolean status as an icon:
+- true/on/enabled/1 -> green checkmark
+- false/off/disabled/0 -> red slash
+
+```yaml
+dns_blocking:
+  type: boolean
+  source: pihole.blocking.enabled
+  label: "Blocking"
+  color: "#6de58f"   # true-state color (false stays red)
+```
+
+Additional fields: uses common fields only (`label`, `padding`, `background`, `color`).
+
+---
+
 ### `text`
 
 Displays a string value or static content. Wraps text if it exceeds the bounding box width.
@@ -155,6 +173,26 @@ hostname:
   label: "Host"
   font_size: 14
 ```
+
+---
+
+### `table`
+
+Displays newline-delimited two-column rows in a compact table. Each source line
+must be formatted as `left|right`.
+
+```yaml
+top_domains:
+  type: table
+  label: "Top Blocked Domains"
+  source: pihole.top_blocked.list
+  font_size: auto
+  table_fit_text: true
+  max_items: 5
+```
+
+Additional fields: `max_items` (optional row cap), `table_fit_text`
+(try to shrink font so both columns fit fully before truncating column one).
 
 ---
 

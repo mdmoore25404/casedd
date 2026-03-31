@@ -196,7 +196,7 @@ class ImageWidget(BaseWidget):
             cfg: Widget configuration (``cfg.path``, ``cfg.scale``,
                 ``cfg.tiers`` used).
             data: Live data store — read for tier condition evaluation.
-            _state: Unused for this widget type.
+            _state: Per-widget state used to cache scaled image variants.
         """
         fill_background(img, rect, cfg.background)
 
@@ -218,7 +218,16 @@ class ImageWidget(BaseWidget):
         if source is None:
             return
 
-        scaled = _scale_image(source, rect.w, rect.h, cfg.scale)
+        cache_key = (active_path, rect.w, rect.h, cfg.scale.value)
+        cached_key = _state.get("scaled_key")
+        cached_img = _state.get("scaled_img")
+        if cached_key == cache_key and isinstance(cached_img, Image.Image):
+            scaled = cached_img
+        else:
+            scaled = _scale_image(source, rect.w, rect.h, cfg.scale)
+            _state["scaled_key"] = cache_key
+            _state["scaled_img"] = scaled
+
         if cfg.scale == ScaleMode.FIT:
             offset_x = rect.x + (rect.w - scaled.width) // 2
             offset_y = rect.y + (rect.h - scaled.height) // 2
