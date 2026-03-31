@@ -5,6 +5,7 @@ Polls NZBGet via its documented JSON-RPC API and publishes flattened
 
 Store keys written:
     - ``nzbget.version``
+    - ``nzbget.status.download_queue_enabled``
     - ``nzbget.status.download_paused``
     - ``nzbget.status.postprocess_paused``
     - ``nzbget.status.scan_paused``
@@ -316,6 +317,9 @@ class NZBGetGetter(BaseGetter):
 
         # Store pause metrics as counts so dashboard counters reflect live queue
         # state and clear immediately when items are removed/completed.
+        updates["nzbget.status.download_queue_enabled"] = (
+            0 if bool(status_data.get("DownloadPaused")) else 1
+        )
         updates["nzbget.status.download_paused"] = paused_download_count
         updates["nzbget.status.postprocess_paused"] = paused_postprocess_count
         updates["nzbget.status.scan_paused"] = int(

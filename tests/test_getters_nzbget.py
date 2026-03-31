@@ -527,6 +527,7 @@ class TestNZBGetGetter:
         assert updates["nzbget.queue.current_count"] == 3
         assert updates["nzbget.queue.active_count"] == 2
         assert updates["nzbget.queue.active_download_percent"] == 66.7
+        assert updates["nzbget.status.download_queue_enabled"] == 1
         assert updates["nzbget.current_1.name"] != "Hidden.Active"
         assert updates["nzbget.current_2.name"] == "[hidden]"
 
@@ -576,6 +577,7 @@ class TestNZBGetGetter:
         assert updates["nzbget.queue.current_count"] == 2
         assert updates["nzbget.queue.active_count"] == 1
         assert updates["nzbget.queue.active_download_percent"] == 50.0
+        assert updates["nzbget.status.download_queue_enabled"] == 1
         assert updates["nzbget.status.download_paused"] == 1
 
     async def test_fetch_clears_current_slots_when_queue_empties(
@@ -624,6 +626,7 @@ class TestNZBGetGetter:
         assert first_updates["nzbget.queue.current_count"] == 1
 
         assert second_updates["nzbget.queue.current_count"] == 0
+        assert second_updates["nzbget.status.download_queue_enabled"] == 1
         assert second_updates["nzbget.status.download_paused"] == 0
         assert second_updates["nzbget.status.postprocess_paused"] == 0
         assert second_updates["nzbget.current_1.name"] == ""
@@ -631,6 +634,30 @@ class TestNZBGetGetter:
         assert second_updates["nzbget.current_1.category"] == ""
         assert second_updates["nzbget.current_2.name"] == ""
         assert second_updates["nzbget.current_3.name"] == ""
+
+    async def test_fetch_queue_enabled_key_reflects_master_pause(
+        self,
+        data_store: DataStore,
+    ) -> None:
+        """Master download pause toggles download_queue_enabled key to 0."""
+        getter = NZBGetGetter(data_store, interval=1.0, timeout=3.0)
+
+        with patch.object(getter, "_rpc_call") as mock_rpc:
+            mock_rpc.side_effect = [
+                {"version": "1.0.0"},
+                {
+                    "DownloadPaused": True,
+                    "PostPaused": False,
+                    "ScanPaused": False,
+                    "DownloadRate": 0,
+                },
+                [],
+                [],
+            ]
+
+            updates = await getter.fetch()
+
+        assert updates["nzbget.status.download_queue_enabled"] == 0
 
     async def test_category_filter_no_regex(self, data_store: DataStore) -> None:
         """Test that all categories are included when no filter regex is set."""
