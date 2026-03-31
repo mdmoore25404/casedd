@@ -51,6 +51,7 @@ from casedd.getters.nzbget import NZBGetGetter
 from casedd.getters.ollama import OllamaDetailOptions, OllamaGetter
 from casedd.getters.pihole import PiHoleGetter
 from casedd.getters.plex import PlexGetter
+from casedd.getters.servarr import RadarrGetter, ServarrAggregateGetter, SonarrGetter
 from casedd.getters.speedtest import SpeedtestGetter
 from casedd.getters.sysinfo import SysinfoGetter
 from casedd.getters.system import SystemGetter
@@ -918,6 +919,28 @@ class Daemon:
                 timeout=self._cfg.pihole_timeout,
                 verify_tls=self._cfg.pihole_verify_tls,
             ),
+            RadarrGetter(
+                self._store,
+                base_url=self._cfg.radarr_base_url,
+                api_key=self._cfg.radarr_api_key or "",
+                interval=self._cfg.radarr_interval,
+                timeout=self._cfg.radarr_timeout,
+                calendar_days=self._cfg.radarr_calendar_days,
+                verify_tls=self._cfg.radarr_verify_tls,
+            ),
+            SonarrGetter(
+                self._store,
+                base_url=self._cfg.sonarr_base_url,
+                api_key=self._cfg.sonarr_api_key or "",
+                interval=self._cfg.sonarr_interval,
+                timeout=self._cfg.sonarr_timeout,
+                calendar_days=self._cfg.sonarr_calendar_days,
+                verify_tls=self._cfg.sonarr_verify_tls,
+            ),
+            ServarrAggregateGetter(
+                self._store,
+                interval=min(self._cfg.radarr_interval, self._cfg.sonarr_interval),
+            ),
             PlexGetter(
                 self._store,
                 base_url=self._cfg.plex_base_url,
@@ -1063,6 +1086,9 @@ class Daemon:
             ("ollama.", "OllamaGetter"),
             ("ups.", "UpsGetter"),
             ("pihole.", "PiHoleGetter"),
+            ("radarr.", "RadarrGetter"),
+            ("sonarr.", "SonarrGetter"),
+            ("servarr.", "ServarrAggregateGetter"),
             ("htop.", "HtopGetter"),
             ("plex.", "PlexGetter"),
             ("nzbget.", "NZBGetGetter"),

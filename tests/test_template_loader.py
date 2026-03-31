@@ -82,6 +82,15 @@ def test_load_ollama_host_template_file() -> None:
     assert tmpl.name == "ollama_host"
 
 
+def test_load_servarr_dashboard_template_file() -> None:
+    """servarr_dashboard.casedd in templates/ loads without validation errors."""
+    real = Path("templates/servarr_dashboard.casedd")
+    if not real.exists():
+        pytest.skip("templates/servarr_dashboard.casedd not present")
+    tmpl = load_template(real)
+    assert tmpl.name == "servarr_dashboard"
+
+
 def test_ollama_host_template_structure() -> None:
     """ollama_host.casedd keeps running table and white transparent logo wiring."""
     real = Path("templates/ollama_host.casedd")

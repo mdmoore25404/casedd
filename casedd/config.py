@@ -290,6 +290,18 @@ class Config:
         ups_command: Optional custom UPS command override.
         ups_upsc_target: Target argument for ``upsc`` fallback mode.
         pihole_base_url: Pi-hole API base URL.
+        radarr_base_url: Radarr API base URL.
+        radarr_api_key: Radarr API key for X-Api-Key auth.
+        radarr_interval: Radarr polling interval in seconds.
+        radarr_timeout: Radarr HTTP request timeout in seconds.
+        radarr_calendar_days: Radarr look-ahead days for upcoming items.
+        radarr_verify_tls: Verify Radarr HTTPS certificates when true.
+        sonarr_base_url: Sonarr API base URL.
+        sonarr_api_key: Sonarr API key for X-Api-Key auth.
+        sonarr_interval: Sonarr polling interval in seconds.
+        sonarr_timeout: Sonarr HTTP request timeout in seconds.
+        sonarr_calendar_days: Sonarr look-ahead days for upcoming items.
+        sonarr_verify_tls: Verify Sonarr HTTPS certificates when true.
         pihole_api_token: Pi-hole API token for Authorization bearer auth.
         pihole_password: Pi-hole app/web password used with ``POST /api/auth``
             to obtain a session SID.
@@ -407,6 +419,18 @@ class Config:
     ups_interval: float = Field(default=5.0)
     ups_command: str | None = Field(default=None)
     ups_upsc_target: str = Field(default="ups@localhost")
+    radarr_base_url: str = Field(default="")
+    radarr_api_key: str | None = Field(default=None, repr=False)
+    radarr_interval: float = Field(default=15.0)
+    radarr_timeout: float = Field(default=4.0)
+    radarr_calendar_days: int = Field(default=7, ge=1, le=31)
+    radarr_verify_tls: bool = Field(default=True)
+    sonarr_base_url: str = Field(default="")
+    sonarr_api_key: str | None = Field(default=None, repr=False)
+    sonarr_interval: float = Field(default=15.0)
+    sonarr_timeout: float = Field(default=4.0)
+    sonarr_calendar_days: int = Field(default=7, ge=1, le=31)
+    sonarr_verify_tls: bool = Field(default=True)
     pihole_base_url: str = Field(default="http://pi.hole")
     pihole_api_token: str | None = Field(default=None, repr=False)
     pihole_password: str | None = Field(default=None, repr=False)
@@ -688,6 +712,33 @@ class Config:
         """
         if not (1.0 <= v <= 3600.0):
             msg = f"ups_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("radarr_interval", "sonarr_interval")
+    @classmethod
+    def _validate_servarr_interval(cls, v: float) -> float:
+        """Ensure Servarr polling intervals are positive and practical."""
+        if not (1.0 <= v <= 3600.0):
+            msg = f"servarr interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("radarr_timeout", "sonarr_timeout")
+    @classmethod
+    def _validate_servarr_timeout(cls, v: float) -> float:
+        """Ensure Servarr timeouts are positive values."""
+        if v <= 0.0:
+            msg = f"servarr timeout must be > 0, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("radarr_calendar_days", "sonarr_calendar_days")
+    @classmethod
+    def _validate_servarr_calendar_days(cls, v: int) -> int:
+        """Ensure Servarr calendar look-ahead remains bounded."""
+        if not (1 <= v <= 31):
+            msg = f"servarr calendar_days must be between 1 and 31, got {v}"
             raise ValueError(msg)
         return v
 
@@ -1109,6 +1160,26 @@ def load_config() -> Config:
         ups_interval=float(str(_get("CASEDD_UPS_INTERVAL", "ups_interval", 5.0))),
         ups_command=str(_get("CASEDD_UPS_COMMAND", "ups_command", "")).strip() or None,
         ups_upsc_target=str(_get("CASEDD_UPS_UPSC_TARGET", "ups_upsc_target", "ups@localhost")),
+        radarr_base_url=str(_get("CASEDD_RADARR_BASE_URL", "radarr_base_url", "")).strip(),
+        radarr_api_key=str(_get("CASEDD_RADARR_API_KEY", "radarr_api_key", "")).strip()
+        or None,
+        radarr_interval=float(str(_get("CASEDD_RADARR_INTERVAL", "radarr_interval", 15.0))),
+        radarr_timeout=float(str(_get("CASEDD_RADARR_TIMEOUT", "radarr_timeout", 4.0))),
+        radarr_calendar_days=int(
+            str(_get("CASEDD_RADARR_CALENDAR_DAYS", "radarr_calendar_days", 7))
+        ),
+        radarr_verify_tls=str(_get("CASEDD_RADARR_VERIFY_TLS", "radarr_verify_tls", "1"))
+        not in {"0", "false", "False", ""},
+        sonarr_base_url=str(_get("CASEDD_SONARR_BASE_URL", "sonarr_base_url", "")).strip(),
+        sonarr_api_key=str(_get("CASEDD_SONARR_API_KEY", "sonarr_api_key", "")).strip()
+        or None,
+        sonarr_interval=float(str(_get("CASEDD_SONARR_INTERVAL", "sonarr_interval", 15.0))),
+        sonarr_timeout=float(str(_get("CASEDD_SONARR_TIMEOUT", "sonarr_timeout", 4.0))),
+        sonarr_calendar_days=int(
+            str(_get("CASEDD_SONARR_CALENDAR_DAYS", "sonarr_calendar_days", 7))
+        ),
+        sonarr_verify_tls=str(_get("CASEDD_SONARR_VERIFY_TLS", "sonarr_verify_tls", "1"))
+        not in {"0", "false", "False", ""},
         pihole_base_url=str(_get("CASEDD_PIHOLE_BASE_URL", "pihole_base_url", "http://pi.hole")),
         pihole_api_token=str(_get("CASEDD_PIHOLE_API_TOKEN", "pihole_api_token", "")).strip()
         or None,

@@ -1,0 +1,132 @@
+name: servarr_dashboard
+description: Combined Radarr and Sonarr queue/health/disk status
+background: "#101418"
+refresh_rate: 1.0
+
+grid:
+  template_areas: |
+    header   header   header   header   header
+    radarr_q radarr_q sonarr_q sonarr_q stack
+    radarr_h radarr_h sonarr_h sonarr_h stack
+  columns: 1fr 1fr 1fr 1fr 1fr
+  rows: 0.35fr 1fr 0.9fr
+
+widgets:
+  header:
+    type: panel
+    direction: row
+    align: center
+    gap: 20
+    padding: [6, 10]
+    children:
+      - type: text
+        content: "Servarr"
+        color: "#b9d3ea"
+        font_size: auto
+      - type: value
+        label: "Total Queue"
+        source: servarr.queue.total
+        precision: 0
+        color: "#dfeaf4"
+      - type: value
+        label: "Warnings"
+        source: servarr.health.warning_count
+        precision: 0
+        color: "#f0c56a"
+      - type: value
+        label: "Errors"
+        source: servarr.health.error_count
+        precision: 0
+        color: "#ef7f7f"
+
+  radarr_q:
+    type: table
+    label: "Radarr Queue"
+    source: radarr.queue.rows
+    table_fit_text: true
+    max_items: 8
+    color: "#dfeaf4"
+    padding: [8, 10]
+
+  sonarr_q:
+    type: table
+    label: "Sonarr Queue"
+    source: sonarr.queue.rows
+    table_fit_text: true
+    max_items: 8
+    color: "#dfeaf4"
+    padding: [8, 10]
+
+  radarr_h:
+    type: panel
+    direction: row
+    align: start
+    gap: 10
+    padding: [4, 10]
+    children:
+      - type: value
+        label: "R Queue"
+        source: radarr.queue.total
+        precision: 0
+        color: "#9ac7ff"
+      - type: value
+        label: "R Warn"
+        source: radarr.health.warning_count
+        precision: 0
+        color: "#f0c56a"
+      - type: value
+        label: "R Err"
+        source: radarr.health.error_count
+        precision: 0
+        color: "#ef7f7f"
+      - type: value
+        label: "R Upcoming"
+        source: radarr.calendar.upcoming_count
+        precision: 0
+        color: "#9be6bc"
+      - type: value
+        label: "R Free GB"
+        source: radarr.disk.free_gb
+        precision: 1
+        color: "#d7dbe0"
+
+  sonarr_h:
+    type: panel
+    direction: row
+    align: start
+    gap: 10
+    padding: [4, 10]
+    children:
+      - type: value
+        label: "S Queue"
+        source: sonarr.queue.total
+        precision: 0
+        color: "#9ac7ff"
+      - type: value
+        label: "S Warn"
+        source: sonarr.health.warning_count
+        precision: 0
+        color: "#f0c56a"
+      - type: value
+        label: "S Err"
+        source: sonarr.health.error_count
+        precision: 0
+        color: "#ef7f7f"
+      - type: value
+        label: "S Upcoming"
+        source: sonarr.calendar.upcoming_count
+        precision: 0
+        color: "#9be6bc"
+      - type: value
+        label: "S Free GB"
+        source: sonarr.disk.free_gb
+        precision: 1
+        color: "#d7dbe0"
+
+  stack:
+    type: table
+    label: "Stack Snapshot"
+    source: servarr.rows
+    table_fit_text: true
+    color: "#dfeaf4"
+    padding: [8, 10]

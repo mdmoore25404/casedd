@@ -201,28 +201,52 @@ Status defaults:
 Module: casedd/getters/ollama.py
 
 API endpoint used:
-- GET {CASEDD_OLLAMA_API_BASE}/api/ps
-
-Optional detailed endpoints (when CASEDD_OLLAMA_DETAILED=1):
-- GET {CASEDD_OLLAMA_API_BASE}/api/version
-- GET {CASEDD_OLLAMA_API_BASE}/api/tags
-
-Emits:
-- ollama.active_count
-- ollama.active_models
-- ollama.active_compact
-- ollama.primary_model
-- ollama.primary_size_gb
-- ollama.primary_gpu_percent
 - ollama.primary_cpu_percent
 - ollama.primary_ttl
-- ollama.summary
-
-Detailed mode emits:
 - ollama.version
 - ollama.models.local_count
-- ollama.models.running_count
-- ollama.models.rows
+
+## Servarr getters (Radarr / Sonarr)
+
+Module: casedd/getters/servarr.py
+
+Supported in this iteration:
+- Radarr
+- Sonarr
+
+Per-app emits:
+- radarr.active / sonarr.active
+- radarr.queue.total / sonarr.queue.total
+- radarr.queue.downloading / sonarr.queue.downloading
+- radarr.queue.importing / sonarr.queue.importing
+- radarr.queue.rows / sonarr.queue.rows
+- radarr.health.warning_count / sonarr.health.warning_count
+- radarr.health.error_count / sonarr.health.error_count
+- radarr.calendar.upcoming_count / sonarr.calendar.upcoming_count
+- radarr.disk.free_gb / sonarr.disk.free_gb
+
+Aggregate emits:
+- servarr.queue.total
+- servarr.health.warning_count
+- servarr.health.error_count
+- servarr.rows
+
+Config (one app):
+- Set CASEDD_RADARR_BASE_URL and CASEDD_RADARR_API_KEY.
+- Leave Sonarr vars blank to keep Sonarr inactive.
+
+Config (two apps):
+- Set both Radarr and Sonarr base URL + API key pairs.
+- Optional tuning vars per app:
+    - CASEDD_<APP>_INTERVAL
+    - CASEDD_<APP>_TIMEOUT
+    - CASEDD_<APP>_CALENDAR_DAYS
+    - CASEDD_<APP>_VERIFY_TLS
+
+Notes:
+- Missing base URL or API key keeps that app inactive (no hard failure).
+- 401/403 auth failures are surfaced as getter errors for health visibility.
+- 5xx responses are surfaced as server errors for health visibility.
 - ollama.running.rows
 - ollama.running_1.name
 - ollama.running_1.size_bytes
