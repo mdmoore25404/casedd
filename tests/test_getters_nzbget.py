@@ -415,8 +415,7 @@ class TestNZBGetGetter:
         assert jobs == []
 
     async def test_category_filter_regex(self, data_store: DataStore) -> None:
-        """Test category filtering with regex patterns."""
-        # Create getter with regex to hide 'xxx' and 'adult' categories
+        """Regex privacy filter redacts matching categories instead of dropping rows."""
         getter = NZBGetGetter(
             data_store,
             interval=1.0,
@@ -457,14 +456,126 @@ class TestNZBGetGetter:
 
         jobs = getter._extract_current_jobs(queue_items)
 
-        # Should filter out items matching regex (xxx and adult categories)
-        # Only movies and tv should remain
-        assert len(jobs) == 2
+        assert len(jobs) == 4
         categories = {job.category for job in jobs}
         assert "movies" in categories
         assert "tv" in categories
-        assert "xxx > premium" not in categories
-        assert "adult content" not in categories
+        assert "[hidden]" in categories
+
+        hidden_names = [job.name for job in jobs if job.category == "[hidden]"]
+        assert hidden_names == ["[hidden]", "[hidden]"]
+
+    async def test_fetch_includes_hidden_current_count_and_active_percent(
+        self,
+        data_store: DataStore,
+    ) -> None:
+        """Fetch emits hidden-safe current stats and active-not-paused percent."""
+        getter = NZBGetGetter(
+            data_store,
+            interval=1.0,
+            timeout=3.0,
+            category_filter_regex=r"(xxx|adult)",
+        )
+
+        mock_status = {
+            "DownloadPaused": False,
+            "PostPaused": False,
+            "ScanPaused": False,
+            "DownloadRate": 1048576,
+        }
+        mock_queue = [
+            {
+                "NZBName": "Visible.Active",
+                "FileSizeMB": 1000,
+                "RemainingSizeMB": 400,
+                "ActiveDownloads": 1,
+                "PausedSizeMB": 0,
+                "Category": "tv",
+                "PostProcessing": False,
+            },
+            {
+                "NZBName": "Hidden.Active",
+                "FileSizeMB": 800,
+                "RemainingSizeMB": 400,
+                "ActiveDownloads": 1,
+                "PausedSizeMB": 0,
+                "Category": "adult content",
+                "PostProcessing": False,
+            },
+            {
+                "NZBName": "Hidden.Paused",
+                "FileSizeMB": 600,
+                "RemainingSizeMB": 600,
+                "ActiveDownloads": 0,
+                "PausedSizeMB": 600,
+                "Category": "xxx > premium",
+                "PostProcessing": False,
+            },
+        ]
+        mock_history: list[dict[str, str]] = []
+
+        with patch.object(getter, "_rpc_call") as mock_rpc:
+            mock_rpc.side_effect = [
+                {"version": "1.0.0"},
+                mock_status,
+                mock_queue,
+                mock_history,
+            ]
+
+            updates = await getter.fetch()
+
+        assert updates["nzbget.queue.current_count"] == 3
+        assert updates["nzbget.queue.active_count"] == 2
+        assert updates["nzbget.queue.active_download_percent"] == 66.7
+        assert updates["nzbget.current_1.name"] != "Hidden.Active"
+        assert updates["nzbget.current_2.name"] == "[hidden]"
+
+    async def test_fetch_excludes_paused_from_active_percent(
+        self,
+        data_store: DataStore,
+    ) -> None:
+        """Paused entries are excluded from active-download percentage."""
+        getter = NZBGetGetter(data_store, interval=1.0, timeout=3.0)
+
+        mock_status = {
+            "DownloadPaused": False,
+            "PostPaused": False,
+            "ScanPaused": False,
+            "DownloadRate": 0,
+        }
+        mock_queue = [
+            {
+                "NZBName": "Active.Item",
+                "FileSizeMB": 500,
+                "RemainingSizeMB": 250,
+                "ActiveDownloads": 1,
+                "PausedSizeMB": 0,
+                "Category": "tv",
+                "PostProcessing": False,
+            },
+            {
+                "NZBName": "Paused.Item",
+                "FileSizeMB": 500,
+                "RemainingSizeMB": 500,
+                "ActiveDownloads": 1,
+                "PausedSizeMB": 500,
+                "Category": "tv",
+                "PostProcessing": False,
+            },
+        ]
+
+        with patch.object(getter, "_rpc_call") as mock_rpc:
+            mock_rpc.side_effect = [
+                {"version": "1.0.0"},
+                mock_status,
+                mock_queue,
+                [],
+            ]
+            updates = await getter.fetch()
+
+        assert updates["nzbget.queue.current_count"] == 2
+        assert updates["nzbget.queue.active_count"] == 1
+        assert updates["nzbget.queue.active_download_percent"] == 50.0
 
     async def test_category_filter_no_regex(self, data_store: DataStore) -> None:
         """Test that all categories are included when no filter regex is set."""
