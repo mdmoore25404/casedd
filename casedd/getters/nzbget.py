@@ -170,91 +170,86 @@ class NZBGetGetter(BaseGetter):
 
         Returns:
             Dict of dotted key → value pairs for the data store.
+
+        Raises:
+            RuntimeError: On RPC error or network failure.
         """
         updates: dict[str, StoreValue] = {}
 
         # Fetch version
-        try:
-            version_data = await self._rpc_call(_METHOD_VERSION)
-            version = version_data.get("version", "unknown")
-            updates["nzbget.version"] = version
-        except Exception as exc:
-            _log.warning("Failed to fetch NZBGet version: %s", exc)
-            updates["nzbget.version"] = "error"
+        version_data = await self._rpc_call(_METHOD_VERSION)
+        version = version_data.get("version", "unknown")
+        updates["nzbget.version"] = version
 
         # Fetch status and queue in parallel
-        try:
-            status_data, queue_data, history_data = await asyncio.gather(
-                self._rpc_call(_METHOD_STATUS),
-                self._rpc_call(_METHOD_QUEUE),
-                self._rpc_call(_METHOD_HISTORY),
-            )
+        status_data, queue_data, history_data = await asyncio.gather(
+            self._rpc_call(_METHOD_STATUS),
+            self._rpc_call(_METHOD_QUEUE),
+            self._rpc_call(_METHOD_HISTORY),
+        )
 
-            # Process status
-            updates["nzbget.status.download_paused"] = bool(
-                status_data.get("DownloadPaused")
-            )
-            updates["nzbget.status.postprocess_paused"] = bool(
-                status_data.get("PostPaused")
-            )
-            updates["nzbget.status.scan_paused"] = bool(
-                status_data.get("ScanPaused")
-            )
+        # Process status
+        updates["nzbget.status.download_paused"] = bool(
+            status_data.get("DownloadPaused")
+        )
+        updates["nzbget.status.postprocess_paused"] = bool(
+            status_data.get("PostPaused")
+        )
+        updates["nzbget.status.scan_paused"] = bool(
+            status_data.get("ScanPaused")
+        )
 
-            # Process queue metrics
-            queue_items: list[Any] = queue_data if isinstance(queue_data, list) else []
-            active_count = sum(
-                1 for item in queue_items if bool(item.get("ActiveDownloads", 0) > 0)
+        # Process queue metrics
+        queue_items: list[Any] = queue_data if isinstance(queue_data, list) else []
+        active_count = sum(
+            1 for item in queue_items if bool(item.get("ActiveDownloads", 0) > 0)
+        )
+        total_mb = sum(item.get("RemainingSizeMB", 0) for item in queue_items)
+        current_rate = float(status_data.get("DownloadRate", 0)) / 1024.0 / 1024.0
+        eta_seconds = int(
+            total_mb / current_rate if current_rate > 0 else 0
+        )
+
+        updates["nzbget.queue.total"] = len(queue_items)
+        updates["nzbget.queue.active_count"] = active_count
+        updates["nzbget.queue.remaining_mb"] = int(total_mb)
+        updates["nzbget.rate.mbps"] = round(current_rate, 2)
+        updates["nzbget.eta_seconds"] = eta_seconds
+
+        # Process postprocess status
+        postprocess_count = sum(
+            1
+            for item in queue_items
+            if bool(item.get("PostProcessing", False))
+        )
+        updates["nzbget.postprocess.active_count"] = postprocess_count
+
+        # Process history
+        history_items: list[Any] = history_data if isinstance(history_data, list) else []
+        success_count = sum(
+            1
+            for item in history_items
+            if (item.get("Status") == "SUCCESS" or item.get("Status", 0) == 0)
+        )
+        failed_count = sum(
+            1
+            for item in history_items
+            if (
+                item.get("Status") in ("FAILURE", "DELETED")
+                or item.get("Status", 0) in (1, 3)
             )
-            total_mb = sum(item.get("RemainingSizeMB", 0) for item in queue_items)
-            current_rate = float(status_data.get("DownloadRate", 0)) / 1024.0 / 1024.0
-            eta_seconds = int(
-                total_mb / current_rate if current_rate > 0 else 0
-            )
+        )
 
-            updates["nzbget.queue.total"] = len(queue_items)
-            updates["nzbget.queue.active_count"] = active_count
-            updates["nzbget.queue.remaining_mb"] = int(total_mb)
-            updates["nzbget.rate.mbps"] = round(current_rate, 2)
-            updates["nzbget.eta_seconds"] = eta_seconds
+        updates["nzbget.history.success_count"] = success_count
+        updates["nzbget.history.failed_count"] = failed_count
 
-            # Process postprocess status
-            postprocess_count = sum(
-                1
-                for item in queue_items
-                if bool(item.get("PostProcessing", False))
-            )
-            updates["nzbget.postprocess.active_count"] = postprocess_count
-
-            # Process history
-            history_items: list[Any] = history_data if isinstance(history_data, list) else []
-            success_count = sum(
-                1
-                for item in history_items
-                if (item.get("Status") == "SUCCESS" or item.get("Status", 0) == 0)
-            )
-            failed_count = sum(
-                1
-                for item in history_items
-                if (
-                    item.get("Status") in ("FAILURE", "DELETED")
-                    or item.get("Status", 0) in (1, 3)
-                )
-            )
-
-            updates["nzbget.history.success_count"] = success_count
-            updates["nzbget.history.failed_count"] = failed_count
-
-            # Process current jobs (first 3 for display)
-            current_jobs = self._extract_current_jobs(queue_items)
-            for idx, job in enumerate(current_jobs[:3], start=1):
-                prefix = f"nzbget.current_{idx}"
-                updates[f"{prefix}.name"] = job.name
-                updates[f"{prefix}.progress_percent"] = job.progress_percent
-                updates[f"{prefix}.category"] = job.category
-
-        except Exception as exc:
-            _log.warning("NZBGet fetch error: %s", exc)
+        # Process current jobs (first 3 for display)
+        current_jobs = self._extract_current_jobs(queue_items)
+        for idx, job in enumerate(current_jobs[:3], start=1):
+            prefix = f"nzbget.current_{idx}"
+            updates[f"{prefix}.name"] = job.name
+            updates[f"{prefix}.progress_percent"] = job.progress_percent
+            updates[f"{prefix}.category"] = job.category
 
         return updates
 
