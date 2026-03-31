@@ -25,9 +25,14 @@ widgets:
   server:
     type: panel
     direction: row
+    align: center
     gap: 16
     padding: 8
     children:
+      - type: image
+        path: assets/plex/plex-logo.png
+        scale: fit
+        width: 180
       - type: value
         source: plex.sessions.active_count
         label: "Active"
@@ -64,4 +69,4 @@ widgets:
     source: plex.recently_added.rows
     color: "#89b7ff"
     padding: 6
-    max_items: 6
+    max_items: 19
