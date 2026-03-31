@@ -247,6 +247,16 @@ Primary emits:
 - plex.recently_added.rows
 - plex.summary
 
+Recently-added formatting rules:
+- Movies/music keep their original media type and title.
+- TV entries (`episode`/`season`/`show`) are normalized to media type `show`.
+- TV episode titles are rendered as `Show SnnEyy` when season/episode indexes exist.
+- TV season titles are rendered as `Show Snn` when season index exists.
+
+Bandwidth rule:
+- `plex.bandwidth.current_mbps` excludes paused sessions so a fully paused
+    playback state reports `0.0` Mb/s.
+
 Expanded per-item emits:
 - plex.session_1.user
 - plex.session_1.title

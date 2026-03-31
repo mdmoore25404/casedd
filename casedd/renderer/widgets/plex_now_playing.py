@@ -68,6 +68,8 @@ class PlexNowPlayingWidget(BaseWidget):
                 rows = [r for r in rows if not rx.search(f"{r.user}|{r.title}")]
             except re.error:
                 pass
+        if cfg.max_items is not None:
+            rows = rows[: cfg.max_items]
 
         accent = parse_color(cfg.color, fallback=(109, 204, 133))
         body_size = (

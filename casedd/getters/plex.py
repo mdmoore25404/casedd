@@ -52,6 +52,7 @@ class _SessionRow:
     transcode_decision: str
     bitrate_kbps: float
     library: str
+    state: str
 
 
 @dataclass(frozen=True)
@@ -150,7 +151,10 @@ class PlexGetter(BaseGetter):
         direct_play_count = sum(
             1 for item in sanitized_sessions if item.transcode_decision == "direct_play"
         )
-        bandwidth_mbps = sum(item.bitrate_kbps for item in sanitized_sessions) / 1000.0
+        bandwidth_mbps = (
+            sum(item.bitrate_kbps for item in sanitized_sessions if item.state != "paused")
+            / 1000.0
+        )
 
         payload: dict[str, StoreValue] = {
             "plex.server.name": identity.get("friendlyName", "Plex"),
@@ -259,6 +263,7 @@ class PlexGetter(BaseGetter):
             transcode_decision=item.transcode_decision,
             bitrate_kbps=item.bitrate_kbps,
             library=self._redact(item.library, redact_library=redact_library),
+            state=item.state,
         )
 
     def _sanitize_recent_item(self, item: _RecentItem) -> _RecentItem:
@@ -318,6 +323,7 @@ def _parse_sessions(root: ET.Element) -> list[_SessionRow]:
         decision = _transcode_decision(item)
         bitrate_kbps = _session_bitrate_kbps(item)
         library = str(item.get("librarySectionTitle") or "")
+        state = _session_state(item)
         rows.append(
             _SessionRow(
                 user=user,
@@ -327,6 +333,7 @@ def _parse_sessions(root: ET.Element) -> list[_SessionRow]:
                 transcode_decision=decision,
                 bitrate_kbps=bitrate_kbps,
                 library=library,
+                state=state,
             )
         )
     return rows
@@ -336,8 +343,8 @@ def _parse_recently_added(root: ET.Element) -> list[_RecentItem]:
     """Parse recently added rows from /library/recentlyAdded XML."""
     items: list[_RecentItem] = []
     for item in root.findall("Video") + root.findall("Directory") + root.findall("Track"):
-        media_type = item.get("type", item.tag).strip().lower() or "unknown"
-        title = _recent_title(item)
+        media_type = _recent_media_type(item)
+        title = _recent_display_title(item, media_type)
         library = str(item.get("librarySectionTitle") or "")
         added_at = str(item.get("addedAt") or "")
         items.append(
@@ -383,6 +390,14 @@ def _session_progress(item: ET.Element) -> float:
     if duration <= 0.0:
         return 0.0
     return max(0.0, min(100.0, (offset / duration) * 100.0))
+
+
+def _session_state(item: ET.Element) -> str:
+    """Return normalized playback state for one session row."""
+    player = item.find("Player")
+    if player is None:
+        return "unknown"
+    return str(player.get("state") or "unknown").strip().lower()
 
 
 def _session_bitrate_kbps(item: ET.Element) -> float:
@@ -434,6 +449,42 @@ def _transcode_decision(item: ET.Element) -> str:
         decision = "direct_stream"
 
     return decision
+
+
+def _recent_media_type(item: ET.Element) -> str:
+    """Normalize recently-added item type labels for dashboard readability."""
+    raw_type = item.get("type", item.tag).strip().lower() or "unknown"
+    if raw_type in {"episode", "season", "show"}:
+        return "show"
+    return raw_type
+
+
+def _recent_display_title(item: ET.Element, media_type: str) -> str:
+    """Build human-friendly titles for recently-added rows.
+
+    TV entries are rendered as show-centric labels, for example
+    ``The Rookie S08E13`` for episodes and ``The Rookie S08`` for seasons.
+    """
+    raw_type = item.get("type", item.tag).strip().lower() or "unknown"
+    show_title = str(item.get("grandparentTitle") or item.get("parentTitle") or "").strip()
+
+    if raw_type == "episode" and show_title:
+        season_idx = _to_int_optional(item.get("parentIndex"))
+        episode_idx = _to_int_optional(item.get("index"))
+        if season_idx is not None and episode_idx is not None:
+            return f"{show_title} S{season_idx:02d}E{episode_idx:02d}"
+        return show_title
+
+    if raw_type == "season" and show_title:
+        season_idx = _to_int_optional(item.get("index"))
+        if season_idx is not None:
+            return f"{show_title} S{season_idx:02d}"
+        return show_title
+
+    if media_type == "show" and show_title:
+        return show_title
+
+    return _recent_title(item)
 
 
 def _render_session_rows(rows: list[_SessionRow]) -> str:
@@ -513,3 +564,16 @@ def _to_float(raw: str | float | int) -> float:
         return float(text)
     except ValueError:
         return 0.0
+
+
+def _to_int_optional(raw: object) -> int | None:
+    """Convert optional numeric text to int, returning None on failure."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    try:
+        return int(text)
+    except ValueError:
+        return None

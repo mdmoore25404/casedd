@@ -120,6 +120,54 @@ class _PlexUrlOpenNoSessions:
         raise AssertionError(f"Unhandled URL in fixture: {url}")
 
 
+class _PlexUrlOpenPausedSession:
+    """Fixture XML with a paused stream and a TV season recent item."""
+
+    def __call__(self, req, timeout: float, context=None):
+        url = req.full_url
+        if url.endswith("/"):
+            return _FakeResponse(
+                '<MediaContainer friendlyName="My Plex" version="1.2.3" platform="Linux" />'
+            )
+        if "/status/sessions" in url:
+            return _FakeResponse(
+                """
+                <MediaContainer size="1">
+                  <Video title="Episode Title" duration="1200" viewOffset="600"
+                         librarySectionTitle="TV Shows">
+                    <User title="alice" />
+                    <Player state="paused" />
+                    <Session bandwidth="5843" />
+                    <Media bitrate="2782">
+                      <Part>
+                        <Stream decision="directplay" bitrate="2398" />
+                      </Part>
+                    </Media>
+                  </Video>
+                </MediaContainer>
+                """
+            )
+        if "/library/sections/1/all" in url:
+            return _FakeResponse('<MediaContainer totalSize="1" />')
+        if "/library/sections" in url:
+            return _FakeResponse(
+                '<MediaContainer><Directory key="1" type="show" /></MediaContainer>'
+            )
+        if "/library/recentlyAdded" in url:
+            return _FakeResponse(
+                """
+                <MediaContainer>
+                  <Directory type="season" title="Season 8"
+                             parentTitle="The Rookie"
+                             librarySectionTitle="TV Shows"
+                             index="8"
+                             addedAt="100" />
+                </MediaContainer>
+                """
+            )
+        raise AssertionError(f"Unhandled URL in fixture: {url}")
+
+
 async def test_plex_getter_happy_path(monkeypatch) -> None:
     """Plex getter emits expected flattened keys for active sessions."""
     monkeypatch.setattr("casedd.getters.plex.urlopen", _PlexUrlOpenOK())
@@ -221,6 +269,25 @@ async def test_plex_getter_transport_failure(monkeypatch) -> None:
     getter = PlexGetter(DataStore())
     with pytest.raises(RuntimeError, match="transport error"):
         await getter.fetch()
+
+
+async def test_plex_getter_paused_stream_bandwidth_and_tv_recent_format(monkeypatch) -> None:
+    """Paused streams report zero bandwidth and TV recents use show-centric titles."""
+    monkeypatch.setattr("casedd.getters.plex.urlopen", _PlexUrlOpenPausedSession())
+
+    getter = PlexGetter(
+        DataStore(),
+        base_url="http://plex.local:32400",
+        token="abc",
+        max_sessions=2,
+        max_recent=2,
+    )
+    payload = await getter.fetch()
+
+    assert payload["plex.sessions.active_count"] == 1.0
+    assert payload["plex.bandwidth.current_mbps"] == 0.0
+    assert payload["plex.recently_added_1.media_type"] == "show"
+    assert payload["plex.recently_added_1.title"] == "The Rookie S08"
 
 
 def test_parse_sessions_normalization_fixture() -> None:

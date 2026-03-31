@@ -435,6 +435,7 @@ now:
 ```
 
 Additional fields: `filter_regex` (optional Python regex to hide matching rows)
+and `max_items` (optional row cap for displayed items)
 
 ---
 
@@ -455,6 +456,11 @@ recent:
 ```
 
 Additional fields: `filter_regex` (optional Python regex to hide matching rows)
+and `max_items` (optional row cap for displayed items)
+
+`plex_dashboard.casedd` also demonstrates template-level `skip_if` so the
+template is automatically skipped in rotation when both
+`plex.sessions.active_count` and `plex.sessions.transcoding_count` are zero.
 
 ---
 

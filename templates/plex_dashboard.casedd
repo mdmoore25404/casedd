@@ -6,6 +6,13 @@ aspect_ratio: "5:3"
 layout_mode: fit
 background: "#0b1218"
 refresh_rate: 2.0
+skip_if:
+  - source: plex.sessions.active_count
+    operator: lte
+    value: 0
+  - source: plex.sessions.transcoding_count
+    operator: lte
+    value: 0
 
 grid:
   template_areas: |
@@ -49,6 +56,7 @@ widgets:
     source: plex.sessions.rows
     color: "#7ce29f"
     padding: 6
+    max_items: 6
 
   recent:
     type: plex_recently_added
@@ -56,3 +64,4 @@ widgets:
     source: plex.recently_added.rows
     color: "#89b7ff"
     padding: 6
+    max_items: 6
