@@ -176,9 +176,11 @@ class NZBGetGetter(BaseGetter):
         """
         updates: dict[str, StoreValue] = {}
 
-        # Fetch version
+        # Fetch version (returns string directly, not a dict)
         version_data = await self._rpc_call(_METHOD_VERSION)
-        version = version_data.get("version", "unknown")
+        version = str(version_data) if isinstance(version_data, str) else str(
+            version_data.get("version", "unknown")
+        )
         updates["nzbget.version"] = version
 
         # Fetch status and queue in parallel
