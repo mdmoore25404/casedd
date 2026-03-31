@@ -1,23 +1,20 @@
 """System information widget renderer (neofetch-style).
 
-Renders the key-value pairs produced by
-:class:`~casedd.getters.sysinfo.SysinfoGetter` as a two-column table
-reminiscent of the ``neofetch`` command-line tool.
+Renders a compact dashboard inspired by ``neofetch`` / ``fastfetch``:
 
-Layout:
-    - Left column: label in accent colour (e.g. teal-green)
-    - Right column: value in off-white
-
-Font size auto-scales to fill available height with all rows, capped to a
-comfortable maximum so the widget looks good at any size.
+- Left column: ASCII-style distro logo accent.
+- Right column: host header and key/value fact table.
+- Footer: simple terminal-color palette blocks.
 
 Data source keys consumed:
-    - ``{prefix}.rows`` (str) -- newline-delimited "Label|Value" pairs
+    - ``{prefix}.rows`` (str) -- newline-delimited "Label|Value" pairs.
 """
 
 from __future__ import annotations
 
-from PIL import Image, ImageDraw
+from dataclasses import dataclass
+
+from PIL import Image, ImageDraw, ImageFont
 
 from casedd.data_store import DataStore
 from casedd.renderer.color import parse_color
@@ -25,6 +22,42 @@ from casedd.renderer.fonts import get_font
 from casedd.renderer.widgets.base import BaseWidget, content_rect, draw_label, fill_background
 from casedd.template.grid import Rect
 from casedd.template.models import WidgetConfig
+
+_FontT = ImageFont.FreeTypeFont | ImageFont.ImageFont
+
+
+@dataclass(frozen=True)
+class _LogoLayout:
+    """Drawing parameters for the left logo block."""
+
+    color: tuple[int, int, int]
+    logo_x: int
+    top_y: int
+    content_h: int
+
+
+@dataclass(frozen=True)
+class _HeaderLayout:
+    """Drawing parameters for the right-column header."""
+
+    host_color: tuple[int, int, int]
+    rule_color: tuple[int, int, int]
+    right_x: int
+    top_y: int
+    right_w: int
+
+
+@dataclass(frozen=True)
+class _RowsLayout:
+    """Drawing parameters for key/value row rendering."""
+
+    accent: tuple[int, int, int]
+    val_color: tuple[int, int, int]
+    right_x: int
+    right_w: int
+    start_y: int
+    row_h: int
+    max_y: int
 
 
 class SysinfoWidget(BaseWidget):
@@ -64,59 +97,66 @@ class SysinfoWidget(BaseWidget):
             pairs = [("Hostname", "…"), ("OS", "…"), ("Uptime", "…")]
 
         accent = parse_color(cfg.color, fallback=(96, 210, 165))
-
-        # Auto-scale font: fit all rows in available height, cap for readability
-        num_rows = len(pairs)
-        avail_h = inner.h - label_h - 8
-        if isinstance(cfg.font_size, int):
-            body_sz = cfg.font_size
-        else:
-            # Calculate font size based on available space
-            # Use height as primary constraint, but ensure readability.
-            # Scale the max cap based on width for larger displays.
-            auto_sz = avail_h // max(1, num_rows + 1)
-            max_cap = max(28, min(56, inner.w // 20))  # scale max cap by width
-            body_sz = max(12, min(max_cap, auto_sz))
-
-        body_font = get_font(body_sz)
-        sample_bb = draw.textbbox((0, 0), "Ag", font=body_font)
-        row_h = int(sample_bb[3] - sample_bb[1]) + 4
-
-        # Measure the widest key label to set the left column width
-        # But ensure we leave enough room for values (at least 40% of available width)
-        label_widths = [
-            int(draw.textbbox((0, 0), key, font=body_font)[2])
-            for key, _ in pairs
-        ]
-        separator_w = int(draw.textbbox((0, 0), ":", font=body_font)[2])
-        key_col_w = max(label_widths, default=60)
-        # Reserve at least 40% of width for values
-        max_key_col_w = int(inner.w * 0.4)
-        label_col_w = min(key_col_w + separator_w + 4, max_key_col_w)
-
-        left = inner.x + 4
-        val_x = left + label_col_w
-        right_limit = inner.x + inner.w - 4
         val_color: tuple[int, int, int] = (220, 225, 230)
+        host_color: tuple[int, int, int] = (240, 94, 106)
+        rule_color: tuple[int, int, int] = (145, 155, 168)
 
-        y = inner.y + label_h + 6
-        for key, value in pairs:
-            if y + row_h > inner.y + inner.h:
-                break
+        logo_col_w = max(140, int(inner.w * 0.34))
+        top_y = inner.y + label_h + 6
+        content_h = inner.h - label_h - 10
+        right_x = inner.x + logo_col_w + 10
+        right_w = inner.x + inner.w - 6 - right_x
+        if right_w < 100:
+            return
 
-            # Key label with trailing colon in accent colour
-            draw.text((left, y), f"{key}:", fill=accent, font=body_font)
+        body_font, row_h = _fit_body_font(draw, pairs, cfg.font_size, right_w, content_h)
+        head_font = get_font(max(14, int(getattr(body_font, "size", 14) * 1.3)))
+        logo_font = get_font(max(10, int(getattr(body_font, "size", 12) * 0.95)))
 
-            # Value truncated to fit the remaining column width
-            max_val_w = right_limit - val_x
-            val = value
-            while val:
-                bbox = draw.textbbox((0, 0), val, font=body_font)
-                if bbox[2] - bbox[0] <= max_val_w:
-                    break
-                val = val[:-1]
-            draw.text((val_x, y), val, fill=val_color, font=body_font)
-            y += row_h
+        _draw_logo(
+            draw,
+            pairs,
+            logo_font,
+            _LogoLayout(
+                color=host_color,
+                logo_x=inner.x + 8,
+                top_y=top_y,
+                content_h=content_h,
+            ),
+        )
+
+        hostname = _pair_value(pairs, "Hostname")
+        if hostname == "":
+            hostname = "system"
+        rule_y = _draw_header(
+            draw,
+            hostname,
+            head_font,
+            _HeaderLayout(
+                host_color=host_color,
+                rule_color=rule_color,
+                right_x=right_x,
+                top_y=top_y,
+                right_w=right_w,
+            ),
+        )
+
+        _draw_rows(
+            draw,
+            pairs,
+            body_font,
+            _RowsLayout(
+                accent=accent,
+                val_color=val_color,
+                right_x=right_x,
+                right_w=right_w,
+                start_y=rule_y + 8,
+                row_h=row_h,
+                max_y=inner.y + inner.h - 20,
+            ),
+        )
+
+        _draw_palette(draw, right_x, inner.y + inner.h - 14, right_w)
 
 
 # ---------------------------------------------------------------------------
@@ -141,3 +181,214 @@ def _parse_pairs(text: str) -> list[tuple[str, str]]:
         if len(parts) == 2:
             result.append((parts[0], parts[1]))
     return result
+
+
+def _pair_value(pairs: list[tuple[str, str]], key: str) -> str:
+    """Return the value for ``key`` from key/value pair rows.
+
+    Args:
+        pairs: Parsed ``(key, value)`` rows.
+        key: Key name to lookup.
+
+    Returns:
+        Value string when found, otherwise empty string.
+    """
+    for row_key, value in pairs:
+        if row_key == key:
+            return value
+    return ""
+
+
+def _fit_body_font(
+    draw: ImageDraw.ImageDraw,
+    pairs: list[tuple[str, str]],
+    font_size: int | str,
+    right_w: int,
+    content_h: int,
+) -> tuple[_FontT, int]:
+    """Pick a body font size that fits row count and available width.
+
+    Args:
+        draw: PIL draw context.
+        pairs: Key/value rows to render.
+        font_size: Widget font_size setting.
+        right_w: Width available for text table.
+        content_h: Vertical space available for content.
+
+    Returns:
+        Chosen body font and per-row pixel height.
+    """
+    row_count = max(1, len(pairs))
+    if isinstance(font_size, int):
+        start = max(10, font_size)
+    else:
+        auto_by_height = content_h // max(1, row_count + 3)
+        auto_by_width = right_w // 34
+        start = max(11, min(40, auto_by_height, auto_by_width))
+
+    for size in range(start, 9, -1):
+        body_font = get_font(size)
+        bb = draw.textbbox((0, 0), "Ag", font=body_font)
+        row_h = int(bb[3] - bb[1]) + 4
+        if row_h * row_count <= content_h - 26:
+            return body_font, row_h
+
+    fallback = get_font(10)
+    fb = draw.textbbox((0, 0), "Ag", font=fallback)
+    return fallback, int(fb[3] - fb[1]) + 3
+
+
+def _truncate_to_width(
+    draw: ImageDraw.ImageDraw,
+    value: str,
+    font: _FontT,
+    max_width: int,
+) -> str:
+    """Truncate text to fit pixel width, appending an ellipsis when needed.
+
+    Args:
+        draw: PIL draw context.
+        value: Raw text value.
+        font: Active text font.
+        max_width: Maximum allowed text width in pixels.
+
+    Returns:
+        Text that fits ``max_width``.
+    """
+    if max_width <= 0:
+        return ""
+    if int(draw.textbbox((0, 0), value, font=font)[2]) <= max_width:
+        return value
+    ellipsis = "..."
+    trimmed = value
+    while trimmed:
+        candidate = f"{trimmed}{ellipsis}"
+        if int(draw.textbbox((0, 0), candidate, font=font)[2]) <= max_width:
+            return candidate
+        trimmed = trimmed[:-1]
+    return ellipsis
+
+
+def _draw_logo(
+    draw: ImageDraw.ImageDraw,
+    pairs: list[tuple[str, str]],
+    logo_font: _FontT,
+    layout: _LogoLayout,
+) -> None:
+    """Draw a distro logo block on the left side."""
+    logo_lines = _logo_lines_for_pairs(pairs)
+    logo_sample = draw.textbbox((0, 0), "#", font=logo_font)
+    logo_h = int(logo_sample[3] - logo_sample[1]) + 2
+    logo_block_h = len(logo_lines) * logo_h
+    logo_y = layout.top_y + max(0, (layout.content_h - logo_block_h) // 3)
+    for i, line in enumerate(logo_lines):
+        draw.text(
+            (layout.logo_x, logo_y + i * logo_h),
+            line,
+            fill=layout.color,
+            font=logo_font,
+        )
+
+
+def _draw_header(
+    draw: ImageDraw.ImageDraw,
+    hostname: str,
+    head_font: _FontT,
+    layout: _HeaderLayout,
+) -> int:
+    """Draw hostname header and return the y-coordinate of the separator line."""
+    draw.text((layout.right_x, layout.top_y), hostname, fill=layout.host_color, font=head_font)
+    head_bb = draw.textbbox((0, 0), hostname, font=head_font)
+    head_h = int(head_bb[3] - head_bb[1])
+    rule_y = layout.top_y + head_h + 4
+    draw.line(
+        (layout.right_x, rule_y, layout.right_x + layout.right_w, rule_y),
+        fill=layout.rule_color,
+        width=1,
+    )
+    return rule_y
+
+
+def _draw_rows(
+    draw: ImageDraw.ImageDraw,
+    pairs: list[tuple[str, str]],
+    body_font: _FontT,
+    layout: _RowsLayout,
+) -> None:
+    """Draw key/value rows in the right column with value truncation."""
+    label_widths = [
+        int(draw.textbbox((0, 0), f"{key}:", font=body_font)[2])
+        for key, _ in pairs
+    ]
+    label_col_w = min(max(label_widths, default=80) + 4, int(layout.right_w * 0.42))
+
+    y = layout.start_y
+    right_limit = layout.right_x + layout.right_w
+    for key, value in pairs:
+        if y + layout.row_h > layout.max_y:
+            break
+        draw.text((layout.right_x, y), f"{key}:", fill=layout.accent, font=body_font)
+        val_x = layout.right_x + label_col_w
+        val = _truncate_to_width(draw, value, body_font, right_limit - val_x)
+        draw.text((val_x, y), val, fill=layout.val_color, font=body_font)
+        y += layout.row_h
+
+
+def _logo_lines_for_pairs(pairs: list[tuple[str, str]]) -> list[str]:
+    """Return ASCII-style logo lines for the detected distro.
+
+    Args:
+        pairs: Key/value rows that include OS name.
+
+    Returns:
+        List of logo text lines.
+    """
+    os_name = _pair_value(pairs, "OS").lower()
+    if "ubuntu" in os_name:
+        return [
+            "      .-::::-.",
+            "   .:#########:.",
+            "  :####:.  .:####:",
+            " .###:        :###.",
+            " .###:        :###.",
+            "  :####:.  .:####:",
+            "   ':#########:'",
+            "      '-::::-'",
+        ]
+    return [
+        "    .-======-.",
+        "  .'  .--.   '.",
+        " /   (____)    \\",
+        "|    .----.     |",
+        "|   (______)    |",
+        " \\            ./",
+        "  '.        .-'",
+        "    '-.__.-'",
+    ]
+
+
+def _draw_palette(draw: ImageDraw.ImageDraw, x: int, y: int, width: int) -> None:
+    """Draw a small 8-color terminal palette strip.
+
+    Args:
+        draw: PIL draw context.
+        x: Left coordinate.
+        y: Top coordinate.
+        width: Available row width.
+    """
+    colors: list[tuple[int, int, int]] = [
+        (39, 44, 52),
+        (220, 80, 80),
+        (100, 214, 122),
+        (234, 196, 68),
+        (90, 150, 245),
+        (183, 108, 232),
+        (74, 196, 214),
+        (214, 214, 214),
+    ]
+    gap = 2
+    cell_w = max(10, min(22, (width - gap * (len(colors) - 1)) // len(colors)))
+    cell_h = 9
+    for i, color in enumerate(colors):
+        left = x + i * (cell_w + gap)
+        draw.rectangle((left, y, left + cell_w, y + cell_h), fill=color)
