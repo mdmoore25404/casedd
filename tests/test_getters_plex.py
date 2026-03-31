@@ -158,10 +158,28 @@ class _PlexUrlOpenPausedSession:
                 """
                 <MediaContainer>
                   <Directory type="season" title="Season 8"
+                             key="/library/metadata/777/children"
                              parentTitle="The Rookie"
                              librarySectionTitle="TV Shows"
                              index="8"
                              addedAt="100" />
+                </MediaContainer>
+                """
+            )
+        if "/library/metadata/777/children" in url:
+            return _FakeResponse(
+                """
+                <MediaContainer>
+                  <Video type="episode" title="Episode 12"
+                         grandparentTitle="The Rookie"
+                         parentIndex="8"
+                         index="12"
+                         addedAt="99" />
+                  <Video type="episode" title="Episode 13"
+                         grandparentTitle="The Rookie"
+                         parentIndex="8"
+                         index="13"
+                         addedAt="101" />
                 </MediaContainer>
                 """
             )
@@ -195,8 +213,11 @@ async def test_plex_getter_happy_path(monkeypatch) -> None:
     assert payload["plex.session_1.user"] == "alice"
     assert payload["plex.session_1.title"] == "Movie One"
     assert payload["plex.session_2.transcode_decision"] == "transcode"
-    assert payload["plex.recently_added_1.title"] == "[hidden]"
-    assert payload["plex.recently_added_1.library"] == "[hidden]"
+    assert payload["plex.recently_added.rows"] == "Music|New Album\n[hidden]|[hidden]"
+    assert payload["plex.recently_added_1.title"] == "New Album"
+    assert payload["plex.recently_added_1.library"] == "Music"
+    assert payload["plex.recently_added_2.title"] == "[hidden]"
+    assert payload["plex.recently_added_2.library"] == "[hidden]"
     assert payload["plex.recently_added.count"] == 2.0
 
 
@@ -239,10 +260,10 @@ async def test_plex_getter_library_name_filter(monkeypatch) -> None:
     assert payload["plex.session_1.library"] == "[hidden]"
     assert payload["plex.session_2.title"] == "Show Name"
     assert payload["plex.session_2.library"] == "Shows"
-    assert payload["plex.recently_added_1.title"] == "[hidden]"
-    assert payload["plex.recently_added_1.library"] == "[hidden]"
-    assert payload["plex.recently_added_2.title"] == "New Album"
-    assert payload["plex.recently_added_2.library"] == "Music"
+    assert payload["plex.recently_added_1.title"] == "New Album"
+    assert payload["plex.recently_added_1.library"] == "Music"
+    assert payload["plex.recently_added_2.title"] == "[hidden]"
+    assert payload["plex.recently_added_2.library"] == "[hidden]"
 
 
 async def test_plex_getter_auth_failure(monkeypatch) -> None:
@@ -287,7 +308,7 @@ async def test_plex_getter_paused_stream_bandwidth_and_tv_recent_format(monkeypa
     assert payload["plex.sessions.active_count"] == 1.0
     assert payload["plex.bandwidth.current_mbps"] == 0.0
     assert payload["plex.recently_added_1.media_type"] == "show"
-    assert payload["plex.recently_added_1.title"] == "The Rookie S08"
+    assert payload["plex.recently_added_1.title"] == "The Rookie S08E13"
 
 
 def test_parse_sessions_normalization_fixture() -> None:

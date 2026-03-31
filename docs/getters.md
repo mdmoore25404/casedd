@@ -252,6 +252,9 @@ Recently-added formatting rules:
 - TV entries (`episode`/`season`/`show`) are normalized to media type `show`.
 - TV episode titles are rendered as `Show SnnEyy` when season/episode indexes exist.
 - TV season titles are rendered as `Show Snn` when season index exists.
+- `plex.recently_added.rows` is sorted newest-first using `addedAt`.
+- Season rows are resolved to their most recently added episode when available.
+- Row format for widgets is `LIBRARY|TITLE`.
 
 Bandwidth rule:
 - `plex.bandwidth.current_mbps` excludes paused sessions so a fully paused

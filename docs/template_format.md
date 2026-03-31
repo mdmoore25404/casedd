@@ -444,7 +444,7 @@ and `max_items` (optional row cap for displayed items)
 Compact table of recently-added Plex media.
 
 Input rows must come from `plex.recently_added.rows` with format:
-`MEDIA_TYPE|LIBRARY|TITLE`
+`LIBRARY|TITLE`
 
 ```yaml
 recent:

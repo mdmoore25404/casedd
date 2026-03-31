@@ -63,6 +63,8 @@ class _RecentItem:
     media_type: str
     library: str
     added_at: str
+    source_type: str = "unknown"
+    key: str = ""
 
 
 class PlexGetter(BaseGetter):
@@ -136,7 +138,7 @@ class PlexGetter(BaseGetter):
         )
 
         sessions = _parse_sessions(sessions_xml)
-        recent = _parse_recently_added(recent_xml)
+        recent = self._hydrate_recent_items(_parse_recently_added(recent_xml))
         movies, shows, albums = self._collect_library_counts(sections_xml)
 
         sanitized_sessions = [self._sanitize_session(item) for item in sessions]
@@ -274,6 +276,65 @@ class PlexGetter(BaseGetter):
             media_type=item.media_type,
             library=self._redact(item.library, redact_library=redact_library),
             added_at=item.added_at,
+            source_type=item.source_type,
+            key=item.key,
+        )
+
+    def _hydrate_recent_items(self, items: list[_RecentItem]) -> list[_RecentItem]:
+        """Resolve TV season rows to episode-level titles and sort by recency."""
+        hydrated: list[_RecentItem] = []
+        for item in items:
+            if item.source_type == "season":
+                hydrated.append(self._resolve_latest_episode(item))
+            else:
+                hydrated.append(item)
+
+        return sorted(
+            hydrated,
+            key=lambda row: _to_int_optional(row.added_at) or 0,
+            reverse=True,
+        )
+
+    def _resolve_latest_episode(self, item: _RecentItem) -> _RecentItem:
+        """Convert a season row into a latest-episode label when possible."""
+        if not item.key:
+            return item
+
+        try:
+            children_xml = self._request_xml(item.key)
+        except RuntimeError:
+            return item
+
+        episodes = children_xml.findall("Video")
+        if not episodes:
+            return item
+
+        latest = max(
+            episodes,
+            key=lambda ep: _to_int_optional(ep.get("addedAt")) or 0,
+        )
+        show_title = str(
+            latest.get("grandparentTitle")
+            or latest.get("parentTitle")
+            or item.title
+        ).strip()
+        season_idx = _to_int_optional(latest.get("parentIndex"))
+        episode_idx = _to_int_optional(latest.get("index"))
+
+        if show_title and season_idx is not None and episode_idx is not None:
+            title = f"{show_title} S{season_idx:02d}E{episode_idx:02d}"
+        elif show_title:
+            title = show_title
+        else:
+            title = item.title
+
+        return _RecentItem(
+            title=title,
+            media_type="show",
+            library=item.library,
+            added_at=str(latest.get("addedAt") or item.added_at),
+            source_type="episode",
+            key=str(latest.get("key") or ""),
         )
 
     def _redact(self, value: str, *, redact_library: bool = False) -> str:
@@ -343,6 +404,7 @@ def _parse_recently_added(root: ET.Element) -> list[_RecentItem]:
     """Parse recently added rows from /library/recentlyAdded XML."""
     items: list[_RecentItem] = []
     for item in root.findall("Video") + root.findall("Directory") + root.findall("Track"):
+        raw_type = item.get("type", item.tag).strip().lower() or "unknown"
         media_type = _recent_media_type(item)
         title = _recent_display_title(item, media_type)
         library = str(item.get("librarySectionTitle") or "")
@@ -353,6 +415,8 @@ def _parse_recently_added(root: ET.Element) -> list[_RecentItem]:
                 media_type=media_type,
                 library=library,
                 added_at=added_at,
+                source_type=raw_type,
+                key=str(item.get("key") or ""),
             )
         )
     return items
@@ -500,7 +564,7 @@ def _render_session_rows(rows: list[_SessionRow]) -> str:
 
 def _render_recent_rows(rows: list[_RecentItem]) -> str:
     """Render recently-added rows for table widgets."""
-    return "\n".join(f"{row.media_type}|{row.library}|{row.title}" for row in rows)
+    return "\n".join(f"{row.library}|{row.title}" for row in rows)
 
 
 def _expand_session_keys(

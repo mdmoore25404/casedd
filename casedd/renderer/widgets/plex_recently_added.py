@@ -4,7 +4,7 @@ Consumes ``plex.recently_added.rows`` emitted by
 :class:`~casedd.getters.plex.PlexGetter` and renders recent library arrivals.
 
 Row format expected:
-    MEDIA_TYPE|LIBRARY|TITLE
+    LIBRARY|TITLE
 """
 
 from __future__ import annotations
@@ -32,7 +32,6 @@ from casedd.template.models import WidgetConfig
 class _RecentRow:
     """One parsed recently-added row."""
 
-    media_type: str
     library: str
     title: str
 
@@ -82,9 +81,8 @@ class PlexRecentlyAddedWidget(BaseWidget):
 
         left = inner.x + 4
         avail_w = inner.w - 8
-        type_right = left + int(avail_w * 0.20)
-        library_left = left + int(avail_w * 0.22)
-        title_left = left + int(avail_w * 0.48)
+        library_left = left + int(avail_w * 0.03)
+        title_left = left + int(avail_w * 0.34)
         right = left + avail_w
 
         y = inner.y + label_h + 4
@@ -93,7 +91,6 @@ class PlexRecentlyAddedWidget(BaseWidget):
             head_font,
             y,
             left,
-            type_right,
             library_left,
             title_left,
             right,
@@ -118,7 +115,6 @@ class PlexRecentlyAddedWidget(BaseWidget):
                 body_font,
                 y,
                 row,
-                type_right,
                 library_left,
                 title_left,
                 accent,
@@ -131,7 +127,6 @@ def _draw_header(  # noqa: PLR0913 -- explicit column positions keep draw path f
     font: FreeTypeFont | ImageFont,
     y: int,
     left: int,
-    type_right: int,
     library_left: int,
     title_left: int,
     right: int,
@@ -139,7 +134,6 @@ def _draw_header(  # noqa: PLR0913 -- explicit column positions keep draw path f
 ) -> None:
     """Draw recently-added table header row."""
     color = (188, 196, 208)
-    _draw_right(draw, font, y, type_right, "TYPE", color)
     draw.text((library_left, y), "LIBRARY", fill=color, font=font)
     draw.text((title_left, y), "TITLE", fill=color, font=font)
     underline_y = y + max(12, row_h - 2)
@@ -151,15 +145,13 @@ def _draw_row(  # noqa: PLR0913 -- explicit table geometry is clearer than packi
     font: FreeTypeFont | ImageFont,
     y: int,
     row: _RecentRow,
-    type_right: int,
     library_left: int,
     title_left: int,
-    accent: tuple[int, int, int],
+    _accent: tuple[int, int, int],
 ) -> None:
     """Draw one recently-added row."""
-    _draw_right(draw, font, y, type_right, row.media_type[:10], accent)
-    draw.text((library_left, y), row.library[:16], fill=(194, 201, 210), font=font)
-    draw.text((title_left, y), row.title[:28], fill=(225, 228, 233), font=font)
+    draw.text((library_left, y), row.library[:18], fill=(194, 201, 210), font=font)
+    draw.text((title_left, y), row.title[:34], fill=(225, 228, 233), font=font)
 
 
 def _draw_right(  # noqa: PLR0913 -- compact helper for right-aligned cells
@@ -182,8 +174,8 @@ def _parse_rows(text: str) -> list[_RecentRow]:
         stripped = line.strip()
         if not stripped:
             continue
-        parts = stripped.split("|", maxsplit=2)
-        if len(parts) != 3:
+        parts = stripped.split("|", maxsplit=1)
+        if len(parts) != 2:
             continue
-        rows.append(_RecentRow(media_type=parts[0], library=parts[1], title=parts[2]))
+        rows.append(_RecentRow(library=parts[0], title=parts[1]))
     return rows
