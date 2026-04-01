@@ -19,7 +19,7 @@ grid:
   # Row 2 (medium):  GPU use history   | GPU temp history  | VRAM used MB | Power sparkline
   # Row 3 (small):   VRAM free (span 2)                    | VRAM total | GPU count
   template_areas: |
-    gpu_use    gpu_use    gpu_temp      gpu_temp      vram_gauge    power_val
+    gpu_use    gpu_use    gpu_temp      gpu_temp      vram_gauge    gpu_name
     gpu_use    gpu_use    gpu_temp      gpu_temp      vram_used_abs power_hist
     vram_free  vram_free  vram_total    vram_total    gpu_count     power_hist
   columns: 1fr 1fr 1fr 1fr 1fr 1fr
@@ -75,14 +75,12 @@ widgets:
       - [70, "#ffcc00"]
       - [90, "#ff2222"]
 
-  power_val:
+  gpu_name:
     type: value
-    label: Power Draw
-    source: nvidia.power_w
+    label: GPU Model
+    source: nvidia.name
     padding: [4, 6]
-    precision: 0
-    unit: "W"
-    color: "#f0a040"
+    color: "#d7d9ea"
     font_size: auto
 
   vram_used_abs:

@@ -7,6 +7,7 @@ If ``nvidia-smi`` is absent or returns an error this getter disables itself
 cleanly — all calls become no-ops. No root or special permissions required.
 
 Store keys written:
+    - ``nvidia.name`` (str) -- Primary GPU model name
     - ``nvidia.percent`` (float) -- GPU utilisation 0-100
     - ``nvidia.temperature`` (float) — GPU temperature in °C
     - ``nvidia.memory_used_mb`` (float) — VRAM used in MB
@@ -19,6 +20,7 @@ import asyncio
 import logging
 import shutil
 import subprocess
+from typing import TypedDict
 
 from casedd.data_store import DataStore, StoreValue
 from casedd.getters.base import BaseGetter
@@ -26,7 +28,22 @@ from casedd.getters.base import BaseGetter
 _log = logging.getLogger(__name__)
 
 # nvidia-smi query fields — order must match parsed columns below.
-_QUERY = "index,utilization.gpu,temperature.gpu,memory.used,memory.total,power.draw"
+_QUERY = (
+    "index,name,utilization.gpu,temperature.gpu,memory.used,memory.total,power.draw"
+)
+
+
+class _GpuRow(TypedDict):
+    """Parsed single-GPU row from ``nvidia-smi``."""
+
+    idx: int
+    name: str
+    percent: float
+    temperature: float
+    memory_used_mb: float
+    memory_total_mb: float
+    memory_free_mb: float
+    power_w: float
 
 
 class GpuGetter(BaseGetter):
@@ -95,21 +112,22 @@ class GpuGetter(BaseGetter):
             return {}
 
         data: dict[str, StoreValue] = {}
-        gpu_rows: list[dict[str, float]] = []
+        gpu_rows: list[_GpuRow] = []
         for line in lines:
             parts = [p.strip() for p in line.split(",")]
-            if len(parts) != 6:
+            if len(parts) != 7:
                 continue
             try:
                 gpu_idx = int(parts[0])
-                row = {
-                    "idx": float(gpu_idx),
-                    "percent": float(parts[1]),
-                    "temperature": float(parts[2]),
-                    "memory_used_mb": float(parts[3]),
-                    "memory_total_mb": float(parts[4]),
-                    "memory_free_mb": float(parts[4]) - float(parts[3]),
-                    "power_w": float(parts[5]),
+                row: _GpuRow = {
+                    "idx": gpu_idx,
+                    "name": parts[1],
+                    "percent": float(parts[2]),
+                    "temperature": float(parts[3]),
+                    "memory_used_mb": float(parts[4]),
+                    "memory_total_mb": float(parts[5]),
+                    "memory_free_mb": float(parts[5]) - float(parts[4]),
+                    "power_w": float(parts[6]),
                 }
                 gpu_rows.append(row)
             except ValueError:
@@ -121,7 +139,8 @@ class GpuGetter(BaseGetter):
 
         data["nvidia.gpu_count"] = float(len(gpu_rows))
         for row in gpu_rows:
-            idx = int(row["idx"])
+            idx = row["idx"]
+            data[f"nvidia.{idx}.name"] = row["name"]
             data[f"nvidia.{idx}.percent"] = row["percent"]
             data[f"nvidia.{idx}.temperature"] = row["temperature"]
             data[f"nvidia.{idx}.memory_used_mb"] = row["memory_used_mb"]
@@ -131,7 +150,8 @@ class GpuGetter(BaseGetter):
 
         # Backward-compatible primary keys map to GPU index 0 if present,
         # otherwise the first reported GPU.
-        primary = next((row for row in gpu_rows if int(row["idx"]) == 0), gpu_rows[0])
+        primary = next((row for row in gpu_rows if row["idx"] == 0), gpu_rows[0])
+        data["nvidia.name"] = primary["name"]
         data["nvidia.percent"] = primary["percent"]
         data["nvidia.temperature"] = primary["temperature"]
         data["nvidia.memory_used_mb"] = primary["memory_used_mb"]

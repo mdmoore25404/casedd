@@ -22,12 +22,16 @@ def test_gpu_getter_emits_memory_free_fields() -> None:
         patch("casedd.getters.gpu.shutil.which", return_value="/usr/bin/nvidia-smi"),
         patch(
             "casedd.getters.gpu.subprocess.run",
-            return_value=_CompletedProcess("0, 12, 39, 14278, 16303, 12\n"),
+            return_value=_CompletedProcess(
+                "0, NVIDIA GeForce RTX 5070 Ti, 12, 39, 14278, 16303, 12\n"
+            ),
         ),
     ):
         getter = GpuGetter(store)
         payload = getter._sample()
 
+    assert payload["nvidia.name"] == "NVIDIA GeForce RTX 5070 Ti"
+    assert payload["nvidia.0.name"] == "NVIDIA GeForce RTX 5070 Ti"
     assert payload["nvidia.memory_used_mb"] == 14278.0
     assert payload["nvidia.memory_total_mb"] == 16303.0
     assert payload["nvidia.memory_free_mb"] == 2025.0

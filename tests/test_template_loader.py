@@ -138,6 +138,13 @@ def test_nvidia_detail_template_shows_free_vram_not_duplicate_used() -> None:
     assert vram_used_abs.label == "VRAM Used"
     assert vram_used_abs.source == "nvidia.memory_used_mb"
 
+    gpu_name = tmpl.widgets.get("gpu_name")
+    assert gpu_name is not None
+    assert gpu_name.label == "GPU Model"
+    assert gpu_name.source == "nvidia.name"
+
+    assert "power_val" not in tmpl.widgets
+
     vram_free = tmpl.widgets.get("vram_free")
     assert vram_free is not None
     assert vram_free.label == "VRAM Free"
