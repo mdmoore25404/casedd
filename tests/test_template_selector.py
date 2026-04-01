@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from casedd.config import RotationEntry, RotationSkipCondition
 from casedd.template.selector import TemplateSelector
 
@@ -160,6 +162,23 @@ class TestRotationLevelSkipIf:
         entry = RotationEntry(template="system_stats", skip_if=[])
         sel = _selector_with_entries([entry])
         assert sel.select_template({}) == "system_stats"
+
+    def test_skip_log_contains_reason(self, caplog: object) -> None:
+        """When an entry is skipped, selector logs the matched skip reason."""
+        entry = _make_entry(
+            "os_updates",
+            source="os_updates.actionable_count",
+            operator="eq",
+            value=0,
+        )
+        sel = _selector_with_entries([entry, RotationEntry(template="system_stats")])
+
+        with caplog.at_level(logging.DEBUG, logger="casedd.template.selector"):
+            chosen = sel.select_template({"os_updates.actionable_count": 0.0})
+
+        assert chosen == "system_stats"
+        assert "Rotation entry skipped:" in caplog.text
+        assert "os_updates.actionable_count=0.0 op=eq target=0.0" in caplog.text
 
 
 # ---------------------------------------------------------------------------
