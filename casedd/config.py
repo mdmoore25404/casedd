@@ -271,6 +271,10 @@ class Config:
             accept speed results only via ``POST /api/update``.  Use this when
             another machine on the network runs the actual speed test and pushes
             results via the REST ingestion endpoint.
+        speedtest_cache_path: Local JSON cache file used to persist the latest
+            ``speedtest.*`` values across daemon restarts.
+        speedtest_cache_max_age_hours: Maximum age in hours for cached speedtest
+            data restored at startup. Older cache snapshots are ignored.
         speedtest_binary: Speedtest CLI binary name or absolute path.
         speedtest_server_id: Optional Ookla server ID to force test target.
         htop_interval: Process table polling interval in seconds.
@@ -399,6 +403,8 @@ class Config:
     speedtest_marginal_ratio: float = Field(default=0.9)
     speedtest_critical_ratio: float = Field(default=0.7)
     speedtest_passive: bool = Field(default=False)
+    speedtest_cache_path: Path = Field(default=Path("run/speedtest-cache.json"))
+    speedtest_cache_max_age_hours: float = Field(default=8.0)
     speedtest_binary: str = Field(default="speedtest")
     speedtest_server_id: str | None = Field(default=None)
     htop_interval: float = Field(default=2.0)
@@ -636,6 +642,25 @@ class Config:
         """
         if not (0.0 < v <= 1.0):
             msg = f"Threshold ratios must be between 0 and 1, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("speedtest_cache_max_age_hours")
+    @classmethod
+    def _validate_speedtest_cache_max_age_hours(cls, v: float) -> float:
+        """Ensure speedtest cache max-age is positive and bounded.
+
+        Args:
+            v: Maximum cache age in hours.
+
+        Returns:
+            Validated max-age value.
+
+        Raises:
+            ValueError: If max-age is outside accepted bounds.
+        """
+        if not (0.1 <= v <= 720.0):
+            msg = f"speedtest_cache_max_age_hours must be between 0.1 and 720, got {v}"
             raise ValueError(msg)
         return v
 
@@ -1127,6 +1152,24 @@ def load_config() -> Config:
         speedtest_passive=str(
             _get("CASEDD_SPEEDTEST_PASSIVE", "speedtest_passive", "0")
         ) not in {"0", "false", "False", ""},
+        speedtest_cache_path=Path(
+            str(
+                _get(
+                    "CASEDD_SPEEDTEST_CACHE_PATH",
+                    "speedtest_cache_path",
+                    "run/speedtest-cache.json",
+                )
+            )
+        ),
+        speedtest_cache_max_age_hours=float(
+            str(
+                _get(
+                    "CASEDD_SPEEDTEST_CACHE_MAX_AGE_HOURS",
+                    "speedtest_cache_max_age_hours",
+                    8.0,
+                )
+            )
+        ),
         speedtest_binary=str(_get("CASEDD_SPEEDTEST_BINARY", "speedtest_binary", "speedtest")),
         speedtest_server_id=str(
             _get("CASEDD_SPEEDTEST_SERVER_ID", "speedtest_server_id", "")

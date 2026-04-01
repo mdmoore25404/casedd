@@ -19,6 +19,7 @@ from collections.abc import Callable
 import contextlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
+import json
 import logging
 from pathlib import Path
 import signal
@@ -84,6 +85,7 @@ _GETTER_SYNC_INTERVAL_SEC = 5.0
 _TEST_MODE_STORE_KEY = "casedd.test_mode"
 _TEMPLATE_FORCE_PREFIX = "casedd.template.force."
 _TEMPLATE_CURRENT_PREFIX = "casedd.template.current."
+_SPEEDTEST_KEY_PREFIX = "speedtest."
 
 # Visual indicator painted over trigger-held frames so the viewer knows
 # the template is being forced by an out-of-spec condition.
@@ -173,6 +175,7 @@ class Daemon:
         self._started_at = time.time()
 
         self._store.set(_TEST_MODE_STORE_KEY, 1 if self._cfg.test_mode else 0)
+        self._load_speedtest_cache()
         self._setup_framebuffer_detection()
 
         getters = self._create_getters()
@@ -225,6 +228,7 @@ class Daemon:
         try:
             await self._render_loop(context)
         finally:
+            self._save_speedtest_cache()
             _log.info("Shutting down CASEDD daemon…")
             for getter in getters:
                 getter.stop()
@@ -239,6 +243,117 @@ class Daemon:
             await registry.stop()
             await self._blackout_framebuffers(panel_runtimes)
             _log.info("Daemon shutdown complete.")
+
+    def _speedtest_snapshot(self) -> dict[str, StoreValue]:
+        """Return only the ``speedtest.*`` namespace from the live store.
+
+        Returns:
+            Flat mapping of cached ``speedtest.*`` keys and primitive values.
+        """
+        snapshot = self._store.snapshot()
+        return {
+            key: value
+            for key, value in snapshot.items()
+            if key.startswith(_SPEEDTEST_KEY_PREFIX)
+        }
+
+    @staticmethod
+    def _cache_payload_values(payload_obj: object) -> dict[str, StoreValue]:
+        """Extract valid ``speedtest.*`` values from a decoded cache payload.
+
+        Args:
+            payload_obj: Decoded JSON object from the cache file.
+
+        Returns:
+            Sanitized ``speedtest.*`` mapping.
+        """
+        if not isinstance(payload_obj, dict):
+            return {}
+
+        out: dict[str, StoreValue] = {}
+        for key_obj, value in payload_obj.items():
+            if not isinstance(key_obj, str):
+                continue
+            if not key_obj.startswith(_SPEEDTEST_KEY_PREFIX):
+                continue
+            if isinstance(value, bool):
+                continue
+            if not isinstance(value, float | int | str):
+                continue
+            out[key_obj] = value
+        return out
+
+    def _load_speedtest_cache(self) -> None:
+        """Restore fresh speedtest cache values into the in-memory data store."""
+        cache_path = self._cfg.speedtest_cache_path
+        try:
+            raw_payload = cache_path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return
+        except OSError:
+            _log.warning("Could not read speedtest cache file: %s", cache_path)
+            return
+
+        try:
+            payload_obj = json.loads(raw_payload)
+        except json.JSONDecodeError:
+            _log.warning("Ignoring invalid speedtest cache JSON: %s", cache_path)
+            return
+
+        if not isinstance(payload_obj, dict):
+            _log.warning("Ignoring malformed speedtest cache payload: %s", cache_path)
+            return
+
+        values = self._cache_payload_values(payload_obj.get("data"))
+        if not values:
+            return
+
+        saved_at_obj = payload_obj.get("saved_at_unix")
+        if isinstance(saved_at_obj, bool):
+            saved_at: float | None = None
+        elif isinstance(saved_at_obj, int | float):
+            saved_at = float(saved_at_obj)
+        else:
+            saved_at = None
+
+        if saved_at is None:
+            try:
+                saved_at = cache_path.stat().st_mtime
+            except OSError:
+                saved_at = None
+
+        if saved_at is not None:
+            age_hours = (time.time() - saved_at) / 3600.0
+            if age_hours > self._cfg.speedtest_cache_max_age_hours:
+                _log.info(
+                    "Skipping stale speedtest cache (age %.2fh > %.2fh)",
+                    age_hours,
+                    self._cfg.speedtest_cache_max_age_hours,
+                )
+                return
+
+        self._store.update(values)
+        _log.info("Restored %d speedtest cache values from %s", len(values), cache_path)
+
+    def _save_speedtest_cache(self) -> None:
+        """Persist latest ``speedtest.*`` values for next daemon startup."""
+        values = self._speedtest_snapshot()
+        if not values:
+            return
+
+        cache_path = self._cfg.speedtest_cache_path
+        payload = {
+            "saved_at_unix": time.time(),
+            "data": values,
+        }
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(
+                json.dumps(payload, separators=(",", ":")),
+                encoding="utf-8",
+            )
+        except OSError:
+            _log.warning("Could not write speedtest cache file: %s", cache_path)
 
     def _setup_framebuffer_detection(self) -> None:
         """Detect framebuffers and handle display claiming if configured."""

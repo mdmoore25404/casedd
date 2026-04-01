@@ -253,3 +253,28 @@ def test_servarr_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None
         assert cfg.sonarr_timeout == 6.0
         assert cfg.sonarr_calendar_days == 9
         assert cfg.sonarr_verify_tls is False
+
+
+def test_speedtest_cache_yaml_settings_parse(
+        monkeypatch: object,
+        tmp_path: Path,
+) -> None:
+        """Speedtest cache YAML settings map into typed config fields."""
+        cfg_path = tmp_path / "casedd.yaml"
+        cfg_path.write_text(
+                "\n".join(
+                        [
+                                "speedtest_cache_path: run/custom-speedtest-cache.json",
+                                "speedtest_cache_max_age_hours: 12",
+                        ]
+                ),
+                encoding="utf-8",
+        )
+
+        monkeypatch_obj = monkeypatch
+        monkeypatch_obj.setenv("CASEDD_CONFIG", str(cfg_path))
+
+        cfg = load_config()
+
+        assert cfg.speedtest_cache_path == Path("run/custom-speedtest-cache.json")
+        assert cfg.speedtest_cache_max_age_hours == 12.0

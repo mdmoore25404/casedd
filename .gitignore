@@ -196,6 +196,7 @@ cython_debug/
 
 # CASEDD runtime dirs (dev — PID files, logs)
 run/*.pid
+run/speedtest-cache.json
 logs/*.log
 
 # Generated API docs (regenerate locally with ./dev.sh docs)
