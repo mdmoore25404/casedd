@@ -17,7 +17,7 @@ grid:
   # 4 columns, 3 rows:
   # Row 1 (largest): GPU use sparkline | GPU temp sparkline | VRAM gauge | Power value
   # Row 2 (medium):  GPU use history   | GPU temp history  | VRAM bar   | Power sparkline
-  # Row 3 (small):   VRAM MB used (span 2)                 | VRAM total | Power label
+  # Row 3 (small):   VRAM free (span 2)                    | VRAM total | Power label
   template_areas: |
     gpu_use    gpu_use    gpu_temp   gpu_temp   vram_gauge   power_val
     gpu_use    gpu_use    gpu_temp   gpu_temp   vram_bar     power_hist
@@ -112,8 +112,8 @@ widgets:
 
   vram_used:
     type: value
-    label: VRAM Used
-    source: nvidia.memory_used_mb
+    label: VRAM Free
+    source: nvidia.memory_free_mb
     padding: [2, 8]
     precision: 0
     unit: "MB"

@@ -36,7 +36,6 @@ Store keys written:
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
 import json
 import logging
 import shutil
@@ -45,6 +44,7 @@ from typing import cast
 
 from casedd.data_store import DataStore, StoreValue
 from casedd.getters.base import BaseGetter
+from casedd.speedtest_fields import enrich_speedtest_timestamp_fields, now_local_timestamp
 
 _log = logging.getLogger(__name__)
 
@@ -284,7 +284,7 @@ class SpeedtestGetter(BaseGetter):
         download_status = self._status_for_ratio(download_mbps / ref_down_mbps)
         upload_status = self._status_for_ratio(upload_mbps / ref_up_mbps)
 
-        now = datetime.now(UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+        now = now_local_timestamp()
         summary = (
             f"Down {download_mbps:.1f} Mb/s ({download_status}) | "
             f"Up {upload_mbps:.1f} Mb/s ({upload_status}) | "
@@ -300,7 +300,7 @@ class SpeedtestGetter(BaseGetter):
             self._extract_server(payload)
         )
 
-        return {
+        values: dict[str, StoreValue] = {
             "speedtest.download_mbps": round(download_mbps, 2),
             "speedtest.upload_mbps": round(upload_mbps, 2),
             "speedtest.ping_ms": round(ping_latency, 2),
@@ -323,6 +323,8 @@ class SpeedtestGetter(BaseGetter):
             "speedtest.server_country": server_country,
             "speedtest.server_host": server_host,
         }
+        enrich_speedtest_timestamp_fields(values)
+        return values
 
     def _extract_server(
         self,

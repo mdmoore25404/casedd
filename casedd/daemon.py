@@ -67,6 +67,7 @@ from casedd.outputs.websocket import WebSocketOutput
 from casedd.renderer.color import parse_color
 from casedd.renderer.engine import RenderEngine
 from casedd.renderer.fonts import get_font
+from casedd.speedtest_fields import enrich_speedtest_timestamp_fields
 from casedd.template.models import Template, WidgetConfig
 from casedd.template.registry import TemplateRegistry
 from casedd.template.selector import TemplateSelector
@@ -332,6 +333,7 @@ class Daemon:
                 )
                 return
 
+        enrich_speedtest_timestamp_fields(values)
         self._store.update(values)
         _log.info("Restored %d speedtest cache values from %s", len(values), cache_path)
 

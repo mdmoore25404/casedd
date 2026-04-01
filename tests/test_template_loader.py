@@ -91,6 +91,49 @@ def test_load_servarr_dashboard_template_file() -> None:
     assert tmpl.name == "servarr_dashboard"
 
 
+def test_load_speedtest_template_file() -> None:
+    """speedtest.casedd in templates/ loads without validation errors."""
+    real = Path("templates/speedtest.casedd")
+    if not real.exists():
+        pytest.skip("templates/speedtest.casedd not present")
+    tmpl = load_template(real)
+    assert tmpl.name == "speedtest"
+
+
+def test_speedtest_template_uses_split_last_run_display() -> None:
+    """speedtest.casedd uses the newline-friendly last test display field."""
+    real = Path("templates/speedtest.casedd")
+    if not real.exists():
+        pytest.skip("templates/speedtest.casedd not present")
+
+    tmpl = load_template(real)
+    ping_jitter = tmpl.widgets.get("ping_jitter")
+    assert ping_jitter is not None
+    assert ping_jitter.children[0].source == "speedtest.last_run_display"
+
+
+def test_load_nvidia_detail_template_file() -> None:
+    """nvidia_detail.casedd in templates/ loads without validation errors."""
+    real = Path("templates/nvidia_detail.casedd")
+    if not real.exists():
+        pytest.skip("templates/nvidia_detail.casedd not present")
+    tmpl = load_template(real)
+    assert tmpl.name == "nvidia_detail"
+
+
+def test_nvidia_detail_template_shows_free_vram_not_duplicate_used() -> None:
+    """nvidia_detail.casedd uses free VRAM in the lower readout slot."""
+    real = Path("templates/nvidia_detail.casedd")
+    if not real.exists():
+        pytest.skip("templates/nvidia_detail.casedd not present")
+
+    tmpl = load_template(real)
+    vram_used = tmpl.widgets.get("vram_used")
+    assert vram_used is not None
+    assert vram_used.label == "VRAM Free"
+    assert vram_used.source == "nvidia.memory_free_mb"
+
+
 def test_servarr_dashboard_logo_and_header_stats_layout() -> None:
     """servarr_dashboard.casedd uses full-width queue tables with rich headers."""
     real = Path("templates/servarr_dashboard.casedd")

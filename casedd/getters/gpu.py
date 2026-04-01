@@ -10,6 +10,7 @@ Store keys written:
     - ``nvidia.percent`` (float) -- GPU utilisation 0-100
     - ``nvidia.temperature`` (float) — GPU temperature in °C
     - ``nvidia.memory_used_mb`` (float) — VRAM used in MB
+    - ``nvidia.memory_free_mb`` (float) — VRAM free in MB
     - ``nvidia.memory_total_mb`` (float) — VRAM total in MB
     - ``nvidia.power_w`` (float) — GPU power draw in Watts
 """
@@ -107,6 +108,7 @@ class GpuGetter(BaseGetter):
                     "temperature": float(parts[2]),
                     "memory_used_mb": float(parts[3]),
                     "memory_total_mb": float(parts[4]),
+                    "memory_free_mb": float(parts[4]) - float(parts[3]),
                     "power_w": float(parts[5]),
                 }
                 gpu_rows.append(row)
@@ -123,6 +125,7 @@ class GpuGetter(BaseGetter):
             data[f"nvidia.{idx}.percent"] = row["percent"]
             data[f"nvidia.{idx}.temperature"] = row["temperature"]
             data[f"nvidia.{idx}.memory_used_mb"] = row["memory_used_mb"]
+            data[f"nvidia.{idx}.memory_free_mb"] = row["memory_free_mb"]
             data[f"nvidia.{idx}.memory_total_mb"] = row["memory_total_mb"]
             data[f"nvidia.{idx}.power_w"] = row["power_w"]
 
@@ -132,6 +135,7 @@ class GpuGetter(BaseGetter):
         data["nvidia.percent"] = primary["percent"]
         data["nvidia.temperature"] = primary["temperature"]
         data["nvidia.memory_used_mb"] = primary["memory_used_mb"]
+        data["nvidia.memory_free_mb"] = primary["memory_free_mb"]
         data["nvidia.memory_total_mb"] = primary["memory_total_mb"]
         data["nvidia.power_w"] = primary["power_w"]
         # Compute VRAM utilisation % for the primary GPU.
@@ -141,5 +145,6 @@ class GpuGetter(BaseGetter):
             )
 
         data["nvidia.total_memory_used_mb"] = sum(row["memory_used_mb"] for row in gpu_rows)
+        data["nvidia.total_memory_free_mb"] = sum(row["memory_free_mb"] for row in gpu_rows)
         data["nvidia.total_memory_mb"] = sum(row["memory_total_mb"] for row in gpu_rows)
         return data

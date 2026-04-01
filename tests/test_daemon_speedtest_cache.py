@@ -45,6 +45,9 @@ def test_load_speedtest_cache_restores_fresh_values(tmp_path: Path) -> None:
     assert snapshot["speedtest.download_mbps"] == 923.4
     assert snapshot["speedtest.upload_mbps"] == 114.2
     assert snapshot["speedtest.last_run"] == "2026-03-31 09:00:00"
+    assert snapshot["speedtest.last_run_date"] == "2026-03-31"
+    assert snapshot["speedtest.last_run_time"] == "09:00:00"
+    assert snapshot["speedtest.last_run_display"] == "2026-03-31\n09:00:00"
     assert "cpu.percent" not in snapshot
 
 
