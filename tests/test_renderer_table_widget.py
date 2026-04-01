@@ -5,7 +5,7 @@ from __future__ import annotations
 from PIL import Image
 
 from casedd.data_store import DataStore
-from casedd.renderer.widgets.table import TableWidget
+from casedd.renderer.widgets.table import TableWidget, _split_phasing_suffix
 from casedd.template.grid import Rect
 from casedd.template.models import WidgetConfig, WidgetType
 
@@ -103,6 +103,15 @@ def test_table_widget_auto_font_is_bounded_for_single_row() -> None:
     assert bbox is not None
     # Keep glyph height reasonable for readability in mixed table dashboards.
     assert (bbox[3] - bbox[1]) < 90
+
+
+def test_split_phasing_suffix() -> None:
+    """Table helper should isolate phasing suffix for muted rendering."""
+    assert _split_phasing_suffix("1.2.3 [SEC] (phasing)") == (
+        "1.2.3 [SEC]",
+        " (phasing)",
+    )
+    assert _split_phasing_suffix("1.2.3 [SEC]") == ("1.2.3 [SEC]", "")
 
 
 def test_table_widget_max_font_size_caps_auto_selection() -> None:

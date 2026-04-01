@@ -241,6 +241,19 @@ def test_invokeai_env_settings_parse(monkeypatch: object, tmp_path: Path) -> Non
         assert cfg.invokeai_verify_tls is False
 
 
+def test_os_updates_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
+        """OS updates env vars should map into typed config fields."""
+        monkeypatch_obj = monkeypatch
+        monkeypatch_obj.setenv("CASEDD_CONFIG", str(tmp_path / "missing.yaml"))
+        monkeypatch_obj.setenv("CASEDD_OS_UPDATES_INTERVAL", "120")
+        monkeypatch_obj.setenv("CASEDD_OS_UPDATES_MANAGER", "apt")
+
+        cfg = load_config()
+
+        assert cfg.os_updates_interval == 120.0
+        assert cfg.os_updates_manager == "apt"
+
+
 def test_servarr_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
         """Radarr/Sonarr env vars should map into typed config fields."""
         monkeypatch_obj = monkeypatch

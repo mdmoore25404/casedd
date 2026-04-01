@@ -1,0 +1,72 @@
+# os_updates.casedd — OS package updates and security summary
+
+name: os_updates
+description: Available OS package updates with security-related indicators.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#12161d"
+refresh_rate: 0.5
+
+grid:
+  template_areas: |
+    manager total security phased has_updates has_phased
+    table   table table    table  table       table
+    table   table table    table  table       table
+  columns: 1fr 1fr 1fr 1fr 1fr 1fr
+  rows: 0.9fr 1fr 1fr
+
+widgets:
+  manager:
+    type: value
+    label: Manager
+    source: os_updates.manager
+    color: "#9bd6ff"
+    padding: [4, 8]
+
+  total:
+    type: value
+    label: Updates
+    source: os_updates.total_count
+    precision: 0
+    color: "#ffd38a"
+    padding: [4, 8]
+
+  security:
+    type: value
+    label: Security
+    source: os_updates.security_count
+    precision: 0
+    color: "#ff8f8f"
+    padding: [4, 8]
+
+  phased:
+    type: value
+    label: Phased
+    source: os_updates.phased_count
+    precision: 0
+    color: "#b8c0ca"
+    padding: [4, 8]
+
+  has_updates:
+    type: boolean
+    label: Any Updates
+    source: os_updates.has_updates
+    color: "#8de5a9"
+    padding: [4, 8]
+
+  has_phased:
+    type: boolean
+    label: Phasing Held
+    source: os_updates.has_phased_updates
+    color: "#b8c0ca"
+    padding: [4, 8]
+
+  table:
+    type: table
+    label: Packages (Version [SEC] (phasing))
+    source: os_updates.rows
+    color: "#e8edf5"
+    font_size: auto
+    table_fit_text: true
+    max_items: 18
+    padding: [6, 10]

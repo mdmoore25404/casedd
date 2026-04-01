@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # dev.sh — CASEDD development workflow script
 #
-# Usage: ./dev.sh <command>
+# Usage: ./dev.sh [--config <path>] <command>
 #
 # Commands:
 #   start     Start daemon + advanced app dev server in the background
@@ -32,6 +32,7 @@ DEV_FB_PREF_FILE="$REPO_ROOT/run/casedd-dev-use-fb.pref"
 WEB_DIR="$REPO_ROOT/web"
 WEB_PID_FILE="$REPO_ROOT/run/casedd-web.pid"
 WEB_LOG_FILE="$REPO_ROOT/logs/casedd-web.log"
+DEV_CONFIG_FILE=""
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -242,6 +243,21 @@ cmd_start() {
     _load_env
     _ensure_dirs
 
+    if [[ -n "$DEV_CONFIG_FILE" ]]; then
+        local resolved_config
+        if [[ "$DEV_CONFIG_FILE" = /* ]]; then
+            resolved_config="$DEV_CONFIG_FILE"
+        else
+            resolved_config="$REPO_ROOT/$DEV_CONFIG_FILE"
+        fi
+        if [[ ! -f "$resolved_config" ]]; then
+            echo "ERROR: config file not found: $resolved_config" >&2
+            exit 1
+        fi
+        export CASEDD_CONFIG="$resolved_config"
+        echo "Using config file: $CASEDD_CONFIG"
+    fi
+
     # Development profile:
     # - force verbose logging for active debugging
     # - disable framebuffer output by default so UI iteration uses the web viewer
@@ -445,11 +461,58 @@ cmd_help() {
     grep '^#' "$0" | sed 's/^# \?//'
 }
 
+_parse_args() {
+    local args=("$@")
+    local idx=0
+    local command=""
+    local parsed_args=()
+
+    while (( idx < ${#args[@]} )); do
+        case "${args[$idx]}" in
+            --config|-c)
+                idx=$((idx + 1))
+                if (( idx >= ${#args[@]} )); then
+                    echo "ERROR: --config requires a path" >&2
+                    exit 1
+                fi
+                DEV_CONFIG_FILE="${args[$idx]}"
+                ;;
+            --help|-h|help)
+                command="help"
+                ;;
+            start|start-fb|stop|restart|status|logs|lint|test|docs|pages)
+                if [[ -z "$command" ]]; then
+                    command="${args[$idx]}"
+                else
+                    parsed_args+=("${args[$idx]}")
+                fi
+                ;;
+            *)
+                if [[ -z "$command" ]]; then
+                    command="${args[$idx]}"
+                else
+                    parsed_args+=("${args[$idx]}")
+                fi
+                ;;
+        esac
+        idx=$((idx + 1))
+    done
+
+    if [[ -z "$command" ]]; then
+        command="help"
+    fi
+
+    DEV_COMMAND="$command"
+    DEV_COMMAND_ARGS=("${parsed_args[@]}")
+}
+
 # ---------------------------------------------------------------------------
 # Dispatch
 # ---------------------------------------------------------------------------
 
-case "${1:-help}" in
+_parse_args "$@"
+
+case "$DEV_COMMAND" in
     start)   cmd_start ;;
     start-fb) cmd_start_fb ;;
     stop)    cmd_stop ;;
@@ -457,12 +520,12 @@ case "${1:-help}" in
     status)  cmd_status ;;
     logs)    cmd_logs ;;
     lint)    cmd_lint ;;
-    test)    cmd_test "${@:2}" ;;
+    test)    cmd_test "${DEV_COMMAND_ARGS[@]}" ;;
     docs)    cmd_docs ;;
     pages)   cmd_pages ;;
     help|--help|-h) cmd_help ;;
     *)
-        echo "Unknown command: $1" >&2
+        echo "Unknown command: $DEV_COMMAND" >&2
         echo "Run './dev.sh help' for usage." >&2
         exit 1
         ;;

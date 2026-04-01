@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, time
+import logging
 import time as monotonic_time
 
 from casedd.config import (
@@ -26,6 +27,8 @@ from casedd.config import (
     TemplateTriggerRule,
 )
 from casedd.data_store import StoreValue
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -391,43 +394,123 @@ class TemplateSelector:
         Returns:
             ``True`` when the entry should be skipped this tick.
         """
-        # Rotation-level conditions take full priority.
-        conditions = entry.skip_if
-        # Fall back to template-level conditions when rotation entry has none.
-        if not conditions and self._template_resolver is not None:
-            conditions = self._template_resolver(entry.template)
-        if not conditions:
-            return False
-        return all(self._skip_cond_match(cond, snapshot) for cond in conditions)
+        # Rotation-level conditions: user explicitly configured these in casedd.yaml.
+        # Missing keys should not auto-skip; the condition result decides.
+        rotation_conditions = entry.skip_if
+        if rotation_conditions:
+            matched, reasons = self._skip_conditions_match(
+                rotation_conditions,
+                snapshot,
+                missing_skips=False,
+            )
+            if matched:
+                LOGGER.debug(
+                    "Rotation entry skipped: template=%s level=rotation reasons=%s",
+                    entry.template,
+                    "; ".join(reasons),
+                )
+            return matched
+
+        # Template-level fallback: when no entry-level skip_if is configured,
+        # missing keys should hide templates until data has arrived.
+        if self._template_resolver is not None:
+            template_conditions = self._template_resolver(entry.template)
+            if template_conditions:
+                matched, reasons = self._skip_conditions_match(
+                    template_conditions,
+                    snapshot,
+                    missing_skips=True,
+                )
+                if matched:
+                    LOGGER.debug(
+                        "Rotation entry skipped: template=%s level=template reasons=%s",
+                        entry.template,
+                        "; ".join(reasons),
+                    )
+                return matched
+        return False
 
     @staticmethod
-    def _skip_cond_match(cond: RotationSkipCondition, snapshot: dict[str, StoreValue]) -> bool:
+    def _skip_conditions_match(
+        conditions: list[RotationSkipCondition],
+        snapshot: dict[str, StoreValue],
+        *,
+        missing_skips: bool,
+    ) -> tuple[bool, list[str]]:
+        """Evaluate all skip conditions and collect match reasons for debug logs."""
+        reasons: list[str] = []
+        for cond in conditions:
+            matched, reason = TemplateSelector._skip_cond_eval(
+                cond,
+                snapshot,
+                missing_skips=missing_skips,
+            )
+            if not matched:
+                return False, []
+            reasons.append(reason)
+        return True, reasons
+
+    @staticmethod
+    def _skip_cond_eval(
+        cond: RotationSkipCondition,
+        snapshot: dict[str, StoreValue],
+        *,
+        missing_skips: bool,
+    ) -> tuple[bool, str]:
+        """Evaluate one skip condition and return match status plus reason text."""
+        value = snapshot.get(cond.source)
+        if value is None:
+            matched = missing_skips
+            return matched, f"{cond.source}=missing op={cond.operator} target={cond.value}"
+
+        value_num = _to_float(value)
+        target_num = _to_float(cond.value)
+        if value_num is not None and target_num is not None:
+            matched = _compare(value_num, target_num, cond.operator)
+            return (
+                matched,
+                f"{cond.source}={value_num} op={cond.operator} target={target_num}",
+            )
+
+        if cond.operator == "eq":
+            matched = str(value) == str(cond.value)
+            return (
+                matched,
+                f"{cond.source}={value} op=eq target={cond.value}",
+            )
+        if cond.operator == "neq":
+            matched = str(value) != str(cond.value)
+            return (
+                matched,
+                f"{cond.source}={value} op=neq target={cond.value}",
+            )
+        return False, f"{cond.source}={value} op={cond.operator} target={cond.value}"
+
+    @staticmethod
+    def _skip_cond_match(
+        cond: RotationSkipCondition,
+        snapshot: dict[str, StoreValue],
+        *,
+        missing_skips: bool = True,
+    ) -> bool:
         """Evaluate one skip condition against the current store snapshot.
 
-        A missing key evaluates to ``True`` so that templates whose data has
-        never arrived are hidden.
+        Missing-key behavior is caller-controlled by ``missing_skips``.
 
         Args:
             cond: Skip condition to evaluate.
             snapshot: Current data-store snapshot.
+            missing_skips: Whether a missing key should be treated as matched.
 
         Returns:
             ``True`` when the condition matches (i.e. the entry should be skipped).
         """
-        value = snapshot.get(cond.source)
-        if value is None:
-            # Key not present → treat as satisfied (skip the template)
-            return True
-        value_num = _to_float(value)
-        target_num = _to_float(cond.value)
-        if value_num is not None and target_num is not None:
-            return _compare(value_num, target_num, cond.operator)
-        # Non-numeric fallback for eq/neq comparisons on string states.
-        if cond.operator == "eq":
-            return str(value) == str(cond.value)
-        if cond.operator == "neq":
-            return str(value) != str(cond.value)
-        return False
+        matched, _reason = TemplateSelector._skip_cond_eval(
+            cond,
+            snapshot,
+            missing_skips=missing_skips,
+        )
+        return matched
 
     @staticmethod
     def _trigger_match(value: StoreValue | None, rule: TemplateTriggerRule) -> bool:

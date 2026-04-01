@@ -141,20 +141,37 @@ class TableWidget(BaseWidget):
         left_x = inner.x + 1
         right_x = inner.x + inner.w - 2
 
+        muted_suffix_color = (75, 80, 88)
         for row in prepared.rows:
             left_bb = draw.textbbox((0, 0), row.left, font=prepared.font)
             left_y = y - int(left_bb[1])
             draw.text((left_x, left_y), row.left, fill=color, font=prepared.font)
 
-            right_y = y
+            right_main, right_suffix = _split_phasing_suffix(row.right)
             right_bb = draw.textbbox((0, 0), row.right, font=prepared.font)
             right_y = y - int(right_bb[1])
-            draw.text(
-                (right_x - row.right_width, right_y),
-                row.right,
-                fill=color,
-                font=prepared.font,
-            )
+            right_origin_x = right_x - row.right_width
+            if right_suffix:
+                main_w = _text_width(draw, prepared.font, right_main, None)
+                draw.text(
+                    (right_origin_x, right_y),
+                    right_main,
+                    fill=color,
+                    font=prepared.font,
+                )
+                draw.text(
+                    (right_origin_x + main_w, right_y),
+                    right_suffix,
+                    fill=muted_suffix_color,
+                    font=prepared.font,
+                )
+            else:
+                draw.text(
+                    (right_origin_x, right_y),
+                    row.right,
+                    fill=color,
+                    font=prepared.font,
+                )
             y += prepared.row_h
 
 
@@ -229,6 +246,14 @@ def _parse_rows(source_text: str) -> list[_Row]:
 def _strip_rank_prefix(value: str) -> str:
     """Remove leading numeric rank markers like ``1. `` from legacy rows."""
     return re.sub(r"^\s*\d+\.\s+", "", value)
+
+
+def _split_phasing_suffix(value: str) -> tuple[str, str]:
+    """Split right-column text into main value and muted phasing suffix."""
+    suffix = " (phasing)"
+    if value.endswith(suffix):
+        return value[: -len(suffix)], suffix
+    return value, ""
 
 
 def _fit_font(

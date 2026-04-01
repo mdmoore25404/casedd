@@ -14,6 +14,7 @@ Available getters:
     - :mod:`casedd.getters.disk` — Disk usage
     - :mod:`casedd.getters.network` — Network byte rates
     - :mod:`casedd.getters.nzbget` — NZBGet downloader queue and history
+    - :mod:`casedd.getters.os_updates` — OS package update/security status
     - :mod:`casedd.getters.ollama` — Ollama API runtime state
     - :mod:`casedd.getters.pihole` — Pi-hole DNS filtering/query telemetry
     - :mod:`casedd.getters.plex` — Plex server/session/library telemetry

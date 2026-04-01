@@ -285,6 +285,8 @@ class Config:
         weather_lat: Optional latitude override for weather polling.
         weather_lon: Optional longitude override for weather polling.
         weather_user_agent: User-Agent header sent to weather APIs.
+        os_updates_interval: OS package-update polling interval in seconds.
+        os_updates_manager: Package manager mode (auto/apt/dnf).
         invokeai_base_url: InvokeAI API base URL.
         invokeai_api_token: Optional InvokeAI API token for bearer auth.
         invokeai_interval: InvokeAI polling interval in seconds.
@@ -422,6 +424,8 @@ class Config:
     weather_user_agent: str = Field(
         default="CASEDD/0.2 (https://github.com/casedd/casedd)",
     )
+    os_updates_interval: float = Field(default=900.0)
+    os_updates_manager: str = Field(default="auto")
     invokeai_base_url: str = Field(default="http://localhost:9090")
     invokeai_api_token: str | None = Field(default=None, repr=False)
     invokeai_interval: float = Field(default=5.0)
@@ -701,6 +705,26 @@ class Config:
             msg = f"invokeai_interval must be between 1 and 3600 seconds, got {v}"
             raise ValueError(msg)
         return v
+
+    @field_validator("os_updates_interval")
+    @classmethod
+    def _validate_os_updates_interval(cls, v: float) -> float:
+        """Ensure OS updates polling interval is positive and practical."""
+        if not (10.0 <= v <= 86400.0):
+            msg = f"os_updates_interval must be between 10 and 86400 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("os_updates_manager")
+    @classmethod
+    def _validate_os_updates_manager(cls, v: str) -> str:
+        """Normalize and validate package manager mode."""
+        normalized = v.strip().lower()
+        valid = {"auto", "apt", "dnf"}
+        if normalized not in valid:
+            msg = f"os_updates_manager must be one of {sorted(valid)}, got {v!r}"
+            raise ValueError(msg)
+        return normalized
 
     @field_validator("invokeai_timeout")
     @classmethod
@@ -1219,6 +1243,12 @@ def load_config() -> Config:
                 "weather_user_agent",
                 "CASEDD/0.2 (https://github.com/casedd/casedd)",
             )
+        ),
+        os_updates_interval=float(
+            str(_get("CASEDD_OS_UPDATES_INTERVAL", "os_updates_interval", 900.0))
+        ),
+        os_updates_manager=str(
+            _get("CASEDD_OS_UPDATES_MANAGER", "os_updates_manager", "auto")
         ),
         invokeai_base_url=str(
             _get("CASEDD_INVOKEAI_BASE_URL", "invokeai_base_url", "http://localhost:9090")
