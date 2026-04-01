@@ -64,7 +64,7 @@ widgets:
     source: radarr.queue.rows
     table_fit_text: false
     max_items: 10
-    max_font_size: 18
+    max_font_size: 14
     color: "#dfeaf4"
     padding: [2, 8]
 
