@@ -1,0 +1,104 @@
+# invokeai.casedd — InvokeAI queue and runtime dashboard
+
+name: invokeai
+description: InvokeAI queue depth, latest job metadata, and VRAM/model signals.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#11151a"
+refresh_rate: 2.0
+
+grid:
+  template_areas: |
+    queue      queue      queue      queue      queue
+    latest     latest     latest     runtime    runtime
+    latest     latest     latest     runtime    runtime
+  columns: 1fr 1fr 1fr 1fr 1fr
+  rows: 0.85fr 1fr 1fr
+
+widgets:
+  queue:
+    type: panel
+    direction: row
+    gap: 8
+    padding: [6, 10]
+    children:
+      - type: value
+        label: Pending
+        source: invokeai.queue.pending_count
+        precision: 0
+        color: "#89d4ff"
+      - type: value
+        label: In Progress
+        source: invokeai.queue.in_progress_count
+        precision: 0
+        color: "#ffd38a"
+      - type: value
+        label: Failed
+        source: invokeai.queue.failed_count
+        precision: 0
+        color: "#ff8d8d"
+      - type: value
+        label: Loaded Models
+        source: invokeai.models.loaded_count
+        precision: 0
+        color: "#a4f2a9"
+      - type: value
+        label: Version
+        source: invokeai.version
+        color: "#d2dbe6"
+
+  latest:
+    type: panel
+    direction: column
+    gap: 4
+    padding: [8, 12]
+    children:
+      - type: value
+        label: Last Job ID
+        source: invokeai.last_job.id
+        color: "#d2dbe6"
+      - type: value
+        label: Status
+        source: invokeai.last_job.status
+        color: "#d2dbe6"
+      - type: value
+        label: Model
+        source: invokeai.last_job.model
+        color: "#d2dbe6"
+      - type: value
+        label: Width
+        source: invokeai.last_job.width
+        precision: 0
+        color: "#d2dbe6"
+      - type: value
+        label: Height
+        source: invokeai.last_job.height
+        precision: 0
+        color: "#d2dbe6"
+      - type: value
+        label: Completed
+        source: invokeai.last_job.completed_at
+        color: "#d2dbe6"
+
+  runtime:
+    type: panel
+    direction: column
+    gap: 6
+    padding: [8, 12]
+    children:
+      - type: value
+        label: VRAM Used MB
+        source: invokeai.system.vram_used_mb
+        precision: 0
+        color: "#98d7ff"
+      - type: value
+        label: VRAM Total MB
+        source: invokeai.system.vram_total_mb
+        precision: 0
+        color: "#98d7ff"
+      - type: gauge
+        label: VRAM %
+        source: invokeai.system.vram_used_mb
+        min: 0
+        max: 24576
+        color: "#ffb36e"

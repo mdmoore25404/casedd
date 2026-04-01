@@ -91,3 +91,8 @@ def test_getter_name_for_source_includes_servarr_namespaces() -> None:
     assert Daemon._getter_name_for_source("radarr.queue.total") == "RadarrGetter"
     assert Daemon._getter_name_for_source("sonarr.queue.total") == "SonarrGetter"
     assert Daemon._getter_name_for_source("servarr.queue.total") == "ServarrAggregateGetter"
+
+
+def test_getter_name_for_source_includes_invokeai() -> None:
+    """InvokeAI namespace should resolve to InvokeAIGetter."""
+    assert Daemon._getter_name_for_source("invokeai.queue.pending_count") == "InvokeAIGetter"

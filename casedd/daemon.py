@@ -45,6 +45,7 @@ from casedd.getters.disk import DiskGetter
 from casedd.getters.fans import FanGetter
 from casedd.getters.gpu import GpuGetter
 from casedd.getters.htop import HtopGetter
+from casedd.getters.invokeai import InvokeAIGetter
 from casedd.getters.memory import MemoryGetter
 from casedd.getters.net_ports import NetPortsGetter
 from casedd.getters.network import NetworkGetter
@@ -1010,6 +1011,14 @@ class Daemon:
                 marginal_ratio=self._cfg.speedtest_marginal_ratio,
                 critical_ratio=self._cfg.speedtest_critical_ratio,
             ),
+            InvokeAIGetter(
+                self._store,
+                base_url=self._cfg.invokeai_base_url,
+                api_token=self._cfg.invokeai_api_token,
+                interval=self._cfg.invokeai_interval,
+                timeout=self._cfg.invokeai_timeout,
+                verify_tls=self._cfg.invokeai_verify_tls,
+            ),
             OllamaGetter(
                 self._store,
                 base_url=self._cfg.ollama_api_base,
@@ -1200,6 +1209,7 @@ class Daemon:
             ("system.", "SystemGetter"),
             ("fans.", "FanGetter"),
             ("speedtest.", "SpeedtestGetter"),
+            ("invokeai.", "InvokeAIGetter"),
             ("ollama.", "OllamaGetter"),
             ("ups.", "UpsGetter"),
             ("pihole.", "PiHoleGetter"),

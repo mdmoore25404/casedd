@@ -222,6 +222,25 @@ def test_pihole_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
         assert cfg.pihole_interval == 15.0
 
 
+def test_invokeai_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
+        """InvokeAI env vars should map into typed config fields."""
+        monkeypatch_obj = monkeypatch
+        monkeypatch_obj.setenv("CASEDD_CONFIG", str(tmp_path / "missing.yaml"))
+        monkeypatch_obj.setenv("CASEDD_INVOKEAI_BASE_URL", "http://bandit:9090")
+        monkeypatch_obj.setenv("CASEDD_INVOKEAI_API_TOKEN", "token")
+        monkeypatch_obj.setenv("CASEDD_INVOKEAI_INTERVAL", "11")
+        monkeypatch_obj.setenv("CASEDD_INVOKEAI_TIMEOUT", "7")
+        monkeypatch_obj.setenv("CASEDD_INVOKEAI_VERIFY_TLS", "0")
+
+        cfg = load_config()
+
+        assert cfg.invokeai_base_url == "http://bandit:9090"
+        assert cfg.invokeai_api_token == "token"
+        assert cfg.invokeai_interval == 11.0
+        assert cfg.invokeai_timeout == 7.0
+        assert cfg.invokeai_verify_tls is False
+
+
 def test_servarr_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
         """Radarr/Sonarr env vars should map into typed config fields."""
         monkeypatch_obj = monkeypatch

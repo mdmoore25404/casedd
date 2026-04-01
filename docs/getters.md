@@ -333,6 +333,48 @@ Privacy settings:
 - `CASEDD_PLEX_PRIVACY_REDACTION_TEXT` controls replacement text (default `[hidden]`).
 - Invalid regex values are ignored with a warning (getter continues running).
 
+## InvokeAI API getter
+
+Module: casedd/getters/invokeai.py
+
+Configuration:
+- CASEDD_INVOKEAI_BASE_URL (default: http://localhost:9090)
+- CASEDD_INVOKEAI_API_TOKEN (optional bearer token)
+- CASEDD_INVOKEAI_INTERVAL (default: 5)
+- CASEDD_INVOKEAI_TIMEOUT (default: 4)
+- CASEDD_INVOKEAI_VERIFY_TLS (default: 1)
+
+Endpoints polled:
+- GET /api/v1/queue/status (required)
+- GET /api/v1/queue/items (optional enrichment)
+- GET /api/v1/app/version (optional enrichment)
+- GET /api/v1/system/stats (optional enrichment)
+- GET /api/v1/models (optional enrichment)
+
+Emits:
+- invokeai.version
+- invokeai.queue.pending_count
+- invokeai.queue.in_progress_count
+- invokeai.queue.failed_count
+- invokeai.last_job.id
+- invokeai.last_job.status
+- invokeai.last_job.model
+- invokeai.last_job.width
+- invokeai.last_job.height
+- invokeai.last_job.completed_at
+- invokeai.system.vram_used_mb
+- invokeai.system.vram_total_mb
+- invokeai.models.loaded_count
+
+Version notes:
+- Supported and validated against the InvokeAI v5 API shape using /api/v1 routes.
+- Optional endpoints are best-effort so minor API differences degrade gracefully.
+
+Intentionally omitted in MVP:
+- Thumbnail/image transport and gallery browsing payloads.
+- Full graph/invocation payload expansion beyond top-level queue and last-job metadata.
+- High-frequency per-step progress streams (dashboard polling remains lightweight).
+
 ## Template-aware polling
 
 CASEDD runs getters required by templates that can become active under policy

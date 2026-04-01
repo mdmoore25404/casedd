@@ -285,6 +285,11 @@ class Config:
         weather_lat: Optional latitude override for weather polling.
         weather_lon: Optional longitude override for weather polling.
         weather_user_agent: User-Agent header sent to weather APIs.
+        invokeai_base_url: InvokeAI API base URL.
+        invokeai_api_token: Optional InvokeAI API token for bearer auth.
+        invokeai_interval: InvokeAI polling interval in seconds.
+        invokeai_timeout: InvokeAI HTTP request timeout in seconds.
+        invokeai_verify_tls: Verify InvokeAI HTTPS certificates when true.
         ollama_api_base: Base URL for Ollama HTTP API.
         ollama_interval: Ollama polling interval in seconds.
         ollama_timeout: Ollama request timeout in seconds.
@@ -417,6 +422,11 @@ class Config:
     weather_user_agent: str = Field(
         default="CASEDD/0.2 (https://github.com/casedd/casedd)",
     )
+    invokeai_base_url: str = Field(default="http://localhost:9090")
+    invokeai_api_token: str | None = Field(default=None, repr=False)
+    invokeai_interval: float = Field(default=5.0)
+    invokeai_timeout: float = Field(default=4.0)
+    invokeai_verify_tls: bool = Field(default=True)
     ollama_api_base: str = Field(default="http://localhost:11434")
     ollama_interval: float = Field(default=10.0)
     ollama_timeout: float = Field(default=3.0)
@@ -680,6 +690,24 @@ class Config:
         """
         if not (1.0 <= v <= 3600.0):
             msg = f"ollama_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("invokeai_interval")
+    @classmethod
+    def _validate_invokeai_interval(cls, v: float) -> float:
+        """Ensure InvokeAI polling interval is positive and practical."""
+        if not (1.0 <= v <= 3600.0):
+            msg = f"invokeai_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("invokeai_timeout")
+    @classmethod
+    def _validate_invokeai_timeout(cls, v: float) -> float:
+        """Ensure InvokeAI timeout is a positive value."""
+        if v <= 0.0:
+            msg = f"invokeai_timeout must be > 0, got {v}"
             raise ValueError(msg)
         return v
 
@@ -1192,6 +1220,15 @@ def load_config() -> Config:
                 "CASEDD/0.2 (https://github.com/casedd/casedd)",
             )
         ),
+        invokeai_base_url=str(
+            _get("CASEDD_INVOKEAI_BASE_URL", "invokeai_base_url", "http://localhost:9090")
+        ),
+        invokeai_api_token=str(_get("CASEDD_INVOKEAI_API_TOKEN", "invokeai_api_token", "")).strip()
+        or None,
+        invokeai_interval=float(str(_get("CASEDD_INVOKEAI_INTERVAL", "invokeai_interval", 5.0))),
+        invokeai_timeout=float(str(_get("CASEDD_INVOKEAI_TIMEOUT", "invokeai_timeout", 4.0))),
+        invokeai_verify_tls=str(_get("CASEDD_INVOKEAI_VERIFY_TLS", "invokeai_verify_tls", "1"))
+        not in {"0", "false", "False", ""},
         ollama_api_base=str(_get("CASEDD_OLLAMA_API_BASE", "ollama_api_base", "http://localhost:11434")),
         ollama_interval=float(str(_get("CASEDD_OLLAMA_INTERVAL", "ollama_interval", 10.0))),
         ollama_timeout=float(str(_get("CASEDD_OLLAMA_TIMEOUT", "ollama_timeout", 3.0))),
