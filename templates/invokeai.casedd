@@ -1,0 +1,101 @@
+# invokeai.casedd — InvokeAI queue, latest output, and runtime dashboard
+
+name: invokeai
+description: InvokeAI queue depth, current or latest job metadata, and preview image.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#11151a"
+refresh_rate: 2.0
+
+grid:
+  template_areas: |
+    queue      queue      queue      queue      queue
+    preview    preview    preview    details    details
+    preview    preview    preview    details    details
+  columns: 1fr 1fr 1fr 1fr 1fr
+  rows: 0.85fr 1fr 1fr
+
+widgets:
+  queue:
+    type: panel
+    direction: row
+    gap: 8
+    padding: [6, 10]
+    children:
+      - type: value
+        label: Pending
+        source: invokeai.queue.pending_count
+        precision: 0
+        color: "#89d4ff"
+      - type: value
+        label: In Progress
+        source: invokeai.queue.in_progress_count
+        precision: 0
+        color: "#ffd38a"
+      - type: value
+        label: Failed
+        source: invokeai.queue.failed_count
+        precision: 0
+        color: "#ff8d8d"
+      - type: value
+        label: Completed
+        source: invokeai.queue.completed_count
+        precision: 0
+        color: "#9ee6c8"
+      - type: value
+        label: Loaded Models
+        source: invokeai.models.loaded_count
+        precision: 0
+        color: "#a4f2a9"
+      - type: image
+        path: assets/invokeai/invokeai-logo.png
+        scale: fit
+        background: "#11151a"
+        padding: [4, 6]
+
+  preview:
+    type: image
+    source: invokeai.latest_image.thumbnail_url
+    scale: fit
+    background: "#0d1217"
+    padding: [8, 10]
+
+  details:
+    type: panel
+    direction: column
+    gap: 6
+    padding: [8, 12]
+    children:
+      - type: value
+        label: Activity
+        source: invokeai.last_job.status
+        color: "#d2dbe6"
+      - type: value
+        label: Latest Image
+        source: invokeai.last_job.id
+        color: "#d2dbe6"
+      - type: value
+        label: Model
+        source: invokeai.last_job.model
+        color: "#d2dbe6"
+      - type: value
+        label: Size
+        source: invokeai.last_job.dimensions
+        color: "#d2dbe6"
+      - type: value
+        label: Cache Used MB
+        source: invokeai.models.cache_used_mb
+        precision: 0
+        color: "#98d7ff"
+      - type: value
+        label: Cache Capacity MB
+        source: invokeai.models.cache_capacity_mb
+        precision: 0
+        color: "#98d7ff"
+      - type: gauge
+        label: Cache %
+        source: invokeai.models.cache_percent
+        min: 0
+        max: 100
+        unit: "%"
+        color: "#ffb36e"

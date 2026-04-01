@@ -3,6 +3,10 @@
 Loads a static image from disk and renders it scaled into the bounding box.
 The loaded image is cached per path to avoid repeated disk I/O on each frame.
 
+When ``cfg.source`` is set, the widget also accepts a live data-store value
+containing either a filesystem path or an HTTP(S) image URL. This keeps the
+generic image widget usable for getters that publish changing preview images.
+
 Metric-driven image selection (``tiers``): the widget can display different
 images depending on live data-store values.  Tiers are evaluated from
 highest (last in the list) to lowest; the first matching tier's image is shown.
@@ -28,8 +32,12 @@ Example .casedd config:
 
 from __future__ import annotations
 
+from io import BytesIO
 import logging
 from pathlib import Path
+import time
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from PIL import Image
 
@@ -42,6 +50,11 @@ _log = logging.getLogger(__name__)
 
 # Module-level image cache: path string → PIL Image (converted to RGBA)
 _image_cache: dict[str, Image.Image] = {}
+# Local file mtime cache used to invalidate stale disk-backed image entries.
+_image_mtime_cache: dict[str, float] = {}
+# Source retry cache for failed image loads (disk missing / remote errors).
+_image_retry_after: dict[str, float] = {}
+_IMAGE_RETRY_BACKOFF_SEC = 5.0
 
 # Comparison dispatch table keyed by operator token.
 _OPS: dict[str, object] = {
@@ -105,22 +118,51 @@ def _tier_fires(tier: ImageTier, snapshot: dict[str, StoreValue]) -> bool:
     return False
 
 
-def _load_image(path_str: str) -> Image.Image | None:
-    """Load and cache an image from disk.
+def _load_image(source_ref: str) -> Image.Image | None:
+    """Load and cache an image from disk or a remote URL.
 
     Args:
-        path_str: Filesystem path to the image file.
+        source_ref: Filesystem path or HTTP(S) URL to the image.
 
     Returns:
-        A PIL Image in RGBA mode, or ``None`` if the file cannot be loaded.
+        A PIL Image in RGBA mode, or ``None`` if the source cannot be loaded.
     """
-    if path_str in _image_cache:
-        return _image_cache[path_str]
+    retry_after = _image_retry_after.get(source_ref)
+    if retry_after is not None and retry_after > time.monotonic():
+        return None
 
-    path = Path(path_str)
+    if source_ref.startswith(("http://", "https://")):
+        cached_remote = _image_cache.get(source_ref)
+        if cached_remote is not None:
+            return cached_remote
+        loaded = _load_remote_image(source_ref)
+    else:
+        loaded = _load_local_image(source_ref)
+
+    if loaded is None:
+        _image_retry_after[source_ref] = time.monotonic() + _IMAGE_RETRY_BACKOFF_SEC
+        return None
+
+    _image_retry_after.pop(source_ref, None)
+    return loaded
+
+
+def _load_local_image(source_ref: str) -> Image.Image | None:
+    """Load a local image, reusing cached content when mtime is unchanged."""
+    path = Path(source_ref)
     if not path.is_file():
         _log.warning("Image widget: file not found: %s", path)
         return None
+
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        mtime = -1.0
+
+    cached = _image_cache.get(source_ref)
+    cached_mtime = _image_mtime_cache.get(source_ref)
+    if cached is not None and cached_mtime == mtime:
+        return cached
 
     try:
         loaded = Image.open(path).convert("RGBA")
@@ -128,7 +170,28 @@ def _load_image(path_str: str) -> Image.Image | None:
         _log.warning("Image widget: cannot open '%s': %s", path, exc)
         return None
 
-    _image_cache[path_str] = loaded
+    _image_cache[source_ref] = loaded
+    _image_mtime_cache[source_ref] = mtime
+    return loaded
+
+
+def _load_remote_image(url: str) -> Image.Image | None:
+    """Fetch and cache an image from a remote HTTP(S) URL."""
+    req = Request(url, headers={"User-Agent": "CASEDD/0.2"}, method="GET")  # noqa: S310
+    try:
+        with urlopen(req, timeout=5) as resp:  # noqa: S310
+            raw = resp.read()
+    except URLError as exc:
+        _log.warning("Image widget: failed to fetch '%s': %s", url, exc)
+        return None
+
+    try:
+        loaded = Image.open(BytesIO(raw)).convert("RGBA")
+    except OSError as exc:
+        _log.warning("Image widget: cannot decode remote image '%s': %s", url, exc)
+        return None
+
+    _image_cache[url] = loaded
     return loaded
 
 
@@ -168,12 +231,12 @@ def _scale_image(source: Image.Image, w: int, h: int, mode: ScaleMode) -> Image.
 
 
 class ImageWidget(BaseWidget):
-    """Renders a static image from disk, scaled to the bounding box.
+    """Renders an image from disk or a dynamic source, scaled to the box.
 
     Supports metric-driven image selection via ``cfg.tiers``: the widget
     evaluates tiers from highest (last) to lowest (first) and displays the
-    first tier whose conditions fire.  Falls back to ``cfg.path`` when no
-    tier is active.
+    first tier whose conditions fire.  Falls back to a populated ``cfg.source``
+    store value, then ``cfg.path`` when no tier is active.
     """
 
     def draw(
@@ -200,8 +263,8 @@ class ImageWidget(BaseWidget):
         """
         fill_background(img, rect, cfg.background)
 
-        # Determine active image path, considering metric-driven tiers.
-        active_path: str | None = cfg.path
+        # Determine active image source, considering metric-driven tiers first.
+        active_path: str | None = None
         if cfg.tiers:
             snapshot = data.snapshot()
             # Evaluate highest tier first (last in the list); first match wins.
@@ -210,8 +273,18 @@ class ImageWidget(BaseWidget):
                     active_path = tier.path
                     break
 
+        if active_path is None and cfg.source:
+            raw_value = data.get(cfg.source)
+            if isinstance(raw_value, str):
+                candidate = raw_value.strip()
+                if candidate:
+                    active_path = candidate
+
         if active_path is None:
-            _log.warning("Image widget has no 'path' configured.")
+            active_path = cfg.path
+
+        if active_path is None:
+            _log.warning("Image widget has no 'path' or populated 'source' configured.")
             return
 
         source = _load_image(active_path)

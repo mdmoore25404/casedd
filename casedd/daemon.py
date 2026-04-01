@@ -45,6 +45,7 @@ from casedd.getters.disk import DiskGetter
 from casedd.getters.fans import FanGetter
 from casedd.getters.gpu import GpuGetter
 from casedd.getters.htop import HtopGetter
+from casedd.getters.invokeai import InvokeAIGetter
 from casedd.getters.memory import MemoryGetter
 from casedd.getters.net_ports import NetPortsGetter
 from casedd.getters.network import NetworkGetter
@@ -165,6 +166,21 @@ class Daemon:
         self._health = GetterHealthRegistry()
         self._started_at: float = 0.0
         self._render_count: int = 0
+        self._render_loop_last_ms: float = 0.0
+        self._render_loop_ema_ms: float = 0.0
+        self._render_loop_max_ms: float = 0.0
+
+    def _record_render_timing(self, elapsed_ms: float) -> None:
+        """Update rolling render-loop timing statistics."""
+        self._render_loop_last_ms = elapsed_ms
+        if self._render_loop_ema_ms <= 0.0:
+            self._render_loop_ema_ms = elapsed_ms
+        else:
+            alpha = 0.2
+            self._render_loop_ema_ms = (
+                (1.0 - alpha) * self._render_loop_ema_ms
+            ) + (alpha * elapsed_ms)
+        self._render_loop_max_ms = max(self._render_loop_max_ms, elapsed_ms)
 
     async def run(self) -> None:
         """Start all subsystems and run the main render loop until shutdown."""
@@ -460,9 +476,36 @@ class Daemon:
 
         def _health_provider() -> dict[str, object]:
             """Return daemon health snapshot for /api/health and /api/metrics."""
+            renderer_stats: dict[str, dict[str, object]] = {
+                panel.name: panel.engine.latest_render_stats() for panel in panel_runtimes
+            }
+            dynamic_drawn = 0
+            dynamic_cached = 0
+            static_cache_hits = 0
+            layout_cache_hits = 0
+            for stats in renderer_stats.values():
+                drawn_obj = stats.get("dynamic_drawn")
+                if isinstance(drawn_obj, (int, float)):
+                    dynamic_drawn += int(drawn_obj)
+
+                cached_obj = stats.get("dynamic_cached")
+                if isinstance(cached_obj, (int, float)):
+                    dynamic_cached += int(cached_obj)
+
+                static_cache_hits += int(bool(stats.get("static_cache_hit")))
+                layout_cache_hits += int(bool(stats.get("layout_cache_hit")))
+
             return {
                 "uptime_seconds": time.time() - self._started_at,
                 "render_count": self._render_count,
+                "render_loop_last_ms": self._render_loop_last_ms,
+                "render_loop_ema_ms": self._render_loop_ema_ms,
+                "render_loop_max_ms": self._render_loop_max_ms,
+                "renderer_dynamic_drawn": dynamic_drawn,
+                "renderer_dynamic_cached": dynamic_cached,
+                "renderer_static_cache_hits": static_cache_hits,
+                "renderer_layout_cache_hits": layout_cache_hits,
+                "renderer": renderer_stats,
                 "getters": self._health.snapshot(),
             }
 
@@ -955,6 +998,7 @@ class Daemon:
                 last_getter_sync = tick_start
 
             elapsed = asyncio.get_event_loop().time() - tick_start
+            self._record_render_timing(elapsed * 1000.0)
             sleep_time = max(0.0, interval - elapsed)
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(asyncio.shield(self._shutdown.wait()), timeout=sleep_time)
@@ -1009,6 +1053,14 @@ class Daemon:
                 reference_up_mbps=self._cfg.speedtest_reference_up_mbps,
                 marginal_ratio=self._cfg.speedtest_marginal_ratio,
                 critical_ratio=self._cfg.speedtest_critical_ratio,
+            ),
+            InvokeAIGetter(
+                self._store,
+                base_url=self._cfg.invokeai_base_url,
+                api_token=self._cfg.invokeai_api_token,
+                interval=self._cfg.invokeai_interval,
+                timeout=self._cfg.invokeai_timeout,
+                verify_tls=self._cfg.invokeai_verify_tls,
             ),
             OllamaGetter(
                 self._store,
@@ -1200,6 +1252,7 @@ class Daemon:
             ("system.", "SystemGetter"),
             ("fans.", "FanGetter"),
             ("speedtest.", "SpeedtestGetter"),
+            ("invokeai.", "InvokeAIGetter"),
             ("ollama.", "OllamaGetter"),
             ("ups.", "UpsGetter"),
             ("pihole.", "PiHoleGetter"),

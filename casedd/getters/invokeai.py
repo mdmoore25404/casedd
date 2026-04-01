@@ -1,0 +1,1106 @@
+"""InvokeAI API getter.
+
+Polls InvokeAI HTTP endpoints and publishes flattened ``invokeai.*`` keys for
+AI workstation dashboards.
+
+Store keys written:
+    - ``invokeai.version``
+    - ``invokeai.queue.pending_count``
+    - ``invokeai.queue.in_progress_count``
+    - ``invokeai.queue.failed_count``
+    - ``invokeai.queue.completed_count``
+    - ``invokeai.last_job.id``
+    - ``invokeai.last_job.status``
+    - ``invokeai.last_job.model``
+    - ``invokeai.last_job.dimensions``
+    - ``invokeai.last_job.width``
+    - ``invokeai.last_job.height``
+    - ``invokeai.last_job.completed_at``
+    - ``invokeai.system.vram_used_mb``
+    - ``invokeai.system.vram_total_mb``
+    - ``invokeai.system.vram_percent``
+    - ``invokeai.models.cache_used_mb``
+    - ``invokeai.models.cache_capacity_mb``
+    - ``invokeai.models.cache_percent``
+    - ``invokeai.models.loaded_count``
+    - ``invokeai.latest_image.name``
+    - ``invokeai.latest_image.thumbnail_url``
+    - ``invokeai.latest_image.full_url``
+"""
+
+from __future__ import annotations
+
+import asyncio
+from io import BytesIO
+import json
+import logging
+import ssl
+from typing import cast
+from urllib.error import HTTPError, URLError
+from urllib.parse import quote, urljoin
+from urllib.request import Request, urlopen
+
+from PIL import Image as PILImage
+
+from casedd.data_store import DataStore, StoreValue
+from casedd.getters.base import BaseGetter
+
+_log = logging.getLogger(__name__)
+
+_QUEUE_STATUS_PATHS: tuple[str, ...] = (
+    "/api/v1/queue/default/status",
+    "/api/v1/queue/status",
+)
+
+_QUEUE_CURRENT_PATHS: tuple[str, ...] = (
+    "/api/v1/queue/default/current",
+)
+
+_MODELS_PATHS: tuple[str, ...] = (
+    "/api/v2/models/stats",
+    "/api/v1/system/stats",
+    "/api/v1/models",
+)
+
+_IMAGES_LIST_PATH = "/api/v1/images/?limit=1&order_dir=DESC&starred_first=false"
+_IMAGES_NAMES_PATH = "/api/v1/images/names"
+_OPENAPI_PATH = "/openapi.json"
+_IMAGE_DETAILS_PATH = "/api/v1/images/i/{name}"
+_IMAGE_METADATA_PATH = "/api/v1/images/i/{name}/metadata"
+_IMAGE_URLS_PATH = "/api/v1/images/i/{name}/urls"
+_IMAGE_WORKFLOW_PATH = "/api/v1/images/i/{name}/workflow"
+
+_MODEL_STICKY_KEYS: tuple[str, ...] = (
+    "invokeai.system.vram_used_mb",
+    "invokeai.system.vram_total_mb",
+    "invokeai.system.vram_percent",
+    "invokeai.models.cache_used_mb",
+    "invokeai.models.cache_capacity_mb",
+    "invokeai.models.cache_percent",
+    "invokeai.models.loaded_count",
+)
+
+_LATEST_IMAGE_STICKY_KEYS: tuple[str, ...] = (
+    "invokeai.last_job.id",
+    "invokeai.last_job.status",
+    "invokeai.last_job.model",
+    "invokeai.last_job.dimensions",
+    "invokeai.last_job.width",
+    "invokeai.last_job.height",
+    "invokeai.last_job.completed_at",
+    "invokeai.latest_image.name",
+    "invokeai.latest_image.thumbnail_url",
+    "invokeai.latest_image.full_url",
+)
+
+
+class InvokeAIGetter(BaseGetter):
+    """Getter for InvokeAI queue and runtime signals.
+
+    Args:
+        store: Shared data store.
+        base_url: InvokeAI API base URL.
+        api_token: Optional API token for bearer auth.
+        interval: Poll interval in seconds.
+        timeout: HTTP timeout in seconds.
+        verify_tls: Verify TLS certificates for HTTPS endpoints.
+    """
+
+    def __init__(  # noqa: PLR0913 -- explicit config wiring is clearer
+        self,
+        store: DataStore,
+        base_url: str = "http://localhost:9090",
+        api_token: str | None = None,
+        interval: float = 5.0,
+        timeout: float = 4.0,
+        verify_tls: bool = True,
+    ) -> None:
+        """Initialize InvokeAI getter settings."""
+        super().__init__(store, interval)
+        self._base_url = base_url.rstrip("/")
+        self._api_token = api_token.strip() if isinstance(api_token, str) else ""
+        self._timeout = timeout
+        self._ssl_context: ssl.SSLContext | None = None
+        self._auth_error_logged = False
+        self._sticky_values: dict[str, StoreValue] = {}
+        self._image_size_cache: dict[str, tuple[float, float]] = {}
+        self._image_dimension_source_cache: dict[str, str] = {}
+        if self._base_url.startswith("https://") and not verify_tls:
+            self._ssl_context = ssl._create_unverified_context()  # noqa: S323
+
+    async def fetch(self) -> dict[str, StoreValue]:
+        """Collect one InvokeAI sample and normalize to flattened keys."""
+        return await asyncio.to_thread(self._sample)
+
+    def _sample(self) -> dict[str, StoreValue]:
+        """Blocking InvokeAI poll implementation."""
+        queue_payload = self._fetch_queue_payload()
+        if queue_payload is None:
+            return _placeholder_sample()
+        if not queue_payload:
+            _log.debug("InvokeAI queue status unavailable; emitting partial sample")
+
+        current_payload = self._request_json_or_null_optional_first(_QUEUE_CURRENT_PATHS)
+        models_payload = self._request_json_optional_first(_MODELS_PATHS)
+        (
+            latest_image_name,
+            latest_image_metadata,
+            latest_image_urls,
+            latest_image_info,
+            latest_image_workflow,
+        ) = self._fetch_latest_image_data()
+
+        sample = _placeholder_sample()
+        sample.update(self._build_queue_fields(queue_payload))
+        sample.update(
+            self._build_activity_fields(
+                queue_payload,
+                current_payload,
+                {
+                    "name": latest_image_name,
+                    "metadata": latest_image_metadata,
+                    "urls": latest_image_urls,
+                    "info": latest_image_info,
+                    "workflow": latest_image_workflow,
+                },
+            )
+        )
+        sample.update(self._build_cache_fields(models_payload))
+        sample.update(self._build_latest_image_fields(latest_image_name, latest_image_urls))
+        sample["invokeai.version"] = self._resolve_version(latest_image_metadata)
+
+        version = str(sample["invokeai.version"])
+        if version:
+            self._sticky_values["invokeai.version"] = version
+        elif "invokeai.version" in self._sticky_values:
+            sample["invokeai.version"] = self._sticky_values["invokeai.version"]
+
+        self._apply_sticky_group(
+            sample,
+            _MODEL_STICKY_KEYS,
+            fresh_available=bool(models_payload),
+        )
+
+        latest_image_available = bool(
+            latest_image_name or latest_image_metadata or latest_image_urls
+        )
+        if not current_payload:
+            self._apply_sticky_group(
+                sample,
+                _LATEST_IMAGE_STICKY_KEYS,
+                fresh_available=latest_image_available,
+            )
+
+        return sample
+
+    def _fetch_queue_payload(self) -> dict[str, object] | None:
+        """Fetch queue status while keeping auth failures explicit."""
+        try:
+            return self._request_json_optional_first(_QUEUE_STATUS_PATHS)
+        except RuntimeError as exc:
+            if "auth failed" not in str(exc).lower():
+                raise
+            if not self._auth_error_logged:
+                _log.error(
+                    "InvokeAI auth failed. Check CASEDD_INVOKEAI_API_TOKEN and base URL: %s",
+                    self._base_url,
+                )
+                self._auth_error_logged = True
+            return None
+
+    def _fetch_latest_image_data(
+        self,
+    ) -> tuple[
+        str,
+        dict[str, object],
+        dict[str, object],
+        dict[str, object],
+        dict[str, object],
+    ]:
+        """Fetch latest image name plus optional metadata, URL, and workflow payloads."""
+        image_list_payload = self._request_json_optional(_IMAGES_LIST_PATH)
+        (
+            latest_image_name,
+            latest_image_urls,
+            latest_image_info,
+        ) = _extract_latest_image_from_list(
+            image_list_payload,
+            self._base_url,
+        )
+        if latest_image_name:
+            encoded_image_name = quote(latest_image_name, safe="")
+            if not _has_image_urls(latest_image_urls):
+                latest_image_urls = self._request_json_optional(
+                    _IMAGE_URLS_PATH.format(name=encoded_image_name)
+                )
+            latest_image_metadata = self._request_json_or_null(
+                _IMAGE_METADATA_PATH.format(name=encoded_image_name)
+            )
+            if latest_image_metadata is None:
+                latest_image_metadata = {}
+            latest_image_details: dict[str, object] = {}
+            latest_image_workflow: dict[str, object] = {}
+            if _missing_dimensions(latest_image_metadata, latest_image_info):
+                latest_image_details = self._request_json_optional(
+                    _IMAGE_DETAILS_PATH.format(name=encoded_image_name)
+                )
+            merged_image_info = {**latest_image_details, **latest_image_info}
+            if _missing_model(latest_image_metadata, merged_image_info):
+                latest_image_workflow = self._request_json_optional(
+                    _IMAGE_WORKFLOW_PATH.format(name=encoded_image_name)
+                )
+            return (
+                latest_image_name,
+                latest_image_metadata,
+                latest_image_urls,
+                merged_image_info,
+                latest_image_workflow,
+            )
+
+        image_names_payload = self._request_json_optional(_IMAGES_NAMES_PATH)
+        latest_image_name = _extract_latest_image_name(image_names_payload)
+        if not latest_image_name:
+            return "", {}, {}, {}, {}
+
+        encoded_image_name = quote(latest_image_name, safe="")
+        latest_image_metadata = self._request_json_optional(
+            _IMAGE_METADATA_PATH.format(name=encoded_image_name)
+        )
+        latest_image_urls = self._request_json_optional(
+            _IMAGE_URLS_PATH.format(name=encoded_image_name)
+        )
+        latest_image_details = {}
+        latest_image_workflow = {}
+        if _missing_dimensions(latest_image_metadata, latest_image_details):
+            latest_image_details = self._request_json_optional(
+                _IMAGE_DETAILS_PATH.format(name=encoded_image_name)
+            )
+        if _missing_model(latest_image_metadata, latest_image_details):
+            latest_image_workflow = self._request_json_optional(
+                _IMAGE_WORKFLOW_PATH.format(name=encoded_image_name)
+            )
+        return (
+            latest_image_name,
+            latest_image_metadata,
+            latest_image_urls,
+            latest_image_details,
+            latest_image_workflow,
+        )
+
+    def _build_queue_fields(self, queue_payload: dict[str, object]) -> dict[str, StoreValue]:
+        """Normalize queue counters from the status payload."""
+        pending_count = _first_number(
+            queue_payload,
+            [("pending_count",), ("pending",), ("counts", "pending"), ("queue", "pending")],
+        )
+        in_progress_count = _first_number(
+            queue_payload,
+            [
+                ("in_progress_count",),
+                ("in_progress",),
+                ("running",),
+                ("active",),
+                ("counts", "in_progress"),
+                ("queue", "in_progress"),
+            ],
+        )
+        failed_count = _first_number(
+            queue_payload,
+            [("failed_count",), ("failed",), ("counts", "failed"), ("queue", "failed")],
+        )
+        completed_count = _first_number(
+            queue_payload,
+            [
+                ("completed_count",),
+                ("completed",),
+                ("counts", "completed"),
+                ("queue", "completed"),
+            ],
+        )
+        return {
+            "invokeai.queue.pending_count": float(pending_count),
+            "invokeai.queue.in_progress_count": float(in_progress_count),
+            "invokeai.queue.failed_count": float(failed_count),
+            "invokeai.queue.completed_count": float(completed_count),
+        }
+
+    def _build_activity_fields(
+        self,
+        queue_payload: dict[str, object],
+        current_payload: dict[str, object] | None,
+        latest_image_payload: dict[str, object],
+    ) -> dict[str, StoreValue]:
+        """Build current-or-latest job metadata for display widgets."""
+        active_job = current_payload if current_payload is not None else {}
+        latest_image_name = str(latest_image_payload.get("name") or "")
+        latest_image_metadata = _as_object(latest_image_payload.get("metadata"))
+        latest_image_info = _as_object(latest_image_payload.get("info"))
+        latest_image_workflow = _as_object(latest_image_payload.get("workflow"))
+
+        model_obj = _first_object(
+            active_job,
+            [
+                ("model",),
+                ("model_info",),
+                ("field_values", "model"),
+                ("field_values", "model_info"),
+            ],
+        )
+        dimensions_obj = _first_object(
+            active_job,
+            [("dimensions",), ("image",), ("output",), ("field_values",)],
+        )
+
+        last_job_id = _first_text(active_job, [("id",), ("item_id",), ("queue_id",)])
+        if not last_job_id:
+            last_job_id = latest_image_name
+
+        last_job_model = self._resolve_last_job_model(
+            active_job,
+            model_obj,
+            latest_image_metadata,
+            latest_image_info,
+            latest_image_workflow,
+        )
+        width, height = self._resolve_dimensions(
+            active_job,
+            dimensions_obj,
+            latest_image_payload,
+        )
+
+        completed_at = _first_text(
+            active_job,
+            [
+                ("completed_at",),
+                ("finished_at",),
+                ("started_at",),
+                ("updated_at",),
+                ("created_at",),
+            ],
+        )
+        if not completed_at:
+            completed_at = _first_text(latest_image_metadata, [("created_at",), ("updated_at",)])
+
+        return {
+            "invokeai.last_job.id": last_job_id,
+            "invokeai.last_job.status": _derive_activity_status(
+                active_job,
+                queue_payload,
+                has_latest_image=bool(latest_image_name),
+            ),
+            "invokeai.last_job.model": last_job_model,
+            "invokeai.last_job.dimensions": _format_dimensions(width, height),
+            "invokeai.last_job.width": float(width),
+            "invokeai.last_job.height": float(height),
+            "invokeai.last_job.completed_at": completed_at,
+        }
+
+    def _resolve_last_job_model(
+        self,
+        active_job: dict[str, object],
+        model_obj: dict[str, object] | None,
+        latest_image_metadata: dict[str, object],
+        latest_image_info: dict[str, object],
+        latest_image_workflow: dict[str, object],
+    ) -> str:
+        """Resolve model name from current job first, then latest image metadata."""
+        model = _first_text(
+            active_job,
+            [
+                ("model",),
+                ("model_name",),
+                ("model_id",),
+                ("field_values", "model"),
+                ("field_values", "model_name"),
+                ("field_values", "model_id"),
+            ],
+        )
+        if not model and model_obj is not None:
+            model = _first_text(
+                model_obj,
+                [("name",), ("identifier",), ("model_name",)],
+            )
+        if model:
+            return model
+
+        model = _first_text(
+            {"meta": latest_image_metadata, "info": latest_image_info},
+            [
+                ("meta", "model", "name"),
+                ("meta", "model"),
+                ("meta", "model_name"),
+                ("meta", "model_identifier"),
+                ("info", "model", "name"),
+                ("info", "model"),
+                ("info", "model_name"),
+                ("info", "model_identifier"),
+            ],
+        )
+        if model:
+            return model
+
+        return _extract_model_from_workflow(latest_image_workflow)
+
+    def _resolve_dimensions(
+        self,
+        active_job: dict[str, object],
+        dimensions_obj: dict[str, object] | None,
+        latest_image_payload: dict[str, object],
+    ) -> tuple[float, float]:
+        """Resolve image dimensions with metadata and image-probe fallback."""
+        latest_image_name = str(latest_image_payload.get("name") or "")
+        latest_image_metadata = _as_object(latest_image_payload.get("metadata"))
+        latest_image_info = _as_object(latest_image_payload.get("info"))
+        latest_image_urls = _as_object(latest_image_payload.get("urls"))
+
+        width = 0.0
+        height = 0.0
+        source = ""
+
+        dimensions_obj_value = dimensions_obj if dimensions_obj is not None else {}
+        source_shape = tuple[str, dict[str, object], list[tuple[str, ...]], list[tuple[str, ...]]]
+        candidate_sources: tuple[source_shape, ...] = (
+            (
+                "active_job",
+                active_job,
+                [("width",), ("field_values", "width")],
+                [("height",), ("field_values", "height")],
+            ),
+            (
+                "active_dimensions",
+                dimensions_obj_value,
+                [("width",), ("w",)],
+                [("height",), ("h",)],
+            ),
+            (
+                "latest_image_metadata",
+                latest_image_metadata,
+                [("width",)],
+                [("height",)],
+            ),
+            (
+                "latest_image_details",
+                latest_image_info,
+                [("width",), ("image_width",)],
+                [("height",), ("image_height",)],
+            ),
+        )
+
+        for candidate_source, payload, width_paths, height_paths in candidate_sources:
+            candidate_width = _first_number(payload, width_paths)
+            candidate_height = _first_number(payload, height_paths)
+            if candidate_width > 0.0 and candidate_height > 0.0:
+                width = candidate_width
+                height = candidate_height
+                source = candidate_source
+                break
+
+        if (width <= 0.0 or height <= 0.0) and latest_image_name:
+            inferred_width, inferred_height = self._infer_image_size(
+                latest_image_name,
+                latest_image_urls,
+            )
+            if inferred_width > 0.0 and inferred_height > 0.0:
+                width = inferred_width
+                height = inferred_height
+                source = "image_probe"
+
+        self._log_dimension_source(latest_image_name, source, width, height)
+        return width, height
+
+    def _log_dimension_source(
+        self,
+        image_name: str,
+        source: str,
+        width: float,
+        height: float,
+    ) -> None:
+        """Emit one debug log when image dimension source changes."""
+        if not image_name or not source or width <= 0.0 or height <= 0.0:
+            return
+
+        previous_source = self._image_dimension_source_cache.get(image_name)
+        if previous_source == source:
+            return
+
+        self._image_dimension_source_cache[image_name] = source
+        _log.debug(
+            "InvokeAI dimensions resolved from %s for %s: %dx%d",
+            source,
+            image_name,
+            int(width),
+            int(height),
+        )
+
+    def _infer_image_size(
+        self,
+        image_name: str,
+        latest_image_urls: dict[str, object],
+    ) -> tuple[float, float]:
+        """Infer image dimensions from the latest image URL when metadata is missing."""
+        cached = self._image_size_cache.get(image_name)
+        if cached is not None:
+            return cached
+
+        image_url = self._absolute_url(_first_text(latest_image_urls, [("image_url",)]))
+        thumb_url = self._absolute_url(_first_text(latest_image_urls, [("thumbnail_url",)]))
+        for candidate_url in (image_url, thumb_url):
+            if not candidate_url:
+                continue
+            try:
+                inferred = self._request_image_size(candidate_url)
+            except Exception as exc:
+                _log.debug("InvokeAI image-size probe failed (%s): %s", candidate_url, exc)
+                continue
+            if inferred[0] > 0.0 and inferred[1] > 0.0:
+                self._image_size_cache[image_name] = inferred
+                return inferred
+        return (0.0, 0.0)
+
+    def _request_image_size(self, url: str) -> tuple[float, float]:
+        """Fetch one image URL and return decoded pixel dimensions."""
+        headers = {"Accept": "image/*"}
+        if self._api_token:
+            headers["Authorization"] = f"Bearer {self._api_token}"
+
+        req = Request(url, headers=headers, method="GET")  # noqa: S310
+        try:
+            with urlopen(  # noqa: S310
+                req,
+                timeout=self._timeout,
+                context=self._ssl_context,
+            ) as resp:
+                body = resp.read()
+        except HTTPError as exc:
+            raise RuntimeError(f"InvokeAI image request failed with HTTP {exc.code}") from exc
+        except TimeoutError as exc:
+            raise RuntimeError(f"InvokeAI image request timed out: {exc}") from exc
+        except URLError as exc:
+            raise RuntimeError(f"InvokeAI image transport error: {exc}") from exc
+
+        try:
+            with PILImage.open(BytesIO(body)) as image:
+                width, height = image.size
+        except OSError as exc:
+            raise RuntimeError(f"InvokeAI image decode error: {exc}") from exc
+
+        if width <= 0 or height <= 0:
+            return (0.0, 0.0)
+        return (float(width), float(height))
+
+    def _build_cache_fields(self, models_payload: dict[str, object]) -> dict[str, StoreValue]:
+        """Build model-cache usage fields from the available stats payload."""
+        cache_used_mb = _extract_cache_used_mb(models_payload)
+        cache_capacity_mb = _extract_cache_capacity_mb(models_payload)
+        cache_percent = 0.0
+        if cache_capacity_mb > 0.0:
+            cache_percent = min(100.0, (cache_used_mb / cache_capacity_mb) * 100.0)
+
+        return {
+            "invokeai.system.vram_used_mb": float(cache_used_mb),
+            "invokeai.system.vram_total_mb": float(cache_capacity_mb),
+            "invokeai.system.vram_percent": float(cache_percent),
+            "invokeai.models.cache_used_mb": float(cache_used_mb),
+            "invokeai.models.cache_capacity_mb": float(cache_capacity_mb),
+            "invokeai.models.cache_percent": float(cache_percent),
+            "invokeai.models.loaded_count": float(_extract_loaded_count(models_payload)),
+        }
+
+    def _build_latest_image_fields(
+        self,
+        latest_image_name: str,
+        latest_image_urls: dict[str, object],
+    ) -> dict[str, StoreValue]:
+        """Build latest-image preview fields from the URLs payload."""
+        return {
+            "invokeai.latest_image.name": latest_image_name,
+            "invokeai.latest_image.thumbnail_url": self._absolute_url(
+                _first_text(latest_image_urls, [("thumbnail_url",)])
+            ),
+            "invokeai.latest_image.full_url": self._absolute_url(
+                _first_text(latest_image_urls, [("image_url",)])
+            ),
+        }
+
+    def _resolve_version(self, latest_image_metadata: dict[str, object]) -> str:
+        """Resolve the best available InvokeAI app version string."""
+        version = _first_text(latest_image_metadata, [("app_version",)])
+        if not version:
+            sticky_value = self._sticky_values.get("invokeai.version", "")
+            version = str(sticky_value) if isinstance(sticky_value, str) else ""
+        if not version:
+            openapi_payload = self._request_json_optional(_OPENAPI_PATH)
+            version = _first_text(openapi_payload, [("info", "version")])
+        return version
+
+    def _apply_sticky_group(
+        self,
+        sample: dict[str, StoreValue],
+        keys: tuple[str, ...],
+        *,
+        fresh_available: bool,
+    ) -> None:
+        """Persist stable optional values across transient endpoint failures."""
+        if fresh_available:
+            for key in keys:
+                self._sticky_values[key] = sample[key]
+            return
+
+        for key in keys:
+            if key in self._sticky_values:
+                sample[key] = self._sticky_values[key]
+
+    def _absolute_url(self, path: str) -> str:
+        """Return an absolute URL for an InvokeAI relative asset path."""
+        if not path:
+            return ""
+        return urljoin(f"{self._base_url}/", path)
+
+    def _request_json_or_null(self, path: str) -> dict[str, object] | None:
+        """GET one endpoint and accept either a JSON object or explicit null."""
+        decoded = self._request_json_value(path)
+        if decoded is None:
+            return None
+        if not isinstance(decoded, dict):
+            raise RuntimeError("InvokeAI response payload is not a JSON object")
+        return decoded
+
+    def _request_json_or_null_optional_first(
+        self,
+        paths: tuple[str, ...],
+    ) -> dict[str, object] | None:
+        """Best-effort request for a nullable JSON object endpoint."""
+        last_error: RuntimeError | None = None
+        for path in paths:
+            try:
+                return self._request_json_or_null(path)
+            except RuntimeError as exc:
+                if "auth failed" in str(exc).lower():
+                    raise
+                last_error = exc
+                _log.debug("InvokeAI endpoint unavailable: %s (%s)", path, exc)
+
+        if last_error is not None:
+            _log.debug("InvokeAI optional nullable endpoint unavailable: %s", last_error)
+        return None
+
+    def _request_json(self, path: str) -> dict[str, object]:
+        """GET one InvokeAI endpoint and parse a JSON object payload."""
+        decoded = self._request_json_value(path)
+        if not isinstance(decoded, dict):
+            raise RuntimeError("InvokeAI response payload is not a JSON object")
+        return decoded
+
+    def _request_json_value(self, path: str) -> object | None:
+        """GET one InvokeAI endpoint and parse any JSON payload."""
+        url = f"{self._base_url}{path}"
+        headers = {"Accept": "application/json"}
+        if self._api_token:
+            headers["Authorization"] = f"Bearer {self._api_token}"
+
+        req = Request(url, headers=headers, method="GET")  # noqa: S310
+        try:
+            with urlopen(  # noqa: S310
+                req,
+                timeout=self._timeout,
+                context=self._ssl_context,
+            ) as resp:
+                body = resp.read().decode("utf-8")
+        except HTTPError as exc:
+            if exc.code in {401, 403}:
+                msg = "InvokeAI auth failed (check token credentials)"
+                raise RuntimeError(msg) from exc
+            raise RuntimeError(f"InvokeAI request failed with HTTP {exc.code}") from exc
+        except TimeoutError as exc:
+            raise RuntimeError(f"InvokeAI request timed out: {exc}") from exc
+        except URLError as exc:
+            raise RuntimeError(f"InvokeAI transport error: {exc}") from exc
+
+        try:
+            decoded = cast("object | None", json.loads(body))
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(f"InvokeAI JSON parse error: {exc}") from exc
+        return decoded
+
+    def _request_json_optional(self, path: str) -> dict[str, object]:
+        """Best-effort request for optional enrichment endpoints."""
+        try:
+            return self._request_json(path)
+        except RuntimeError as exc:
+            _log.debug("InvokeAI optional endpoint unavailable: %s (%s)", path, exc)
+            return {}
+
+    def _request_json_first(self, paths: tuple[str, ...]) -> dict[str, object]:
+        """Return first successful JSON object from candidate endpoint paths."""
+        last_error: RuntimeError | None = None
+        for path in paths:
+            try:
+                return self._request_json(path)
+            except RuntimeError as exc:
+                if "auth failed" in str(exc).lower():
+                    raise
+                last_error = exc
+                _log.debug("InvokeAI endpoint unavailable: %s (%s)", path, exc)
+
+        if last_error is None:
+            msg = "InvokeAI request failed for all endpoint candidates"
+            raise RuntimeError(msg)
+        raise last_error
+
+    def _request_json_optional_first(self, paths: tuple[str, ...]) -> dict[str, object]:
+        """Best-effort JSON request across multiple candidate endpoint paths."""
+        try:
+            return self._request_json_first(paths)
+        except RuntimeError as exc:
+            if "auth failed" in str(exc).lower():
+                raise
+            _log.debug("InvokeAI optional endpoint candidates unavailable: %s", exc)
+            return {}
+
+
+def _placeholder_sample() -> dict[str, StoreValue]:
+    """Return a stable placeholder payload for auth-failure scenarios."""
+    return {
+        "invokeai.version": "—",
+        "invokeai.queue.pending_count": 0.0,
+        "invokeai.queue.in_progress_count": 0.0,
+        "invokeai.queue.failed_count": 0.0,
+        "invokeai.queue.completed_count": 0.0,
+        "invokeai.last_job.id": "—",
+        "invokeai.last_job.status": "—",
+        "invokeai.last_job.model": "—",
+        "invokeai.last_job.dimensions": "—",
+        "invokeai.last_job.width": 0.0,
+        "invokeai.last_job.height": 0.0,
+        "invokeai.last_job.completed_at": "—",
+        "invokeai.system.vram_used_mb": 0.0,
+        "invokeai.system.vram_total_mb": 0.0,
+        "invokeai.system.vram_percent": 0.0,
+        "invokeai.models.cache_used_mb": 0.0,
+        "invokeai.models.cache_capacity_mb": 0.0,
+        "invokeai.models.cache_percent": 0.0,
+        "invokeai.models.loaded_count": 0.0,
+        "invokeai.latest_image.name": "",
+        "invokeai.latest_image.thumbnail_url": "",
+        "invokeai.latest_image.full_url": "",
+    }
+
+
+def _as_object(value: object) -> dict[str, object]:
+    """Return value when it is a dictionary, otherwise an empty dictionary."""
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
+def _first_object(
+    payload: dict[str, object],
+    paths: list[tuple[str, ...]],
+) -> dict[str, object] | None:
+    """Return first object found at one of ``paths``."""
+    for path in paths:
+        value = _value_at_path(payload, path)
+        if isinstance(value, dict):
+            return value
+    return None
+
+
+def _first_text(
+    payload: dict[str, object],
+    paths: list[tuple[str, ...]],
+) -> str:
+    """Return first non-empty text found at one of ``paths``."""
+    for path in paths:
+        value = _value_at_path(payload, path)
+        if isinstance(value, str):
+            text = value.strip()
+            if text:
+                return text
+        if isinstance(value, int | float) and not isinstance(value, bool):
+            return str(value)
+    return ""
+
+
+def _first_bool(
+    payload: dict[str, object],
+    paths: list[tuple[str, ...]],
+) -> bool | None:
+    """Return first boolean found at one of ``paths``."""
+    for path in paths:
+        value = _value_at_path(payload, path)
+        if isinstance(value, bool):
+            return value
+    return None
+
+
+def _first_number(
+    payload: dict[str, object],
+    paths: list[tuple[str, ...]],
+) -> float:
+    """Return first numeric value found at one of ``paths``."""
+    for path in paths:
+        value = _value_at_path(payload, path)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, float | int):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value.strip())
+            except ValueError:
+                continue
+    return 0.0
+
+
+def _value_at_path(payload: dict[str, object], path: tuple[str, ...]) -> object | None:
+    """Resolve a nested dictionary path safely."""
+    current: object = payload
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _extract_loaded_count(payload: dict[str, object]) -> float:
+    """Extract loaded model count from flexible model endpoint payloads."""
+    direct = _first_number(
+        payload,
+        [
+            ("loaded_count",),
+            ("models_loaded",),
+            ("loaded", "count"),
+        ],
+    )
+    if direct > 0.0:
+        return direct
+
+    for key in ("models", "loaded", "items", "results"):
+        rows = payload.get(key)
+        if isinstance(rows, list):
+            return float(len(rows))
+
+    loaded_model_sizes = payload.get("loaded_model_sizes")
+    if isinstance(loaded_model_sizes, dict):
+        return float(len(loaded_model_sizes))
+
+    return 0.0
+
+
+def _extract_latest_image_name(payload: dict[str, object]) -> str:
+    """Return the most recent image name from the image index payload."""
+    rows = payload.get("image_names")
+    if not isinstance(rows, list):
+        return ""
+
+    names = [row.strip() for row in rows if isinstance(row, str) and row.strip()]
+    if not names:
+        return ""
+    return names[-1]
+
+
+def _extract_latest_image_from_list(
+    payload: dict[str, object],
+    base_url: str,
+) -> tuple[str, dict[str, object], dict[str, object]]:
+    """Return the newest image name and URLs from the ordered image DTO list."""
+    rows = payload.get("items")
+    if not isinstance(rows, list) or not rows:
+        return "", {}, {}
+
+    first_row = rows[0]
+    if not isinstance(first_row, dict):
+        return "", {}, {}
+
+    image_name = _first_text(first_row, [("image_name",)])
+    if not image_name:
+        return "", {}, {}
+
+    thumbnail_url = _first_text(first_row, [("thumbnail_url",)])
+    image_url = _first_text(first_row, [("image_url",)])
+    urls: dict[str, object] = {
+        "thumbnail_url": urljoin(f"{base_url}/", thumbnail_url) if thumbnail_url else "",
+        "image_url": urljoin(f"{base_url}/", image_url) if image_url else "",
+    }
+    return image_name, urls, first_row
+
+
+def _has_image_urls(payload: dict[str, object]) -> bool:
+    """Return True when at least one usable image URL exists in payload."""
+    thumbnail = _first_text(payload, [("thumbnail_url",)])
+    full = _first_text(payload, [("image_url",)])
+    return bool(thumbnail or full)
+
+
+def _normalize_mebibytes(value: float) -> float:
+    """Normalize either raw bytes or MiB-ish values into MiB."""
+    if value >= 1024.0 * 1024.0:
+        return value / (1024.0 * 1024.0)
+    return value
+
+
+def _extract_cache_used_mb(payload: dict[str, object]) -> float:
+    """Extract current model-cache usage in MiB from the models payload."""
+    loaded_model_sizes = payload.get("loaded_model_sizes")
+    if isinstance(loaded_model_sizes, dict):
+        total_bytes = 0.0
+        for value in loaded_model_sizes.values():
+            if isinstance(value, bool):
+                continue
+            if isinstance(value, int | float):
+                total_bytes += float(value)
+            elif isinstance(value, str):
+                try:
+                    total_bytes += float(value.strip())
+                except ValueError:
+                    continue
+        if total_bytes > 0.0:
+            return _normalize_mebibytes(total_bytes)
+
+    return _normalize_mebibytes(
+        _first_number(
+            payload,
+            [
+                ("vram_used_mb",),
+                ("gpu", "vram_used_mb"),
+                ("system", "vram_used_mb"),
+                ("high_watermark",),
+            ],
+        )
+    )
+
+
+def _extract_cache_capacity_mb(payload: dict[str, object]) -> float:
+    """Extract total model-cache capacity in MiB from the models payload."""
+    return _normalize_mebibytes(
+        _first_number(
+            payload,
+            [
+                ("cache_size",),
+                ("vram_total_mb",),
+                ("gpu", "vram_total_mb"),
+                ("system", "vram_total_mb"),
+            ],
+        )
+    )
+
+
+def _missing_dimensions(
+    latest_image_metadata: dict[str, object],
+    latest_image_info: dict[str, object],
+) -> bool:
+    """Return True when image width/height are not available in current payloads."""
+    width = _first_number(
+        {"meta": latest_image_metadata, "info": latest_image_info},
+        [
+            ("meta", "width"),
+            ("info", "width"),
+            ("info", "image_width"),
+        ],
+    )
+    height = _first_number(
+        {"meta": latest_image_metadata, "info": latest_image_info},
+        [
+            ("meta", "height"),
+            ("info", "height"),
+            ("info", "image_height"),
+        ],
+    )
+    return width <= 0.0 or height <= 0.0
+
+
+def _missing_model(
+    latest_image_metadata: dict[str, object],
+    latest_image_info: dict[str, object],
+) -> bool:
+    """Return True when model identity is absent from metadata/info payloads."""
+    model = _first_text(
+        {"meta": latest_image_metadata, "info": latest_image_info},
+        [
+            ("meta", "model", "name"),
+            ("meta", "model"),
+            ("meta", "model_name"),
+            ("meta", "model_identifier"),
+            ("info", "model", "name"),
+            ("info", "model"),
+            ("info", "model_name"),
+            ("info", "model_identifier"),
+        ],
+    )
+    return not bool(model)
+
+
+def _format_dimensions(width: float, height: float) -> str:
+    """Return a human-friendly dimensions string for non-zero sizes."""
+    if width <= 0.0 or height <= 0.0:
+        return ""
+    return f"{int(width)} x {int(height)}"
+
+
+def _extract_model_from_workflow(payload: dict[str, object]) -> str:
+    """Extract model name from InvokeAI workflow payload when metadata is empty."""
+    model_name = ""
+    graph_raw = payload.get("graph")
+    if isinstance(graph_raw, str) and graph_raw.strip():
+        try:
+            graph = json.loads(graph_raw)
+        except json.JSONDecodeError:
+            graph = {}
+
+        if isinstance(graph, dict):
+            nodes = graph.get("nodes")
+            if isinstance(nodes, dict):
+                for node in nodes.values():
+                    if not isinstance(node, dict):
+                        continue
+                    model = node.get("model")
+                    if not isinstance(model, dict):
+                        continue
+                    name = model.get("name")
+                    if isinstance(name, str):
+                        text = name.strip()
+                        if text:
+                            model_name = text
+                            break
+
+    return model_name
+
+
+def _derive_activity_status(
+    current_payload: dict[str, object],
+    queue_payload: dict[str, object],
+    *,
+    has_latest_image: bool,
+) -> str:
+    """Derive a user-facing activity state from current item and queue status."""
+    status = _first_text(current_payload, [("status",), ("state",)])
+    if status:
+        return status
+
+    in_progress_count = _first_number(
+        queue_payload,
+        [("in_progress",), ("queue", "in_progress"), ("counts", "in_progress")],
+    )
+    pending_count = _first_number(
+        queue_payload,
+        [("pending",), ("queue", "pending"), ("counts", "pending")],
+    )
+    processor = _first_object(queue_payload, [("processor",)]) or {}
+    is_processing = _first_bool(processor, [("is_processing",)])
+    is_paused = _first_bool(processor, [("is_paused",)])
+    is_started = _first_bool(processor, [("is_started",)])
+
+    if in_progress_count > 0.0 or is_processing is True:
+        status = "in_progress"
+    elif pending_count > 0.0 and not has_latest_image:
+        status = "queued"
+    elif is_paused is True:
+        status = "paused"
+    elif has_latest_image:
+        status = "completed"
+    elif is_started is True:
+        status = "idle"
+    else:
+        status = ""
+
+    return status

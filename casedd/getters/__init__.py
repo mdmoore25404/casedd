@@ -9,6 +9,7 @@ Available getters:
     - :mod:`casedd.getters.fans` — system/CPU/GPU fan telemetry
     - :mod:`casedd.getters.gpu` — NVIDIA GPU stats via ``nvidia-smi``
     - :mod:`casedd.getters.htop` — htop-style process list by CPU usage
+    - :mod:`casedd.getters.invokeai` — InvokeAI queue/runtime telemetry
     - :mod:`casedd.getters.memory` — RAM usage
     - :mod:`casedd.getters.disk` — Disk usage
     - :mod:`casedd.getters.network` — Network byte rates
