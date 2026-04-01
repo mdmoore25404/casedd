@@ -579,3 +579,48 @@ async def test_invokeai_getter_inferrs_dimensions_from_image_bytes(monkeypatch) 
     assert payload["invokeai.last_job.width"] == 640.0
     assert payload["invokeai.last_job.height"] == 832.0
     assert payload["invokeai.last_job.dimensions"] == "640 x 832"
+
+
+async def test_invokeai_getter_prefers_metadata_dimensions(monkeypatch) -> None:
+    """Metadata dimensions should be used before image-byte fallback probing."""
+
+    image = Image.new("RGB", (640, 832), (22, 22, 22))
+    encoded = BytesIO()
+    image.save(encoded, format="PNG")
+    image_bytes = encoded.getvalue()
+
+    def _ok(req, timeout: float, context=None):
+        url = str(req.full_url)
+        body_map: dict[str, str | bytes] = {
+            "/api/v1/queue/default/status": (
+                '{"queue": {"pending": 0, "in_progress": 0, "failed": 0}}'
+            ),
+            "/api/v1/queue/default/current": "null",
+            "/api/v2/models/stats": '{"cache_size": 1073741824, "loaded_model_sizes": {}}',
+            "/api/v1/images/?limit=1&order_dir=DESC&starred_first=false": (
+                '{"items": ['
+                '{"image_name": "meta-first.png", '
+                '"image_url": "api/v1/images/i/meta-first.png/full"}'
+                "]}"
+            ),
+            "/api/v1/images/i/meta-first.png/metadata": (
+                '{"model_name": "flux-dev", "width": 1024, "height": 576}'
+            ),
+            "/api/v1/images/i/meta-first.png/full": image_bytes,
+            "/openapi.json": '{"info": {"version": "6.9.0"}}',
+        }
+
+        for suffix, body in body_map.items():
+            if url.endswith(suffix):
+                return _FakeResponse(body)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr("casedd.getters.invokeai.urlopen", _ok)
+
+    getter = InvokeAIGetter(DataStore(), base_url="http://bandit:9090")
+    payload = await getter.fetch()
+
+    assert payload["invokeai.last_job.model"] == "flux-dev"
+    assert payload["invokeai.last_job.width"] == 1024.0
+    assert payload["invokeai.last_job.height"] == 576.0
+    assert payload["invokeai.last_job.dimensions"] == "1024 x 576"

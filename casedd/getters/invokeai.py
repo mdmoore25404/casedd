@@ -123,6 +123,7 @@ class InvokeAIGetter(BaseGetter):
         self._auth_error_logged = False
         self._sticky_values: dict[str, StoreValue] = {}
         self._image_size_cache: dict[str, tuple[float, float]] = {}
+        self._image_dimension_source_cache: dict[str, str] = {}
         if self._base_url.startswith("https://") and not verify_tls:
             self._ssl_context = ssl._create_unverified_context()  # noqa: S323
 
@@ -441,34 +442,84 @@ class InvokeAIGetter(BaseGetter):
         latest_image_info = _as_object(latest_image_payload.get("info"))
         latest_image_urls = _as_object(latest_image_payload.get("urls"))
 
-        width = _first_number(active_job, [("width",), ("field_values", "width")])
-        if width <= 0.0 and dimensions_obj is not None:
-            width = _first_number(dimensions_obj, [("width",), ("w",)])
-        if width <= 0.0:
-            width = _first_number(latest_image_metadata, [("width",)])
-        if width <= 0.0:
-            width = _first_number(latest_image_info, [("width",), ("image_width",)])
+        width = 0.0
+        height = 0.0
+        source = ""
 
-        height = _first_number(active_job, [("height",), ("field_values", "height")])
-        if height <= 0.0 and dimensions_obj is not None:
-            height = _first_number(dimensions_obj, [("height",), ("h",)])
-        if height <= 0.0:
-            height = _first_number(latest_image_metadata, [("height",)])
-        if height <= 0.0:
-            height = _first_number(latest_image_info, [("height",), ("image_height",)])
-
-        if (width > 0.0 and height > 0.0) or not latest_image_name:
-            return width, height
-
-        inferred_width, inferred_height = self._infer_image_size(
-            latest_image_name,
-            latest_image_urls,
+        dimensions_obj_value = dimensions_obj if dimensions_obj is not None else {}
+        source_shape = tuple[str, dict[str, object], list[tuple[str, ...]], list[tuple[str, ...]]]
+        candidate_sources: tuple[source_shape, ...] = (
+            (
+                "active_job",
+                active_job,
+                [("width",), ("field_values", "width")],
+                [("height",), ("field_values", "height")],
+            ),
+            (
+                "active_dimensions",
+                dimensions_obj_value,
+                [("width",), ("w",)],
+                [("height",), ("h",)],
+            ),
+            (
+                "latest_image_metadata",
+                latest_image_metadata,
+                [("width",)],
+                [("height",)],
+            ),
+            (
+                "latest_image_details",
+                latest_image_info,
+                [("width",), ("image_width",)],
+                [("height",), ("image_height",)],
+            ),
         )
-        if width <= 0.0:
-            width = inferred_width
-        if height <= 0.0:
-            height = inferred_height
+
+        for candidate_source, payload, width_paths, height_paths in candidate_sources:
+            candidate_width = _first_number(payload, width_paths)
+            candidate_height = _first_number(payload, height_paths)
+            if candidate_width > 0.0 and candidate_height > 0.0:
+                width = candidate_width
+                height = candidate_height
+                source = candidate_source
+                break
+
+        if (width <= 0.0 or height <= 0.0) and latest_image_name:
+            inferred_width, inferred_height = self._infer_image_size(
+                latest_image_name,
+                latest_image_urls,
+            )
+            if inferred_width > 0.0 and inferred_height > 0.0:
+                width = inferred_width
+                height = inferred_height
+                source = "image_probe"
+
+        self._log_dimension_source(latest_image_name, source, width, height)
         return width, height
+
+    def _log_dimension_source(
+        self,
+        image_name: str,
+        source: str,
+        width: float,
+        height: float,
+    ) -> None:
+        """Emit one debug log when image dimension source changes."""
+        if not image_name or not source or width <= 0.0 or height <= 0.0:
+            return
+
+        previous_source = self._image_dimension_source_cache.get(image_name)
+        if previous_source == source:
+            return
+
+        self._image_dimension_source_cache[image_name] = source
+        _log.debug(
+            "InvokeAI dimensions resolved from %s for %s: %dx%d",
+            source,
+            image_name,
+            int(width),
+            int(height),
+        )
 
     def _infer_image_size(
         self,
