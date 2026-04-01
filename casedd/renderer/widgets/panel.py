@@ -151,13 +151,27 @@ class PanelWidget(BaseWidget):
 
         assert cfg.grid is not None  # guarded by caller
 
-        rects = resolve_grid(
-            template_areas=cfg.grid.template_areas,
-            columns=cfg.grid.columns,
-            rows=cfg.grid.rows,
-            canvas_w=rect.w,
-            canvas_h=rect.h,
+        grid_cache_key = (
+            cfg.grid.template_areas,
+            cfg.grid.columns,
+            cfg.grid.rows,
+            rect.w,
+            rect.h,
         )
+        cached_key = state.get("panel_grid_cache_key")
+        cached_rects = state.get("panel_grid_cache_rects")
+        if cached_key == grid_cache_key and isinstance(cached_rects, dict):
+            rects = cached_rects
+        else:
+            rects = resolve_grid(
+                template_areas=cfg.grid.template_areas,
+                columns=cfg.grid.columns,
+                rows=cfg.grid.rows,
+                canvas_w=rect.w,
+                canvas_h=rect.h,
+            )
+            state["panel_grid_cache_key"] = grid_cache_key
+            state["panel_grid_cache_rects"] = rects
 
         for name, child_cfg in cfg.children_named.items():
             child_local_rect = rects.get(name)

@@ -1063,18 +1063,97 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     async def get_metrics() -> Response:
         """Return Prometheus-compatible plain-text metrics."""
         lines: list[str] = []
+
+        def _append_numeric_metric(spec: tuple[str, str, str, object, bool, int]) -> None:
+            name, metric_type, help_text, value, as_int, precision = spec
+            if not isinstance(value, (int, float)):
+                return
+            lines.append(f"# HELP {name} {help_text}")
+            lines.append(f"# TYPE {name} {metric_type}")
+            if as_int:
+                lines.append(f"{name} {int(value)}")
+                return
+            lines.append(f"{name} {float(value):.{precision}f}")
+
         if health_provider is not None:
             health_data = health_provider()
-            uptime = health_data.get("uptime_seconds")
-            if isinstance(uptime, (int, float)):
-                lines.append("# HELP casedd_uptime_seconds Daemon uptime in seconds")
-                lines.append("# TYPE casedd_uptime_seconds gauge")
-                lines.append(f"casedd_uptime_seconds {uptime:.1f}")
-            render_count = health_data.get("render_count")
-            if isinstance(render_count, (int, float)):
-                lines.append("# HELP casedd_render_total Total frames rendered")
-                lines.append("# TYPE casedd_render_total counter")
-                lines.append(f"casedd_render_total {int(render_count)}")
+            metric_specs: list[tuple[str, str, str, object, bool, int]] = [
+                (
+                    "casedd_uptime_seconds",
+                    "gauge",
+                    "Daemon uptime in seconds",
+                    health_data.get("uptime_seconds"),
+                    False,
+                    1,
+                ),
+                (
+                    "casedd_render_total",
+                    "counter",
+                    "Total frames rendered",
+                    health_data.get("render_count"),
+                    True,
+                    0,
+                ),
+                (
+                    "casedd_render_loop_last_ms",
+                    "gauge",
+                    "Last render loop duration in ms",
+                    health_data.get("render_loop_last_ms"),
+                    False,
+                    3,
+                ),
+                (
+                    "casedd_render_loop_ema_ms",
+                    "gauge",
+                    "Exponential moving average render loop ms",
+                    health_data.get("render_loop_ema_ms"),
+                    False,
+                    3,
+                ),
+                (
+                    "casedd_render_loop_max_ms",
+                    "gauge",
+                    "Maximum observed render loop ms",
+                    health_data.get("render_loop_max_ms"),
+                    False,
+                    3,
+                ),
+                (
+                    "casedd_renderer_dynamic_drawn",
+                    "gauge",
+                    "Widgets redrawn this frame",
+                    health_data.get("renderer_dynamic_drawn"),
+                    True,
+                    0,
+                ),
+                (
+                    "casedd_renderer_dynamic_cached",
+                    "gauge",
+                    "Widgets served from cache",
+                    health_data.get("renderer_dynamic_cached"),
+                    True,
+                    0,
+                ),
+                (
+                    "casedd_renderer_static_cache_hits",
+                    "gauge",
+                    "Panels using static cache",
+                    health_data.get("renderer_static_cache_hits"),
+                    True,
+                    0,
+                ),
+                (
+                    "casedd_renderer_layout_cache_hits",
+                    "gauge",
+                    "Panels using layout cache",
+                    health_data.get("renderer_layout_cache_hits"),
+                    True,
+                    0,
+                ),
+            ]
+            for spec in metric_specs:
+                _append_numeric_metric(spec)
+
             getters = health_data.get("getters", [])
             if isinstance(getters, list):
                 lines.append(
@@ -1102,6 +1181,11 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         lines.append(f"casedd_store_keys {store_size}")
         body = "\n".join(lines) + "\n"
         return Response(content=body, media_type="text/plain; version=0.0.4")
+
+    @app.get("/metrics", summary="Prometheus-format metrics")
+    async def get_metrics_alias() -> Response:
+        """Backward-compatible alias for Prometheus scrapers expecting /metrics."""
+        return await get_metrics()
 
     # Mount the production-built React SPA last so it never shadows API routes.
     # When web/dist/index.html exists (i.e. ``npm run build`` was run), the SPA
