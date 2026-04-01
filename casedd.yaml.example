@@ -7,6 +7,12 @@ log_level: INFO
 template: system_stats
 refresh_rate: 2.0
 
+# Speedtest cache persists the latest pushed/polled speedtest payload so a dev
+# restart does not blank the speedtest dashboard until the next update arrives.
+# Cache entries older than this max-age are ignored at startup.
+# speedtest_cache_path: run/speedtest-cache.json
+# speedtest_cache_max_age_hours: 8.0
+
 # Ollama polling configuration.
 # Detailed mode adds /api/version and /api/tags polling plus expanded
 # ollama.running_<n> / ollama.model_<n> keys for local-AI dashboards.
