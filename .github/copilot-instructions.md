@@ -266,6 +266,16 @@ curl -sS http://localhost:18080/image -o /tmp/casedd-frame.jpg
 Then review `/tmp/casedd-frame.jpg` with the available image-viewing tool before
 finalizing layout/typography changes.
 
+Startup splash handling (required for visual checks):
+- CASEDD intentionally shows a startup splash for `startup_frame_seconds`
+  (default `5.0` seconds) after `./dev.sh restart`.
+- Do **not** validate layout/typography from the first captured frame after restart;
+  that frame may be the splash.
+- Read the effective splash duration from config/env when available, wait at least
+  `startup_frame_seconds + 1` seconds, then capture and review the frame.
+- If uncertain, capture two frames several seconds apart and only evaluate the
+  post-splash runtime frame.
+
 > **Note:** The `/image` endpoint serves **JPEG** (not PNG). The dev server runs on port
 > **18080** (not 8080 which is reserved for production). Always use `http://localhost:18080`
 > during development.

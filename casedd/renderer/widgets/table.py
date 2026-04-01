@@ -64,6 +64,8 @@ class _LayoutSpec:
     max_h: int
     font_size: int | str
     fit_text: bool
+    expected_rows: int
+    max_font_size: int | None
 
 
 class TableWidget(BaseWidget):
@@ -107,6 +109,7 @@ class TableWidget(BaseWidget):
         avail_w = max(1, inner.w - 2)
         avail_h = max(1, inner.h - label_h)
         fit_text = bool(cfg.table_fit_text)
+        expected_rows = max(1, cfg.max_items or len(rows))
         cache_key = (
             source_text,
             tuple((row.left, row.right) for row in rows),
@@ -114,6 +117,8 @@ class TableWidget(BaseWidget):
             avail_h,
             cfg.font_size,
             fit_text,
+            expected_rows,
+            cfg.max_font_size,
         )
         prepared = _layout_from_cache(_state, cache_key)
         if prepared is None:
@@ -122,14 +127,16 @@ class TableWidget(BaseWidget):
                 max_h=avail_h,
                 font_size=cfg.font_size,
                 fit_text=fit_text,
+                expected_rows=expected_rows,
+                max_font_size=cfg.max_font_size,
             )
             prepared = _prepare_layout(draw, rows, spec)
             _state["table_layout_key"] = cache_key
             _state["table_layout"] = prepared
 
         color = parse_color(cfg.color, fallback=(220, 225, 230))
-        total_h = prepared.row_h * len(prepared.rows)
-        y = inner.y + label_h + max(0, (avail_h - total_h) // 2)
+        # Table rows are anchored to the top of the content area.
+        y = inner.y + label_h
 
         left_x = inner.x + 1
         right_x = inner.x + inner.w - 2
@@ -231,16 +238,25 @@ def _fit_font(
 ) -> tuple[FreeTypeFont | ImageFont, int, int, int, bool]:
     """Pick the largest font and row geometry that fit the table box."""
     row_count = max(1, len(rows))
+    sizing_row_count = max(row_count, spec.expected_rows)
     max_w = spec.max_w
     max_h = spec.max_h
     font_size = spec.font_size
     dynamic_min = max(1, min(max_w, max_h) // 34)
     if font_size == "auto":
-        start_size = max(dynamic_min, max_h // row_count)
+        # Keep auto text responsive but avoid one-row tables exploding to unreadable sizes.
+        by_rows = max(1, max_h // sizing_row_count)
+        by_width = max(1, max_w // 34)
+        by_height = max(1, max_h // 12)
+        dynamic_max = max(dynamic_min, min(by_width, by_height))
+        start_size = max(dynamic_min, min(by_rows, dynamic_max))
     else:
         start_size = max(dynamic_min, int(font_size))
 
-    for size in range(start_size, dynamic_min - 1, -1):
+    capped_start = start_size
+    if spec.max_font_size is not None:
+        capped_start = min(start_size, spec.max_font_size)
+    for size in range(capped_start, dynamic_min - 1, -1):
         font = get_font(size)
         row_h = _line_height(draw, font, size)
         total_h = row_h * row_count

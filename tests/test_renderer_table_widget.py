@@ -71,3 +71,35 @@ def test_table_widget_fit_text_and_cache_reuse() -> None:
 
     assert img.getbbox() is not None
     assert "table_layout" in state
+
+
+def test_table_widget_content_is_top_aligned() -> None:
+    """Rows should anchor near the top instead of centering vertically."""
+    img = Image.new("RGB", (320, 220), (0, 0, 0))
+    store = DataStore()
+    store.set("table.top", "first|1")
+
+    widget = TableWidget()
+    cfg = WidgetConfig(type=WidgetType.TABLE, source="table.top", font_size="auto")
+    widget.draw(img, Rect(x=0, y=0, w=320, h=220), cfg, store, {})
+
+    bbox = img.getbbox()
+    assert bbox is not None
+    # Top-aligned text should render near the top edge of the content rect.
+    assert bbox[1] < 40
+
+
+def test_table_widget_auto_font_is_bounded_for_single_row() -> None:
+    """Single-row tables should not scale to oversized headline text."""
+    img = Image.new("RGB", (540, 220), (0, 0, 0))
+    store = DataStore()
+    store.set("table.single", "paused|1.5GB")
+
+    widget = TableWidget()
+    cfg = WidgetConfig(type=WidgetType.TABLE, source="table.single", font_size="auto")
+    widget.draw(img, Rect(x=0, y=0, w=540, h=220), cfg, store, {})
+
+    bbox = img.getbbox()
+    assert bbox is not None
+    # Keep glyph height reasonable for readability in mixed table dashboards.
+    assert (bbox[3] - bbox[1]) < 90

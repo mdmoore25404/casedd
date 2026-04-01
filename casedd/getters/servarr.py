@@ -304,22 +304,44 @@ class ServarrAggregateGetter(BaseGetter):
     async def fetch(self) -> dict[str, StoreValue]:
         """Build aggregate queue/health totals from current store snapshot."""
         snapshot = self._store.snapshot()
-        total_queue = _store_float(snapshot, "radarr.queue.total") + _store_float(
-            snapshot,
-            "sonarr.queue.total",
-        )
-        total_warn = _store_float(snapshot, "radarr.health.warning_count") + _store_float(
-            snapshot,
-            "sonarr.health.warning_count",
-        )
-        total_err = _store_float(snapshot, "radarr.health.error_count") + _store_float(
-            snapshot,
-            "sonarr.health.error_count",
-        )
-        rows = "\n".join(
+        radarr_active = _store_float(snapshot, "radarr.active")
+        sonarr_active = _store_float(snapshot, "sonarr.active")
+        radarr_queue = _store_float(snapshot, "radarr.queue.total")
+        sonarr_queue = _store_float(snapshot, "sonarr.queue.total")
+        radarr_warn = _store_float(snapshot, "radarr.health.warning_count")
+        sonarr_warn = _store_float(snapshot, "sonarr.health.warning_count")
+        radarr_err = _store_float(snapshot, "radarr.health.error_count")
+        sonarr_err = _store_float(snapshot, "sonarr.health.error_count")
+        radarr_upcoming = _store_float(snapshot, "radarr.calendar.upcoming_count")
+        sonarr_upcoming = _store_float(snapshot, "sonarr.calendar.upcoming_count")
+        radarr_free_gb = _store_float(snapshot, "radarr.disk.free_gb")
+        sonarr_free_gb = _store_float(snapshot, "sonarr.disk.free_gb")
+
+        total_queue = radarr_queue + sonarr_queue
+        total_warn = radarr_warn + sonarr_warn
+        total_err = radarr_err + sonarr_err
+        radarr_rows = "\n".join(
             [
-                f"Radarr Active|{int(_store_float(snapshot, 'radarr.active'))}",
-                f"Sonarr Active|{int(_store_float(snapshot, 'sonarr.active'))}",
+                f"Active|{int(radarr_active)}",
+                f"Queue|{int(radarr_queue)}",
+                f"Warn|{int(radarr_warn)}",
+                f"Error|{int(radarr_err)}",
+                f"Upcoming|{int(radarr_upcoming)}",
+                f"Free|{radarr_free_gb:.1f}GB",
+            ]
+        )
+        sonarr_rows = "\n".join(
+            [
+                f"Active|{int(sonarr_active)}",
+                f"Queue|{int(sonarr_queue)}",
+                f"Warn|{int(sonarr_warn)}",
+                f"Error|{int(sonarr_err)}",
+                f"Upcoming|{int(sonarr_upcoming)}",
+                f"Free|{sonarr_free_gb:.1f}GB",
+            ]
+        )
+        totals_rows = "\n".join(
+            [
                 f"Queue Total|{int(total_queue)}",
                 f"Health Warn|{int(total_warn)}",
                 f"Health Error|{int(total_err)}",
@@ -329,7 +351,10 @@ class ServarrAggregateGetter(BaseGetter):
             "servarr.queue.total": total_queue,
             "servarr.health.warning_count": total_warn,
             "servarr.health.error_count": total_err,
-            "servarr.rows": rows,
+            "servarr.radarr.rows": radarr_rows,
+            "servarr.sonarr.rows": sonarr_rows,
+            "servarr.totals.rows": totals_rows,
+            "servarr.rows": totals_rows,
         }
 
 

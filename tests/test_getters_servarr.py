@@ -228,6 +228,13 @@ async def test_servarr_aggregate_getter_sums_app_totals() -> None:
     assert payload["servarr.queue.total"] == 8.0
     assert payload["servarr.health.warning_count"] == 3.0
     assert payload["servarr.health.error_count"] == 1.0
+    radarr_rows = str(payload["servarr.radarr.rows"])
+    sonarr_rows = str(payload["servarr.sonarr.rows"])
+    totals_rows = str(payload["servarr.totals.rows"])
+    assert "Queue|5" in radarr_rows
+    assert "Queue|3" in sonarr_rows
+    assert "Queue Total|8" in totals_rows
+    assert str(payload["servarr.rows"]) == totals_rows
 
 
 def test_servarr_aggregate_getter_handles_string_values() -> None:
@@ -252,3 +259,5 @@ def test_servarr_aggregate_getter_handles_string_values() -> None:
     assert payload["servarr.queue.total"] == 6.0
     assert payload["servarr.health.warning_count"] == 1.0
     assert payload["servarr.health.error_count"] == 2.0
+    assert "Free|0.0GB" in str(payload["servarr.radarr.rows"])
+    assert "Free|0.0GB" in str(payload["servarr.sonarr.rows"])
