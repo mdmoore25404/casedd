@@ -15,13 +15,13 @@ background: "#0a0f14"
 
 grid:
   # 4 columns, 3 rows:
-  # Row 1 (largest): GPU use sparkline | GPU temp sparkline | VRAM gauge | Power value
-  # Row 2 (medium):  GPU use history   | GPU temp history  | VRAM bar   | Power sparkline
-  # Row 3 (small):   VRAM MB used (span 2)                 | VRAM total | Power label
+  # Row 1 (largest): GPU use sparkline | GPU temp sparkline | VRAM % gauge | Power value
+  # Row 2 (medium):  GPU use history   | GPU temp history  | VRAM used MB | Power sparkline
+  # Row 3 (small):   VRAM free (span 2)                    | VRAM total | GPU count
   template_areas: |
-    gpu_use    gpu_use    gpu_temp   gpu_temp   vram_gauge   power_val
-    gpu_use    gpu_use    gpu_temp   gpu_temp   vram_bar     power_hist
-    vram_used  vram_used  vram_total vram_total gpu_count    power_hist
+    gpu_use    gpu_use    gpu_temp      gpu_temp      vram_gauge    gpu_name
+    gpu_use    gpu_use    gpu_temp      gpu_temp      vram_used_abs power_hist
+    vram_free  vram_free  vram_total    vram_total    gpu_count     power_hist
   columns: 1fr 1fr 1fr 1fr 1fr 1fr
   rows: 1.6fr 1fr 0.8fr
 
@@ -62,7 +62,7 @@ widgets:
 
   vram_gauge:
     type: gauge
-    label: VRAM Used
+    label: VRAM %
     source: nvidia.memory_percent
     padding: [6, 4]
     min: 0
@@ -75,28 +75,23 @@ widgets:
       - [70, "#ffcc00"]
       - [90, "#ff2222"]
 
-  power_val:
+  gpu_name:
     type: value
-    label: Power Draw
-    source: nvidia.power_w
+    label: GPU Model
+    source: nvidia.name
     padding: [4, 6]
-    precision: 0
-    unit: "W"
-    color: "#f0a040"
+    color: "#d7d9ea"
     font_size: auto
 
-  vram_bar:
-    type: bar
-    label: VRAM %
-    source: nvidia.memory_percent
+  vram_used_abs:
+    type: value
+    label: VRAM Used
+    source: nvidia.memory_used_mb
     padding: [4, 8]
-    min: 0
-    max: 100
-    unit: "%"
-    color_stops:
-      - [0,  "#22aaff"]
-      - [70, "#ffcc00"]
-      - [90, "#ff2222"]
+    precision: 0
+    unit: "MB"
+    color: "#ffb266"
+    font_size: auto
 
   power_hist:
     type: sparkline
@@ -110,10 +105,10 @@ widgets:
     window_seconds: 120
     color: "#f0a040"
 
-  vram_used:
+  vram_free:
     type: value
-    label: VRAM Used
-    source: nvidia.memory_used_mb
+    label: VRAM Free
+    source: nvidia.memory_free_mb
     padding: [2, 8]
     precision: 0
     unit: "MB"

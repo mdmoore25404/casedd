@@ -91,6 +91,87 @@ def test_load_servarr_dashboard_template_file() -> None:
     assert tmpl.name == "servarr_dashboard"
 
 
+def test_load_speedtest_template_file() -> None:
+    """speedtest.casedd in templates/ loads without validation errors."""
+    real = Path("templates/speedtest.casedd")
+    if not real.exists():
+        pytest.skip("templates/speedtest.casedd not present")
+    tmpl = load_template(real)
+    assert tmpl.name == "speedtest"
+
+
+def test_speedtest_template_uses_split_last_run_display() -> None:
+    """speedtest.casedd uses the newline-friendly last test display field."""
+    real = Path("templates/speedtest.casedd")
+    if not real.exists():
+        pytest.skip("templates/speedtest.casedd not present")
+
+    tmpl = load_template(real)
+    ping_jitter = tmpl.widgets.get("ping_jitter")
+    assert ping_jitter is not None
+    assert ping_jitter.children[0].source == "speedtest.last_run_display"
+
+
+def test_load_nvidia_detail_template_file() -> None:
+    """nvidia_detail.casedd in templates/ loads without validation errors."""
+    real = Path("templates/nvidia_detail.casedd")
+    if not real.exists():
+        pytest.skip("templates/nvidia_detail.casedd not present")
+    tmpl = load_template(real)
+    assert tmpl.name == "nvidia_detail"
+
+
+def test_nvidia_detail_template_shows_free_vram_not_duplicate_used() -> None:
+    """nvidia_detail.casedd splits VRAM percent from absolute VRAM values."""
+    real = Path("templates/nvidia_detail.casedd")
+    if not real.exists():
+        pytest.skip("templates/nvidia_detail.casedd not present")
+
+    tmpl = load_template(real)
+    vram_gauge = tmpl.widgets.get("vram_gauge")
+    assert vram_gauge is not None
+    assert vram_gauge.label == "VRAM %"
+    assert vram_gauge.source == "nvidia.memory_percent"
+
+    vram_used_abs = tmpl.widgets.get("vram_used_abs")
+    assert vram_used_abs is not None
+    assert vram_used_abs.label == "VRAM Used"
+    assert vram_used_abs.source == "nvidia.memory_used_mb"
+
+    gpu_name = tmpl.widgets.get("gpu_name")
+    assert gpu_name is not None
+    assert gpu_name.label == "GPU Model"
+    assert gpu_name.source == "nvidia.name"
+
+    assert "power_val" not in tmpl.widgets
+
+    vram_free = tmpl.widgets.get("vram_free")
+    assert vram_free is not None
+    assert vram_free.label == "VRAM Free"
+    assert vram_free.source == "nvidia.memory_free_mb"
+
+
+def test_system_stats_template_uses_host_stats_not_ollama() -> None:
+    """system_stats.casedd uses generic host stats instead of Ollama metadata."""
+    real = Path("templates/system_stats.casedd")
+    if not real.exists():
+        pytest.skip("templates/system_stats.casedd not present")
+
+    tmpl = load_template(real)
+
+    assert "ollama_meta" not in tmpl.widgets
+
+    uptime_meta = tmpl.widgets.get("uptime_meta")
+    assert uptime_meta is not None
+    assert uptime_meta.type.value == "value"
+    assert uptime_meta.source == "system.uptime"
+
+    load_meta = tmpl.widgets.get("load_meta")
+    assert load_meta is not None
+    assert load_meta.type.value == "value"
+    assert load_meta.source == "system.load_1"
+
+
 def test_servarr_dashboard_logo_and_header_stats_layout() -> None:
     """servarr_dashboard.casedd uses full-width queue tables with rich headers."""
     real = Path("templates/servarr_dashboard.casedd")

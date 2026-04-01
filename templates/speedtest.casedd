@@ -63,7 +63,7 @@ widgets:
     children:
       - type: text
         label: "Last Test"
-        source: speedtest.last_run
+        source: speedtest.last_run_display
         font_size: auto
         color: "#7a8899"
         padding: [2, 4]

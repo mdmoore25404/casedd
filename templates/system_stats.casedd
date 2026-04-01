@@ -12,11 +12,11 @@ refresh_rate: 2.0
 grid:
   # 5-column dashboard layout — 3 rows.
   # Row 1: CPU Use, CPU Temp, GPU Use, GPU Temp, Mascot.
-  # Row 2: RAM, GPU VRAM, Disk (gauge), Ollama (spans 2), Mascot column continues.
+  # Row 2: RAM, GPU VRAM, Disk (gauge), Uptime, 1m Load.
   # Row 3: Net multi (spans 3), Disk R, Disk W.
   template_areas: |
     cpu_gauge   cpu_temp   gpu_gauge  gpu_temp    mascot
-    ram         gpu_vram   disk       ollama_meta ollama_meta
+    ram         gpu_vram   disk       uptime_meta load_meta
     net_multi   net_multi  net_multi  disk_read   disk_write
   columns: 1fr 1fr 1fr 1fr 1fr
   rows: 1.4fr 1.1fr 1fr
@@ -185,13 +185,22 @@ widgets:
       - [80, "#ffcc00"]
       - [150, "#ff5533"]
 
-  ollama_meta:
-    type: text
-    label: "Active Ollama"
-    source: ollama.active_compact
-    padding: [2, 6]
-    font_size: auto
+  uptime_meta:
+    type: value
+    label: Uptime
+    source: system.uptime
+    padding: [4, 6]
     color: "#ffffff"
+    font_size: auto
+
+  load_meta:
+    type: value
+    label: Load 1m
+    source: system.load_1
+    padding: [4, 6]
+    precision: 2
+    color: "#d7d9ea"
+    font_size: auto
 
   mascot:
     type: image

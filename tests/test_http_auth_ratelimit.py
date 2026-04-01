@@ -75,6 +75,27 @@ def test_update_with_extra_header_still_succeeds_when_no_key() -> None:
     assert resp.status_code == 204
 
 
+def test_update_enriches_speedtest_timestamp_display_fields() -> None:
+    """Speedtest pushes gain split timestamp fields for cleaner templates."""
+    client, store = _make_client()
+
+    resp = client.post(
+        "/api/update",
+        json={
+            "update": {
+                "speedtest.download_mbps": 2332.0,
+                "speedtest.upload_mbps": 298.0,
+                "speedtest.last_run": "2026-03-31 21:21:24",
+            }
+        },
+    )
+
+    assert resp.status_code == 204
+    assert store.get("speedtest.last_run_date") == "2026-03-31"
+    assert store.get("speedtest.last_run_time") == "21:21:24"
+    assert store.get("speedtest.last_run_display") == "2026-03-31\n21:21:24"
+
+
 # ---------------------------------------------------------------------------
 # Auth — key configured
 # ---------------------------------------------------------------------------

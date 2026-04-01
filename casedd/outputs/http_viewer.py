@@ -23,7 +23,6 @@ import base64
 import binascii
 from collections.abc import Callable
 import contextlib
-from datetime import UTC, datetime
 import io
 import logging
 import os
@@ -46,6 +45,7 @@ import yaml
 
 from casedd.config import RotationEntry
 from casedd.data_store import DataStore, StoreValue
+from casedd.speedtest_fields import enrich_speedtest_timestamp_fields
 from casedd.template.loader import TemplateError, load_template
 from casedd.template.models import Template
 
@@ -342,26 +342,16 @@ class _SimulationController:
             await asyncio.sleep(request.interval)
 
 
-_SPEEDTEST_NS = "speedtest."
-_SPEEDTEST_LAST_RUN_KEY = "speedtest.last_run"
-
-
 def _inject_speedtest_timestamp(payload: dict[str, StoreValue]) -> None:
-    """Auto-add ``speedtest.last_run`` when any speedtest key is present but missing.
+    """Ensure canonical speedtest timestamp fields exist on pushed payloads.
 
-    Convenient for pushing machines that don't bother including a timestamp.
-    The injected value is the server's current local time in
-    ``YYYY-MM-DD HH:MM:SS`` format.
+    Convenient for pushing machines that don't bother including a timestamp,
+    and ensures the UI-friendly split date/time fields remain available.
 
     Args:
         payload: Flat data-store payload being ingested.
     """
-    if _SPEEDTEST_LAST_RUN_KEY in payload:
-        return
-    if any(k.startswith(_SPEEDTEST_NS) for k in payload):
-        payload[_SPEEDTEST_LAST_RUN_KEY] = (
-            datetime.now(UTC).astimezone().strftime("%Y-%m-%d %H:%M:%S")
-        )
+    enrich_speedtest_timestamp_fields(payload)
 
 
 _LIGHT_VIEWER_HTML = """\
