@@ -30,6 +30,7 @@ Store keys written:
 from __future__ import annotations
 
 import asyncio
+from io import BytesIO
 import json
 import logging
 import ssl
@@ -37,6 +38,8 @@ from typing import cast
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urljoin
 from urllib.request import Request, urlopen
+
+from PIL import Image as PILImage
 
 from casedd.data_store import DataStore, StoreValue
 from casedd.getters.base import BaseGetter
@@ -61,6 +64,10 @@ _MODELS_PATHS: tuple[str, ...] = (
 _IMAGES_LIST_PATH = "/api/v1/images/?limit=1&order_dir=DESC&starred_first=false"
 _IMAGES_NAMES_PATH = "/api/v1/images/names"
 _OPENAPI_PATH = "/openapi.json"
+_IMAGE_DETAILS_PATH = "/api/v1/images/i/{name}"
+_IMAGE_METADATA_PATH = "/api/v1/images/i/{name}/metadata"
+_IMAGE_URLS_PATH = "/api/v1/images/i/{name}/urls"
+_IMAGE_WORKFLOW_PATH = "/api/v1/images/i/{name}/workflow"
 
 _MODEL_STICKY_KEYS: tuple[str, ...] = (
     "invokeai.system.vram_used_mb",
@@ -115,6 +122,7 @@ class InvokeAIGetter(BaseGetter):
         self._ssl_context: ssl.SSLContext | None = None
         self._auth_error_logged = False
         self._sticky_values: dict[str, StoreValue] = {}
+        self._image_size_cache: dict[str, tuple[float, float]] = {}
         if self._base_url.startswith("https://") and not verify_tls:
             self._ssl_context = ssl._create_unverified_context()  # noqa: S323
 
@@ -136,6 +144,8 @@ class InvokeAIGetter(BaseGetter):
             latest_image_name,
             latest_image_metadata,
             latest_image_urls,
+            latest_image_info,
+            latest_image_workflow,
         ) = self._fetch_latest_image_data()
 
         sample = _placeholder_sample()
@@ -144,8 +154,13 @@ class InvokeAIGetter(BaseGetter):
             self._build_activity_fields(
                 queue_payload,
                 current_payload,
-                latest_image_name,
-                latest_image_metadata,
+                {
+                    "name": latest_image_name,
+                    "metadata": latest_image_metadata,
+                    "urls": latest_image_urls,
+                    "info": latest_image_info,
+                    "workflow": latest_image_workflow,
+                },
             )
         )
         sample.update(self._build_cache_fields(models_payload))
@@ -167,7 +182,7 @@ class InvokeAIGetter(BaseGetter):
         latest_image_available = bool(
             latest_image_name or latest_image_metadata or latest_image_urls
         )
-        if current_payload is None:
+        if not current_payload:
             self._apply_sticky_group(
                 sample,
                 _LATEST_IMAGE_STICKY_KEYS,
@@ -193,35 +208,82 @@ class InvokeAIGetter(BaseGetter):
 
     def _fetch_latest_image_data(
         self,
-    ) -> tuple[str, dict[str, object], dict[str, object]]:
-        """Fetch latest image name plus optional metadata and URL payloads."""
+    ) -> tuple[
+        str,
+        dict[str, object],
+        dict[str, object],
+        dict[str, object],
+        dict[str, object],
+    ]:
+        """Fetch latest image name plus optional metadata, URL, and workflow payloads."""
         image_list_payload = self._request_json_optional(_IMAGES_LIST_PATH)
-        latest_image_name, latest_image_urls = _extract_latest_image_from_list(
+        (
+            latest_image_name,
+            latest_image_urls,
+            latest_image_info,
+        ) = _extract_latest_image_from_list(
             image_list_payload,
             self._base_url,
         )
         if latest_image_name:
             encoded_image_name = quote(latest_image_name, safe="")
+            if not _has_image_urls(latest_image_urls):
+                latest_image_urls = self._request_json_optional(
+                    _IMAGE_URLS_PATH.format(name=encoded_image_name)
+                )
             latest_image_metadata = self._request_json_or_null(
-                f"/api/v1/images/i/{encoded_image_name}/metadata"
+                _IMAGE_METADATA_PATH.format(name=encoded_image_name)
             )
             if latest_image_metadata is None:
                 latest_image_metadata = {}
-            return latest_image_name, latest_image_metadata, latest_image_urls
+            latest_image_details: dict[str, object] = {}
+            latest_image_workflow: dict[str, object] = {}
+            if _missing_dimensions(latest_image_metadata, latest_image_info):
+                latest_image_details = self._request_json_optional(
+                    _IMAGE_DETAILS_PATH.format(name=encoded_image_name)
+                )
+            merged_image_info = {**latest_image_details, **latest_image_info}
+            if _missing_model(latest_image_metadata, merged_image_info):
+                latest_image_workflow = self._request_json_optional(
+                    _IMAGE_WORKFLOW_PATH.format(name=encoded_image_name)
+                )
+            return (
+                latest_image_name,
+                latest_image_metadata,
+                latest_image_urls,
+                merged_image_info,
+                latest_image_workflow,
+            )
 
         image_names_payload = self._request_json_optional(_IMAGES_NAMES_PATH)
         latest_image_name = _extract_latest_image_name(image_names_payload)
         if not latest_image_name:
-            return "", {}, {}
+            return "", {}, {}, {}, {}
 
         encoded_image_name = quote(latest_image_name, safe="")
         latest_image_metadata = self._request_json_optional(
-            f"/api/v1/images/i/{encoded_image_name}/metadata"
+            _IMAGE_METADATA_PATH.format(name=encoded_image_name)
         )
         latest_image_urls = self._request_json_optional(
-            f"/api/v1/images/i/{encoded_image_name}/urls"
+            _IMAGE_URLS_PATH.format(name=encoded_image_name)
         )
-        return latest_image_name, latest_image_metadata, latest_image_urls
+        latest_image_details = {}
+        latest_image_workflow = {}
+        if _missing_dimensions(latest_image_metadata, latest_image_details):
+            latest_image_details = self._request_json_optional(
+                _IMAGE_DETAILS_PATH.format(name=encoded_image_name)
+            )
+        if _missing_model(latest_image_metadata, latest_image_details):
+            latest_image_workflow = self._request_json_optional(
+                _IMAGE_WORKFLOW_PATH.format(name=encoded_image_name)
+            )
+        return (
+            latest_image_name,
+            latest_image_metadata,
+            latest_image_urls,
+            latest_image_details,
+            latest_image_workflow,
+        )
 
     def _build_queue_fields(self, queue_payload: dict[str, object]) -> dict[str, StoreValue]:
         """Normalize queue counters from the status payload."""
@@ -254,11 +316,15 @@ class InvokeAIGetter(BaseGetter):
         self,
         queue_payload: dict[str, object],
         current_payload: dict[str, object] | None,
-        latest_image_name: str,
-        latest_image_metadata: dict[str, object],
+        latest_image_payload: dict[str, object],
     ) -> dict[str, StoreValue]:
         """Build current-or-latest job metadata for display widgets."""
         active_job = current_payload if current_payload is not None else {}
+        latest_image_name = str(latest_image_payload.get("name") or "")
+        latest_image_metadata = _as_object(latest_image_payload.get("metadata"))
+        latest_image_info = _as_object(latest_image_payload.get("info"))
+        latest_image_workflow = _as_object(latest_image_payload.get("workflow"))
+
         model_obj = _first_object(
             active_job,
             [
@@ -277,36 +343,18 @@ class InvokeAIGetter(BaseGetter):
         if not last_job_id:
             last_job_id = latest_image_name
 
-        last_job_model = _first_text(
+        last_job_model = self._resolve_last_job_model(
             active_job,
-            [
-                ("model",),
-                ("model_name",),
-                ("model_id",),
-                ("field_values", "model"),
-                ("field_values", "model_name"),
-                ("field_values", "model_id"),
-            ],
+            model_obj,
+            latest_image_metadata,
+            latest_image_info,
+            latest_image_workflow,
         )
-        if not last_job_model and model_obj is not None:
-            last_job_model = _first_text(
-                model_obj,
-                [("name",), ("identifier",), ("model_name",)],
-            )
-        if not last_job_model:
-            last_job_model = _first_text(latest_image_metadata, [("model", "name"), ("model",)])
-
-        width = _first_number(active_job, [("width",), ("field_values", "width")])
-        if width <= 0.0 and dimensions_obj is not None:
-            width = _first_number(dimensions_obj, [("width",), ("w",)])
-        if width <= 0.0:
-            width = _first_number(latest_image_metadata, [("width",)])
-
-        height = _first_number(active_job, [("height",), ("field_values", "height")])
-        if height <= 0.0 and dimensions_obj is not None:
-            height = _first_number(dimensions_obj, [("height",), ("h",)])
-        if height <= 0.0:
-            height = _first_number(latest_image_metadata, [("height",)])
+        width, height = self._resolve_dimensions(
+            active_job,
+            dimensions_obj,
+            latest_image_payload,
+        )
 
         completed_at = _first_text(
             active_job,
@@ -334,6 +382,149 @@ class InvokeAIGetter(BaseGetter):
             "invokeai.last_job.height": float(height),
             "invokeai.last_job.completed_at": completed_at,
         }
+
+    def _resolve_last_job_model(
+        self,
+        active_job: dict[str, object],
+        model_obj: dict[str, object] | None,
+        latest_image_metadata: dict[str, object],
+        latest_image_info: dict[str, object],
+        latest_image_workflow: dict[str, object],
+    ) -> str:
+        """Resolve model name from current job first, then latest image metadata."""
+        model = _first_text(
+            active_job,
+            [
+                ("model",),
+                ("model_name",),
+                ("model_id",),
+                ("field_values", "model"),
+                ("field_values", "model_name"),
+                ("field_values", "model_id"),
+            ],
+        )
+        if not model and model_obj is not None:
+            model = _first_text(
+                model_obj,
+                [("name",), ("identifier",), ("model_name",)],
+            )
+        if model:
+            return model
+
+        model = _first_text(
+            {"meta": latest_image_metadata, "info": latest_image_info},
+            [
+                ("meta", "model", "name"),
+                ("meta", "model"),
+                ("meta", "model_name"),
+                ("meta", "model_identifier"),
+                ("info", "model", "name"),
+                ("info", "model"),
+                ("info", "model_name"),
+                ("info", "model_identifier"),
+            ],
+        )
+        if model:
+            return model
+
+        return _extract_model_from_workflow(latest_image_workflow)
+
+    def _resolve_dimensions(
+        self,
+        active_job: dict[str, object],
+        dimensions_obj: dict[str, object] | None,
+        latest_image_payload: dict[str, object],
+    ) -> tuple[float, float]:
+        """Resolve image dimensions with metadata and image-probe fallback."""
+        latest_image_name = str(latest_image_payload.get("name") or "")
+        latest_image_metadata = _as_object(latest_image_payload.get("metadata"))
+        latest_image_info = _as_object(latest_image_payload.get("info"))
+        latest_image_urls = _as_object(latest_image_payload.get("urls"))
+
+        width = _first_number(active_job, [("width",), ("field_values", "width")])
+        if width <= 0.0 and dimensions_obj is not None:
+            width = _first_number(dimensions_obj, [("width",), ("w",)])
+        if width <= 0.0:
+            width = _first_number(latest_image_metadata, [("width",)])
+        if width <= 0.0:
+            width = _first_number(latest_image_info, [("width",), ("image_width",)])
+
+        height = _first_number(active_job, [("height",), ("field_values", "height")])
+        if height <= 0.0 and dimensions_obj is not None:
+            height = _first_number(dimensions_obj, [("height",), ("h",)])
+        if height <= 0.0:
+            height = _first_number(latest_image_metadata, [("height",)])
+        if height <= 0.0:
+            height = _first_number(latest_image_info, [("height",), ("image_height",)])
+
+        if (width > 0.0 and height > 0.0) or not latest_image_name:
+            return width, height
+
+        inferred_width, inferred_height = self._infer_image_size(
+            latest_image_name,
+            latest_image_urls,
+        )
+        if width <= 0.0:
+            width = inferred_width
+        if height <= 0.0:
+            height = inferred_height
+        return width, height
+
+    def _infer_image_size(
+        self,
+        image_name: str,
+        latest_image_urls: dict[str, object],
+    ) -> tuple[float, float]:
+        """Infer image dimensions from the latest image URL when metadata is missing."""
+        cached = self._image_size_cache.get(image_name)
+        if cached is not None:
+            return cached
+
+        image_url = self._absolute_url(_first_text(latest_image_urls, [("image_url",)]))
+        thumb_url = self._absolute_url(_first_text(latest_image_urls, [("thumbnail_url",)]))
+        for candidate_url in (image_url, thumb_url):
+            if not candidate_url:
+                continue
+            try:
+                inferred = self._request_image_size(candidate_url)
+            except Exception as exc:
+                _log.debug("InvokeAI image-size probe failed (%s): %s", candidate_url, exc)
+                continue
+            if inferred[0] > 0.0 and inferred[1] > 0.0:
+                self._image_size_cache[image_name] = inferred
+                return inferred
+        return (0.0, 0.0)
+
+    def _request_image_size(self, url: str) -> tuple[float, float]:
+        """Fetch one image URL and return decoded pixel dimensions."""
+        headers = {"Accept": "image/*"}
+        if self._api_token:
+            headers["Authorization"] = f"Bearer {self._api_token}"
+
+        req = Request(url, headers=headers, method="GET")  # noqa: S310
+        try:
+            with urlopen(  # noqa: S310
+                req,
+                timeout=self._timeout,
+                context=self._ssl_context,
+            ) as resp:
+                body = resp.read()
+        except HTTPError as exc:
+            raise RuntimeError(f"InvokeAI image request failed with HTTP {exc.code}") from exc
+        except TimeoutError as exc:
+            raise RuntimeError(f"InvokeAI image request timed out: {exc}") from exc
+        except URLError as exc:
+            raise RuntimeError(f"InvokeAI image transport error: {exc}") from exc
+
+        try:
+            with PILImage.open(BytesIO(body)) as image:
+                width, height = image.size
+        except OSError as exc:
+            raise RuntimeError(f"InvokeAI image decode error: {exc}") from exc
+
+        if width <= 0 or height <= 0:
+            return (0.0, 0.0)
+        return (float(width), float(height))
 
     def _build_cache_fields(self, models_payload: dict[str, object]) -> dict[str, StoreValue]:
         """Build model-cache usage fields from the available stats payload."""
@@ -532,6 +723,13 @@ def _placeholder_sample() -> dict[str, StoreValue]:
     }
 
 
+def _as_object(value: object) -> dict[str, object]:
+    """Return value when it is a dictionary, otherwise an empty dictionary."""
+    if isinstance(value, dict):
+        return value
+    return {}
+
+
 def _first_object(
     payload: dict[str, object],
     paths: list[tuple[str, ...]],
@@ -641,19 +839,19 @@ def _extract_latest_image_name(payload: dict[str, object]) -> str:
 def _extract_latest_image_from_list(
     payload: dict[str, object],
     base_url: str,
-) -> tuple[str, dict[str, object]]:
+) -> tuple[str, dict[str, object], dict[str, object]]:
     """Return the newest image name and URLs from the ordered image DTO list."""
     rows = payload.get("items")
     if not isinstance(rows, list) or not rows:
-        return "", {}
+        return "", {}, {}
 
     first_row = rows[0]
     if not isinstance(first_row, dict):
-        return "", {}
+        return "", {}, {}
 
     image_name = _first_text(first_row, [("image_name",)])
     if not image_name:
-        return "", {}
+        return "", {}, {}
 
     thumbnail_url = _first_text(first_row, [("thumbnail_url",)])
     image_url = _first_text(first_row, [("image_url",)])
@@ -661,7 +859,14 @@ def _extract_latest_image_from_list(
         "thumbnail_url": urljoin(f"{base_url}/", thumbnail_url) if thumbnail_url else "",
         "image_url": urljoin(f"{base_url}/", image_url) if image_url else "",
     }
-    return image_name, urls
+    return image_name, urls, first_row
+
+
+def _has_image_urls(payload: dict[str, object]) -> bool:
+    """Return True when at least one usable image URL exists in payload."""
+    thumbnail = _first_text(payload, [("thumbnail_url",)])
+    full = _first_text(payload, [("image_url",)])
+    return bool(thumbnail or full)
 
 
 def _normalize_mebibytes(value: float) -> float:
@@ -717,11 +922,85 @@ def _extract_cache_capacity_mb(payload: dict[str, object]) -> float:
     )
 
 
+def _missing_dimensions(
+    latest_image_metadata: dict[str, object],
+    latest_image_info: dict[str, object],
+) -> bool:
+    """Return True when image width/height are not available in current payloads."""
+    width = _first_number(
+        {"meta": latest_image_metadata, "info": latest_image_info},
+        [
+            ("meta", "width"),
+            ("info", "width"),
+            ("info", "image_width"),
+        ],
+    )
+    height = _first_number(
+        {"meta": latest_image_metadata, "info": latest_image_info},
+        [
+            ("meta", "height"),
+            ("info", "height"),
+            ("info", "image_height"),
+        ],
+    )
+    return width <= 0.0 or height <= 0.0
+
+
+def _missing_model(
+    latest_image_metadata: dict[str, object],
+    latest_image_info: dict[str, object],
+) -> bool:
+    """Return True when model identity is absent from metadata/info payloads."""
+    model = _first_text(
+        {"meta": latest_image_metadata, "info": latest_image_info},
+        [
+            ("meta", "model", "name"),
+            ("meta", "model"),
+            ("meta", "model_name"),
+            ("meta", "model_identifier"),
+            ("info", "model", "name"),
+            ("info", "model"),
+            ("info", "model_name"),
+            ("info", "model_identifier"),
+        ],
+    )
+    return not bool(model)
+
+
 def _format_dimensions(width: float, height: float) -> str:
     """Return a human-friendly dimensions string for non-zero sizes."""
     if width <= 0.0 or height <= 0.0:
         return ""
     return f"{int(width)} x {int(height)}"
+
+
+def _extract_model_from_workflow(payload: dict[str, object]) -> str:
+    """Extract model name from InvokeAI workflow payload when metadata is empty."""
+    model_name = ""
+    graph_raw = payload.get("graph")
+    if isinstance(graph_raw, str) and graph_raw.strip():
+        try:
+            graph = json.loads(graph_raw)
+        except json.JSONDecodeError:
+            graph = {}
+
+        if isinstance(graph, dict):
+            nodes = graph.get("nodes")
+            if isinstance(nodes, dict):
+                for node in nodes.values():
+                    if not isinstance(node, dict):
+                        continue
+                    model = node.get("model")
+                    if not isinstance(model, dict):
+                        continue
+                    name = model.get("name")
+                    if isinstance(name, str):
+                        text = name.strip()
+                        if text:
+                            model_name = text
+                            break
+
+    return model_name
 
 
 def _derive_activity_status(
