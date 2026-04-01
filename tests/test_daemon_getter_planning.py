@@ -96,3 +96,8 @@ def test_getter_name_for_source_includes_servarr_namespaces() -> None:
 def test_getter_name_for_source_includes_invokeai() -> None:
     """InvokeAI namespace should resolve to InvokeAIGetter."""
     assert Daemon._getter_name_for_source("invokeai.queue.pending_count") == "InvokeAIGetter"
+
+
+def test_getter_name_for_source_includes_os_updates() -> None:
+    """os_updates namespace should resolve to OsUpdatesGetter."""
+    assert Daemon._getter_name_for_source("os_updates.has_updates") == "OsUpdatesGetter"

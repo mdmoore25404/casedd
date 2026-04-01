@@ -51,6 +51,7 @@ from casedd.getters.net_ports import NetPortsGetter
 from casedd.getters.network import NetworkGetter
 from casedd.getters.nzbget import NZBGetGetter
 from casedd.getters.ollama import OllamaDetailOptions, OllamaGetter
+from casedd.getters.os_updates import OsUpdatesGetter
 from casedd.getters.pihole import PiHoleGetter
 from casedd.getters.plex import PlexGetter
 from casedd.getters.servarr import RadarrGetter, ServarrAggregateGetter, SonarrGetter
@@ -1143,6 +1144,11 @@ class Daemon:
                 lon=self._cfg.weather_lon,
                 user_agent=self._cfg.weather_user_agent,
             ),
+            OsUpdatesGetter(
+                self._store,
+                interval=self._cfg.os_updates_interval,
+                manager=self._cfg.os_updates_manager,
+            ),
             ApodGetter(
                 self._store,
                 api_key=self._cfg.nasa_api_key,
@@ -1263,6 +1269,7 @@ class Daemon:
             ("plex.", "PlexGetter"),
             ("nzbget.", "NZBGetGetter"),
             ("weather.", "WeatherGetter"),
+            ("os_updates.", "OsUpdatesGetter"),
             ("apod.", "ApodGetter"),
             ("netports.", "NetPortsGetter"),
             ("sysinfo.", "SysinfoGetter"),

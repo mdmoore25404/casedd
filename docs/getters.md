@@ -191,6 +191,33 @@ Emits:
 - speedtest.server_country
 - speedtest.server_host
 
+## OS package updates getter
+
+Module: casedd/getters/os_updates.py
+
+Supported managers:
+- apt (Debian/Ubuntu/Mint)
+- dnf (Fedora/RHEL)
+
+Config:
+- CASEDD_OS_UPDATES_INTERVAL (default: 900 seconds)
+- CASEDD_OS_UPDATES_MANAGER (auto|apt|dnf, default: auto)
+
+Emits:
+- os_updates.manager
+- os_updates.active
+- os_updates.total_count
+- os_updates.security_count
+- os_updates.has_updates
+- os_updates.has_security_updates
+- os_updates.rows
+- os_updates.summary
+
+Notes:
+- Security classification is best-effort.
+- apt uses channel hints like `*-security` from `apt list --upgradable`.
+- dnf enriches security rows using `dnf updateinfo list security --updates` when available.
+
 Status defaults:
 - good: >= 90% of advertised
 - marginal: < 90%
