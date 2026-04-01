@@ -38,6 +38,11 @@ widgets:
         precision: 0
         color: "#ff8d8d"
       - type: value
+        label: Completed
+        source: invokeai.queue.completed_count
+        precision: 0
+        color: "#9ee6c8"
+      - type: value
         label: Loaded Models
         source: invokeai.models.loaded_count
         precision: 0

@@ -64,7 +64,7 @@ async def test_invokeai_getter_active_queue(monkeypatch) -> None:
             return _FakeResponse(
                 "{"
                 '"queue": {'
-                '"pending": 4, "in_progress": 2, "failed": 1'
+                '"pending": 4, "in_progress": 2, "failed": 1, "completed": 17'
                 '}, "processor": {"is_started": true, "is_processing": true}'
                 "}"
             )
@@ -110,6 +110,7 @@ async def test_invokeai_getter_active_queue(monkeypatch) -> None:
     assert payload["invokeai.queue.pending_count"] == 4.0
     assert payload["invokeai.queue.in_progress_count"] == 2.0
     assert payload["invokeai.queue.failed_count"] == 1.0
+    assert payload["invokeai.queue.completed_count"] == 17.0
     assert payload["invokeai.last_job.id"] == "42"
     assert payload["invokeai.last_job.status"] == "in_progress"
     assert payload["invokeai.last_job.model"] == "sdxl"
@@ -133,7 +134,7 @@ async def test_invokeai_getter_idle_queue(monkeypatch) -> None:
 
     body_map = {
         "/api/v1/queue/default/status": (
-            '{"queue": {"pending": 0, "in_progress": 0, "failed": 0}, '
+            '{"queue": {"pending": 0, "in_progress": 0, "failed": 0, "completed": 0}, '
             '"processor": {"is_started": true, "is_processing": false}}'
         ),
         "/api/v1/queue/default/current": "null",
@@ -162,6 +163,7 @@ async def test_invokeai_getter_idle_queue(monkeypatch) -> None:
     assert payload["invokeai.queue.pending_count"] == 0.0
     assert payload["invokeai.queue.in_progress_count"] == 0.0
     assert payload["invokeai.queue.failed_count"] == 0.0
+    assert payload["invokeai.queue.completed_count"] == 0.0
     assert payload["invokeai.last_job.id"] == ""
     assert payload["invokeai.last_job.status"] == "idle"
     assert payload["invokeai.last_job.model"] == ""
@@ -199,7 +201,7 @@ async def test_invokeai_getter_partial_metadata(monkeypatch) -> None:
             return detail_response
         body_map = {
             "/api/v1/queue/default/status": (
-                '{"queue": {"pending": 1}, "processor": {"is_started": true}}'
+                '{"queue": {"pending": 1, "completed": 2}, "processor": {"is_started": true}}'
             ),
             "/api/v1/queue/default/current": "null",
             "/api/v2/models/stats": (
@@ -232,6 +234,7 @@ async def test_invokeai_getter_partial_metadata(monkeypatch) -> None:
     assert payload["invokeai.queue.pending_count"] == 1.0
     assert payload["invokeai.queue.in_progress_count"] == 0.0
     assert payload["invokeai.queue.failed_count"] == 0.0
+    assert payload["invokeai.queue.completed_count"] == 2.0
     assert payload["invokeai.last_job.id"] == "job-1.png"
     assert payload["invokeai.last_job.status"] == "completed"
     assert payload["invokeai.last_job.model"] == "flux"
@@ -253,7 +256,7 @@ async def test_invokeai_getter_falls_back_from_html_endpoints(monkeypatch) -> No
             return detail_response
         body_map = {
             "/api/v1/queue/default/status": (
-                '{"queue": {"pending": 3, "in_progress": 1, "failed": 2}, '
+                '{"queue": {"pending": 3, "in_progress": 1, "failed": 2, "completed": 44}, '
                 '"processor": {"is_started": true, "is_processing": true}}'
             ),
             "/api/v1/queue/default/current": "<!DOCTYPE html><html><body>app</body></html>",
@@ -285,6 +288,7 @@ async def test_invokeai_getter_falls_back_from_html_endpoints(monkeypatch) -> No
     assert payload["invokeai.queue.pending_count"] == 3.0
     assert payload["invokeai.queue.in_progress_count"] == 1.0
     assert payload["invokeai.queue.failed_count"] == 2.0
+    assert payload["invokeai.queue.completed_count"] == 44.0
     assert payload["invokeai.last_job.id"] == "abc.png"
     assert payload["invokeai.last_job.status"] == "in_progress"
     assert payload["invokeai.models.loaded_count"] == 3.0

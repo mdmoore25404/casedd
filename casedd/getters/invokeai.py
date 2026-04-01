@@ -8,6 +8,7 @@ Store keys written:
     - ``invokeai.queue.pending_count``
     - ``invokeai.queue.in_progress_count``
     - ``invokeai.queue.failed_count``
+    - ``invokeai.queue.completed_count``
     - ``invokeai.last_job.id``
     - ``invokeai.last_job.status``
     - ``invokeai.last_job.model``
@@ -307,10 +308,20 @@ class InvokeAIGetter(BaseGetter):
             queue_payload,
             [("failed_count",), ("failed",), ("counts", "failed"), ("queue", "failed")],
         )
+        completed_count = _first_number(
+            queue_payload,
+            [
+                ("completed_count",),
+                ("completed",),
+                ("counts", "completed"),
+                ("queue", "completed"),
+            ],
+        )
         return {
             "invokeai.queue.pending_count": float(pending_count),
             "invokeai.queue.in_progress_count": float(in_progress_count),
             "invokeai.queue.failed_count": float(failed_count),
+            "invokeai.queue.completed_count": float(completed_count),
         }
 
     def _build_activity_fields(
@@ -754,6 +765,7 @@ def _placeholder_sample() -> dict[str, StoreValue]:
         "invokeai.queue.pending_count": 0.0,
         "invokeai.queue.in_progress_count": 0.0,
         "invokeai.queue.failed_count": 0.0,
+        "invokeai.queue.completed_count": 0.0,
         "invokeai.last_job.id": "—",
         "invokeai.last_job.status": "—",
         "invokeai.last_job.model": "—",
