@@ -345,11 +345,14 @@ Configuration:
 - CASEDD_INVOKEAI_VERIFY_TLS (default: 1)
 
 Endpoints polled:
-- GET /api/v1/queue/status (required)
-- GET /api/v1/queue/items (optional enrichment)
-- GET /api/v1/app/version (optional enrichment)
-- GET /api/v1/system/stats (optional enrichment)
-- GET /api/v1/models (optional enrichment)
+- GET /api/v1/queue/default/status (required)
+- GET /api/v1/queue/default/current (optional enrichment)
+- GET /api/v2/models/stats (optional enrichment, preferred)
+- GET /api/v1/system/stats (optional enrichment fallback)
+- GET /api/v1/images/names (optional latest-output discovery)
+- GET /api/v1/images/i/{image_name}/metadata (optional latest-output enrichment)
+- GET /api/v1/images/i/{image_name}/urls (optional latest-output preview URLs)
+- GET /openapi.json (optional version fallback)
 
 Emits:
 - invokeai.version
@@ -359,15 +362,28 @@ Emits:
 - invokeai.last_job.id
 - invokeai.last_job.status
 - invokeai.last_job.model
+- invokeai.last_job.dimensions
 - invokeai.last_job.width
 - invokeai.last_job.height
 - invokeai.last_job.completed_at
 - invokeai.system.vram_used_mb
 - invokeai.system.vram_total_mb
+- invokeai.system.vram_percent
+- invokeai.models.cache_used_mb
+- invokeai.models.cache_capacity_mb
+- invokeai.models.cache_percent
 - invokeai.models.loaded_count
+- invokeai.latest_image.name
+- invokeai.latest_image.thumbnail_url
+- invokeai.latest_image.full_url
 
 Version notes:
-- Supported and validated against the InvokeAI v5 API shape using /api/v1 routes.
+- Supported and validated against current InvokeAI Community Edition queue-scoped routes.
+- The getter intentionally avoids `/api/v1/queue/default/list_all` and `/api/v1/app/version`
+    as primary data sources because they are slow or timeout-prone on live hosts.
+- Version is resolved from latest image metadata when available, then `/openapi.json`.
+- Model cache fields are sourced from `models/stats`; template labels should treat them as
+    cache usage, not guaranteed device VRAM telemetry.
 - Optional endpoints are best-effort so minor API differences degrade gracefully.
 
 Intentionally omitted in MVP:

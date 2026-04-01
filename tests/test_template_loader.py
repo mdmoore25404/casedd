@@ -233,6 +233,24 @@ def test_ollama_host_template_structure() -> None:
     assert logo_widget.path == "assets/ollama/ollama-logo-white-transparent.png"
 
 
+def test_invokeai_template_structure() -> None:
+    """invokeai.casedd should wire preview image and cache usage widgets."""
+    real = Path("templates/invokeai.casedd")
+    if not real.exists():
+        pytest.skip("templates/invokeai.casedd not present")
+
+    tmpl = load_template(real)
+    preview_widget = tmpl.widgets.get("preview")
+    assert preview_widget is not None
+    assert preview_widget.type.value == "image"
+    assert preview_widget.source == "invokeai.latest_image.thumbnail_url"
+
+    details_widget = tmpl.widgets.get("details")
+    assert details_widget is not None
+    assert any(child.label == "Activity" for child in details_widget.children)
+    assert any(child.label == "Cache %" for child in details_widget.children)
+
+
 # ---------------------------------------------------------------------------
 # File-not-found errors
 # ---------------------------------------------------------------------------

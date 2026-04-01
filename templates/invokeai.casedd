@@ -1,7 +1,7 @@
-# invokeai.casedd — InvokeAI queue and runtime dashboard
+# invokeai.casedd — InvokeAI queue, latest output, and runtime dashboard
 
 name: invokeai
-description: InvokeAI queue depth, latest job metadata, and VRAM/model signals.
+description: InvokeAI queue depth, current or latest job metadata, and preview image.
 aspect_ratio: "5:3"
 layout_mode: fit
 background: "#11151a"
@@ -10,8 +10,8 @@ refresh_rate: 2.0
 grid:
   template_areas: |
     queue      queue      queue      queue      queue
-    latest     latest     latest     runtime    runtime
-    latest     latest     latest     runtime    runtime
+    preview    preview    preview    details    details
+    preview    preview    preview    details    details
   columns: 1fr 1fr 1fr 1fr 1fr
   rows: 0.85fr 1fr 1fr
 
@@ -47,58 +47,49 @@ widgets:
         source: invokeai.version
         color: "#d2dbe6"
 
-  latest:
-    type: panel
-    direction: column
-    gap: 4
-    padding: [8, 12]
-    children:
-      - type: value
-        label: Last Job ID
-        source: invokeai.last_job.id
-        color: "#d2dbe6"
-      - type: value
-        label: Status
-        source: invokeai.last_job.status
-        color: "#d2dbe6"
-      - type: value
-        label: Model
-        source: invokeai.last_job.model
-        color: "#d2dbe6"
-      - type: value
-        label: Width
-        source: invokeai.last_job.width
-        precision: 0
-        color: "#d2dbe6"
-      - type: value
-        label: Height
-        source: invokeai.last_job.height
-        precision: 0
-        color: "#d2dbe6"
-      - type: value
-        label: Completed
-        source: invokeai.last_job.completed_at
-        color: "#d2dbe6"
+  preview:
+    type: image
+    source: invokeai.latest_image.thumbnail_url
+    scale: fit
+    background: "#0d1217"
+    padding: [8, 10]
 
-  runtime:
+  details:
     type: panel
     direction: column
     gap: 6
     padding: [8, 12]
     children:
       - type: value
-        label: VRAM Used MB
-        source: invokeai.system.vram_used_mb
+        label: Activity
+        source: invokeai.last_job.status
+        color: "#d2dbe6"
+      - type: value
+        label: Latest Image
+        source: invokeai.last_job.id
+        color: "#d2dbe6"
+      - type: value
+        label: Model
+        source: invokeai.last_job.model
+        color: "#d2dbe6"
+      - type: value
+        label: Size
+        source: invokeai.last_job.dimensions
+        color: "#d2dbe6"
+      - type: value
+        label: Cache Used MB
+        source: invokeai.models.cache_used_mb
         precision: 0
         color: "#98d7ff"
       - type: value
-        label: VRAM Total MB
-        source: invokeai.system.vram_total_mb
+        label: Cache Capacity MB
+        source: invokeai.models.cache_capacity_mb
         precision: 0
         color: "#98d7ff"
       - type: gauge
-        label: VRAM %
-        source: invokeai.system.vram_used_mb
+        label: Cache %
+        source: invokeai.models.cache_percent
         min: 0
-        max: 24576
+        max: 100
+        unit: "%"
         color: "#ffb36e"
