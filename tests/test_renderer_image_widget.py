@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from io import BytesIO
+from urllib.error import URLError
 
 from PIL import Image
 
@@ -58,6 +59,8 @@ def test_image_widget_uses_store_backed_remote_url(monkeypatch) -> None:
         return _FakeResponse(payload.getvalue())
 
     image_widget_module._image_cache.clear()
+    image_widget_module._image_mtime_cache.clear()
+    image_widget_module._image_retry_after.clear()
     monkeypatch.setattr("casedd.renderer.widgets.image.urlopen", _ok)
 
     store = DataStore()
@@ -70,4 +73,30 @@ def test_image_widget_uses_store_backed_remote_url(monkeypatch) -> None:
     widget.draw(img, Rect(x=0, y=0, w=200, h=120), cfg, store, state)
 
     assert img.getbbox() is not None
+    assert request_count["count"] == 1
+
+
+def test_image_widget_remote_failures_use_retry_backoff(monkeypatch) -> None:
+    """Widget should avoid repeated remote retries every frame for bad URLs."""
+    img = Image.new("RGB", (200, 120), (0, 0, 0))
+    request_count = {"count": 0}
+
+    def _fail(req, timeout: float):
+        request_count["count"] += 1
+        raise URLError("boom")
+
+    image_widget_module._image_cache.clear()
+    image_widget_module._image_mtime_cache.clear()
+    image_widget_module._image_retry_after.clear()
+    monkeypatch.setattr("casedd.renderer.widgets.image.urlopen", _fail)
+
+    store = DataStore()
+    store.set("invokeai.preview.url", "http://bandit:9090/bad/path.png")
+
+    widget = ImageWidget()
+    cfg = WidgetConfig(type=WidgetType.IMAGE, source="invokeai.preview.url")
+    state: dict[str, object] = {}
+    widget.draw(img, Rect(x=0, y=0, w=200, h=120), cfg, store, state)
+    widget.draw(img, Rect(x=0, y=0, w=200, h=120), cfg, store, state)
+
     assert request_count["count"] == 1

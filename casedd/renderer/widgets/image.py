@@ -35,6 +35,7 @@ from __future__ import annotations
 from io import BytesIO
 import logging
 from pathlib import Path
+import time
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -49,6 +50,11 @@ _log = logging.getLogger(__name__)
 
 # Module-level image cache: path string → PIL Image (converted to RGBA)
 _image_cache: dict[str, Image.Image] = {}
+# Local file mtime cache used to invalidate stale disk-backed image entries.
+_image_mtime_cache: dict[str, float] = {}
+# Source retry cache for failed image loads (disk missing / remote errors).
+_image_retry_after: dict[str, float] = {}
+_IMAGE_RETRY_BACKOFF_SEC = 5.0
 
 # Comparison dispatch table keyed by operator token.
 _OPS: dict[str, object] = {
@@ -121,16 +127,42 @@ def _load_image(source_ref: str) -> Image.Image | None:
     Returns:
         A PIL Image in RGBA mode, or ``None`` if the source cannot be loaded.
     """
-    if source_ref in _image_cache:
-        return _image_cache[source_ref]
+    retry_after = _image_retry_after.get(source_ref)
+    if retry_after is not None and retry_after > time.monotonic():
+        return None
 
     if source_ref.startswith(("http://", "https://")):
-        return _load_remote_image(source_ref)
+        cached_remote = _image_cache.get(source_ref)
+        if cached_remote is not None:
+            return cached_remote
+        loaded = _load_remote_image(source_ref)
+    else:
+        loaded = _load_local_image(source_ref)
 
+    if loaded is None:
+        _image_retry_after[source_ref] = time.monotonic() + _IMAGE_RETRY_BACKOFF_SEC
+        return None
+
+    _image_retry_after.pop(source_ref, None)
+    return loaded
+
+
+def _load_local_image(source_ref: str) -> Image.Image | None:
+    """Load a local image, reusing cached content when mtime is unchanged."""
     path = Path(source_ref)
     if not path.is_file():
         _log.warning("Image widget: file not found: %s", path)
         return None
+
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        mtime = -1.0
+
+    cached = _image_cache.get(source_ref)
+    cached_mtime = _image_mtime_cache.get(source_ref)
+    if cached is not None and cached_mtime == mtime:
+        return cached
 
     try:
         loaded = Image.open(path).convert("RGBA")
@@ -139,6 +171,7 @@ def _load_image(source_ref: str) -> Image.Image | None:
         return None
 
     _image_cache[source_ref] = loaded
+    _image_mtime_cache[source_ref] = mtime
     return loaded
 
 
