@@ -391,33 +391,48 @@ class TemplateSelector:
         Returns:
             ``True`` when the entry should be skipped this tick.
         """
-        # Rotation-level conditions take full priority.
-        conditions = entry.skip_if
-        # Fall back to template-level conditions when rotation entry has none.
-        if not conditions and self._template_resolver is not None:
-            conditions = self._template_resolver(entry.template)
-        if not conditions:
-            return False
-        return all(self._skip_cond_match(cond, snapshot) for cond in conditions)
+        # Rotation-level conditions: user explicitly configured these in casedd.yaml.
+        # Missing keys should not auto-skip; the condition result decides.
+        rotation_conditions = entry.skip_if
+        if rotation_conditions:
+            return all(
+                self._skip_cond_match(cond, snapshot, missing_skips=False)
+                for cond in rotation_conditions
+            )
+
+        # Template-level fallback: when no entry-level skip_if is configured,
+        # missing keys should hide templates until data has arrived.
+        if self._template_resolver is not None:
+            template_conditions = self._template_resolver(entry.template)
+            if template_conditions:
+                return all(
+                    self._skip_cond_match(cond, snapshot, missing_skips=True)
+                    for cond in template_conditions
+                )
+        return False
 
     @staticmethod
-    def _skip_cond_match(cond: RotationSkipCondition, snapshot: dict[str, StoreValue]) -> bool:
+    def _skip_cond_match(
+        cond: RotationSkipCondition,
+        snapshot: dict[str, StoreValue],
+        *,
+        missing_skips: bool = True,
+    ) -> bool:
         """Evaluate one skip condition against the current store snapshot.
 
-        A missing key evaluates to ``True`` so that templates whose data has
-        never arrived are hidden.
+        Missing-key behavior is caller-controlled by ``missing_skips``.
 
         Args:
             cond: Skip condition to evaluate.
             snapshot: Current data-store snapshot.
+            missing_skips: Whether a missing key should be treated as matched.
 
         Returns:
             ``True`` when the condition matches (i.e. the entry should be skipped).
         """
         value = snapshot.get(cond.source)
         if value is None:
-            # Key not present → treat as satisfied (skip the template)
-            return True
+            return missing_skips
         value_num = _to_float(value)
         target_num = _to_float(cond.value)
         if value_num is not None and target_num is not None:

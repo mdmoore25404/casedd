@@ -709,6 +709,15 @@ class Daemon:
                 f"Time: {now_str}",
                 f"Waiting {self._cfg.startup_frame_seconds:.0f}s for initial data...",
             ]
+            if panel.rotation_enabled and len(panel.rotation_templates) > 1:
+                template_line = (
+                    f"Rotation: {len(panel.rotation_templates)} templates"
+                    f" ({', '.join(panel.rotation_templates[:3])}"
+                    f"{'...' if len(panel.rotation_templates) > 3 else ''})"
+                )
+            else:
+                template_line = f"Template: {panel.base_template}"
+            lines[3] = template_line
             image = self._build_status_frame(panel.width, panel.height, "CASEDD starting", lines)
             await self._display_panel_frame(panel, image, ws_output, http_output)
 
