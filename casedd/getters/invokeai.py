@@ -33,6 +33,26 @@ from casedd.getters.base import BaseGetter
 
 _log = logging.getLogger(__name__)
 
+_QUEUE_STATUS_PATHS: tuple[str, ...] = (
+    "/api/v1/queue/default/status",
+    "/api/v1/queue/status",
+)
+
+_QUEUE_ITEMS_PATHS: tuple[str, ...] = (
+    "/api/v1/queue/items",
+    "/api/v1/queue/default/list_all",
+)
+
+_MODELS_PATHS: tuple[str, ...] = (
+    "/api/v1/models",
+    "/api/v2/models/stats",
+)
+
+_SYSTEM_PATHS: tuple[str, ...] = (
+    "/api/v1/system/stats",
+    "/api/v2/models/stats",
+)
+
 
 class InvokeAIGetter(BaseGetter):
     """Getter for InvokeAI queue and runtime signals.
@@ -72,7 +92,7 @@ class InvokeAIGetter(BaseGetter):
     def _sample(self) -> dict[str, StoreValue]:
         """Blocking InvokeAI poll implementation."""
         try:
-            queue_payload = self._request_json("/api/v1/queue/status")
+            queue_payload = self._request_json_optional_first(_QUEUE_STATUS_PATHS)
         except RuntimeError as exc:
             if "auth failed" in str(exc).lower():
                 if not self._auth_error_logged:
@@ -84,10 +104,13 @@ class InvokeAIGetter(BaseGetter):
                 return _placeholder_sample()
             raise
 
-        jobs_payload = self._request_json_optional("/api/v1/queue/items")
+        if not queue_payload:
+            _log.debug("InvokeAI queue status unavailable; emitting partial sample")
+
+        jobs_payload = self._request_json_optional_first(_QUEUE_ITEMS_PATHS)
         version_payload = self._request_json_optional("/api/v1/app/version")
-        system_payload = self._request_json_optional("/api/v1/system/stats")
-        models_payload = self._request_json_optional("/api/v1/models")
+        system_payload = self._request_json_optional_first(_SYSTEM_PATHS)
+        models_payload = self._request_json_optional_first(_MODELS_PATHS)
 
         pending_count = _first_number(
             queue_payload,
@@ -169,6 +192,7 @@ class InvokeAIGetter(BaseGetter):
                 ("vram_used_mb",),
                 ("gpu", "vram_used_mb"),
                 ("system", "vram_used_mb"),
+                ("high_watermark",),
             ],
         )
         vram_total_mb = _first_number(
@@ -177,8 +201,13 @@ class InvokeAIGetter(BaseGetter):
                 ("vram_total_mb",),
                 ("gpu", "vram_total_mb"),
                 ("system", "vram_total_mb"),
+                ("cache_size",),
             ],
         )
+        if vram_used_mb > 1024.0 * 1024.0:
+            vram_used_mb /= 1024.0 * 1024.0
+        if vram_total_mb > 1024.0 * 1024.0:
+            vram_total_mb /= 1024.0 * 1024.0
 
         loaded_count = _extract_loaded_count(models_payload)
 
@@ -218,6 +247,8 @@ class InvokeAIGetter(BaseGetter):
                 msg = "InvokeAI auth failed (check token credentials)"
                 raise RuntimeError(msg) from exc
             raise RuntimeError(f"InvokeAI request failed with HTTP {exc.code}") from exc
+        except TimeoutError as exc:
+            raise RuntimeError(f"InvokeAI request timed out: {exc}") from exc
         except URLError as exc:
             raise RuntimeError(f"InvokeAI transport error: {exc}") from exc
 
@@ -236,6 +267,33 @@ class InvokeAIGetter(BaseGetter):
             return self._request_json(path)
         except RuntimeError as exc:
             _log.debug("InvokeAI optional endpoint unavailable: %s (%s)", path, exc)
+            return {}
+
+    def _request_json_first(self, paths: tuple[str, ...]) -> dict[str, object]:
+        """Return first successful JSON object from candidate endpoint paths."""
+        last_error: RuntimeError | None = None
+        for path in paths:
+            try:
+                return self._request_json(path)
+            except RuntimeError as exc:
+                if "auth failed" in str(exc).lower():
+                    raise
+                last_error = exc
+                _log.debug("InvokeAI endpoint unavailable: %s (%s)", path, exc)
+
+        if last_error is None:
+            msg = "InvokeAI request failed for all endpoint candidates"
+            raise RuntimeError(msg)
+        raise last_error
+
+    def _request_json_optional_first(self, paths: tuple[str, ...]) -> dict[str, object]:
+        """Best-effort JSON request across multiple candidate endpoint paths."""
+        try:
+            return self._request_json_first(paths)
+        except RuntimeError as exc:
+            if "auth failed" in str(exc).lower():
+                raise
+            _log.debug("InvokeAI optional endpoint candidates unavailable: %s", exc)
             return {}
 
 
@@ -330,6 +388,10 @@ def _extract_loaded_count(payload: dict[str, object]) -> float:
         rows = payload.get(key)
         if isinstance(rows, list):
             return float(len(rows))
+
+    loaded_model_sizes = payload.get("loaded_model_sizes")
+    if isinstance(loaded_model_sizes, dict):
+        return float(len(loaded_model_sizes))
 
     return 0.0
 
