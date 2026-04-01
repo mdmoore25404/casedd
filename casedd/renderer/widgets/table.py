@@ -141,7 +141,7 @@ class TableWidget(BaseWidget):
         left_x = inner.x + 1
         right_x = inner.x + inner.w - 2
 
-        muted_suffix_color = (140, 146, 156)
+        muted_suffix_color = (75, 80, 88)
         for row in prepared.rows:
             left_bb = draw.textbbox((0, 0), row.left, font=prepared.font)
             left_y = y - int(left_bb[1])
