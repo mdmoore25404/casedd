@@ -220,6 +220,8 @@ Notes:
 - apt uses channel hints like `*-security` from `apt list --upgradable`.
 - apt phasing is detected from `apt -s upgrade` deferred/phasing output when available.
 - dnf enriches security rows using `dnf updateinfo list security --updates` when available.
+- `os_updates.rows` renders package rows in `name|version` format and may append
+  `[SEC]` and `(phasing)` markers.
 
 Status defaults:
 - good: >= 90% of advertised

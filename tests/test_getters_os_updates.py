@@ -109,6 +109,7 @@ async def test_os_updates_getter_apt_payload(monkeypatch) -> None:
                     "Listing...\n"
                     "openssl/jammy-updates,jammy-security 3.0.2-0ubuntu1.20 amd64\n"
                     "vim/jammy-updates 2:9.1.0016-1ubuntu7.8 amd64\n"
+                    "firefox/jammy-updates 1:1snap1-0ubuntu2 amd64\n"
                 ),
                 stderr="",
             )
@@ -132,7 +133,7 @@ async def test_os_updates_getter_apt_payload(monkeypatch) -> None:
 
     assert payload["os_updates.manager"] == "apt"
     assert payload["os_updates.active"] == 1
-    assert payload["os_updates.total_count"] == 2.0
+    assert payload["os_updates.total_count"] == 3.0
     assert payload["os_updates.security_count"] == 1.0
     assert payload["os_updates.has_updates"] == 1
     assert payload["os_updates.has_security_updates"] == 1
@@ -141,6 +142,7 @@ async def test_os_updates_getter_apt_payload(monkeypatch) -> None:
     rows = str(payload["os_updates.rows"])
     assert "openssl|3.0.2-0ubuntu1.20 [SEC]" in rows
     assert "vim|2:9.1.0016-1ubuntu7.8" in rows
+    assert "firefox|1:1snap1-0ubuntu2 (phasing)" in rows
 
 
 async def test_os_updates_getter_dnf_security_enrichment(monkeypatch) -> None:

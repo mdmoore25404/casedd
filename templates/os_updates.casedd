@@ -9,10 +9,10 @@ refresh_rate: 0.5
 
 grid:
   template_areas: |
-    manager total security has_updates has_security
-    table   table table    table       table
-    table   table table    table       table
-  columns: 1fr 1fr 1fr 1fr 1fr
+    manager total security phased has_updates has_phased
+    table   table table    table  table       table
+    table   table table    table  table       table
+  columns: 1fr 1fr 1fr 1fr 1fr 1fr
   rows: 0.9fr 1fr 1fr
 
 widgets:
@@ -39,6 +39,14 @@ widgets:
     color: "#ff8f8f"
     padding: [4, 8]
 
+  phased:
+    type: value
+    label: Phased
+    source: os_updates.phased_count
+    precision: 0
+    color: "#b8c0ca"
+    padding: [4, 8]
+
   has_updates:
     type: boolean
     label: Any Updates
@@ -46,16 +54,16 @@ widgets:
     color: "#8de5a9"
     padding: [4, 8]
 
-  has_security:
+  has_phased:
     type: boolean
-    label: Security Updates
-    source: os_updates.has_security_updates
-    color: "#ff9a9a"
+    label: Phasing Held
+    source: os_updates.has_phased_updates
+    color: "#b8c0ca"
     padding: [4, 8]
 
   table:
     type: table
-    label: Packages (Version [SEC])
+    label: Packages (Version [SEC] (phasing))
     source: os_updates.rows
     color: "#e8edf5"
     font_size: auto

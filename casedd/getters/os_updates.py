@@ -311,7 +311,11 @@ class OsUpdatesGetter(BaseGetter):
         phased_count = len(phased_packages)
         shown_rows = updates[: self._max_rows]
         rendered_rows = [
-            f"{update.name}|{update.version}{' [SEC]' if update.security else ''}"
+            (
+                f"{update.name}|{update.version}"
+                f"{' [SEC]' if update.security else ''}"
+                f"{' (phasing)' if update.name in phased_packages else ''}"
+            )
             for update in shown_rows
         ]
         rows_text = "\n".join(rendered_rows) if rendered_rows else "No updates|—"
