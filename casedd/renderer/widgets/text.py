@@ -17,6 +17,8 @@ Example .casedd config:
 
 from __future__ import annotations
 
+from typing import cast
+
 from PIL import Image, ImageDraw, ImageFont
 
 from casedd.data_store import DataStore
@@ -144,7 +146,7 @@ class TextWidget(BaseWidget):
         rect: Rect,
         cfg: WidgetConfig,
         data: DataStore,
-        _state: dict[str, object],
+        state: dict[str, object],
     ) -> None:
         """Paint the text widget onto ``img``.
 
@@ -169,7 +171,14 @@ class TextWidget(BaseWidget):
 
         available_w = inner.w
         available_h = max(1, inner.h - label_h)
-        font, lines = self._fit_wrapped_font(text, available_w, available_h, cfg.font_size)
+        cache_key = (text, available_w, available_h, cfg.font_size)
+        cached = self._fit_wrapped_font_from_cache(state, cache_key)
+        if cached is None:
+            font, lines = self._fit_wrapped_font(text, available_w, available_h, cfg.font_size)
+            state["text_layout_key"] = cache_key
+            state["text_layout_value"] = (font, tuple(lines))
+        else:
+            font, lines = cached
 
         if cfg.source == "speedtest.simple_summary" and self._draw_speedtest_simple(
             draw,
@@ -192,6 +201,30 @@ class TextWidget(BaseWidget):
             x = inner.x + (inner.w - lw) // 2 - bbox[0]
             y = y_start + i * line_h - bbox[1]
             draw.text((x, y), line, fill=color, font=font)
+
+    def _fit_wrapped_font_from_cache(
+        self,
+        state: dict[str, object],
+        cache_key: tuple[str, int, int, int | str],
+    ) -> tuple[ImageFont.FreeTypeFont | ImageFont.ImageFont, list[str]] | None:
+        """Return cached wrapped text layout when inputs have not changed."""
+        if state.get("text_layout_key") != cache_key:
+            return None
+        cached = state.get("text_layout_value")
+        if not isinstance(cached, tuple) or len(cached) != 2:
+            return None
+        font_raw, lines_raw = cached
+        if not hasattr(font_raw, "getbbox"):
+            return None
+        if not isinstance(lines_raw, tuple):
+            return None
+        lines: list[str] = []
+        for entry in lines_raw:
+            if not isinstance(entry, str):
+                return None
+            lines.append(entry)
+        font = cast("ImageFont.FreeTypeFont | ImageFont.ImageFont", font_raw)
+        return (font, lines)
 
     def _fit_wrapped_font(
         self,

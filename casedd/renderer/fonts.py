@@ -43,6 +43,9 @@ else:
 # Simple LRU cache keyed by (font_path, size) to avoid repeated disk I/O
 _font_cache: dict[tuple[Path | None, int], ImageFont.FreeTypeFont | ImageFont.ImageFont] = {}
 
+# Cache for fit_font() selected size keyed by content + constraints.
+_fit_cache: dict[tuple[str, int, int, int, int], int] = {}
+
 
 def get_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     """Load (or retrieve from cache) a font at the given point size.
@@ -93,8 +96,18 @@ def fit_font(
     Returns:
         The largest font that fits, or the ``min_size`` font if nothing fits.
     """
-    lo, hi = min_size, max_size
-    best = get_font(min_size)
+    safe_w = max(1, max_w)
+    safe_h = max(1, max_h)
+    safe_min = max(1, min(min_size, max_size))
+    safe_max = max(safe_min, max_size)
+
+    cache_key = (text, safe_w, safe_h, safe_min, safe_max)
+    cached_size = _fit_cache.get(cache_key)
+    if cached_size is not None:
+        return get_font(cached_size)
+
+    lo, hi = safe_min, safe_max
+    best_size = safe_min
 
     while lo <= hi:
         mid = (lo + hi) // 2
@@ -102,10 +115,15 @@ def fit_font(
         bbox = font.getbbox(text)
         w = bbox[2] - bbox[0]
         h = bbox[3] - bbox[1]
-        if w <= max_w and h <= max_h:
-            best = font
+        if w <= safe_w and h <= safe_h:
+            best_size = mid
             lo = mid + 1
         else:
             hi = mid - 1
 
-    return best
+    # Keep this bounded to avoid unbounded memory growth for highly variable text.
+    if len(_fit_cache) > 1024:
+        _fit_cache.clear()
+    _fit_cache[cache_key] = best_size
+
+    return get_font(best_size)
