@@ -33,10 +33,11 @@ Options:
 Notes:
   - The service runs directly from the clone this script is executed from.
   - Moving the repository later requires rerunning install.
-  - The installer preserves an existing /etc/casedd/casedd.env file.
-  - Single-user installs: if a repo-local .env exists and you are the repo
-    owner, the installer creates a symlink /etc/casedd/casedd.env -> .env
-    so edits to .env take effect on the next service restart with no re-install.
+  - Single-user installs adopt the repo-local .env by symlinking
+    /etc/casedd/casedd.env -> .env. If a stale plain env file already exists,
+    it is backed up and replaced with the symlink.
+  - casedd.yaml is read directly from the repository working tree via the
+    service WorkingDirectory; it is not copied into /etc/casedd.
 EOF
 }
 
@@ -137,9 +138,39 @@ render_unit() {
 install_env_file() {
     run_cmd mkdir -p "${ENV_DIR}"
 
+    local repo_env="${REPO_ROOT}/.env"
+    local repo_owner=""
+
+    if [[ -f "${repo_env}" && -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+        repo_owner="$(stat -c '%U' "${REPO_ROOT}")"
+    fi
+
     # Already a symlink — nothing to do.
     if [[ -L "${ENV_FILE}" ]]; then
         log "Preserving existing symlink ${ENV_FILE} -> $(readlink "${ENV_FILE}")"
+        return
+    fi
+
+    # Single-user install: if the repo has a populated .env and the invoking
+    # user owns the repo, create a symlink so edits to .env are picked up on
+    # the next service restart without re-running the installer.
+    if [[ -f "${repo_env}" && "${repo_owner}" == "${SUDO_USER:-}" ]]; then
+        if [[ -f "${ENV_FILE}" ]]; then
+            local backup_path="${ENV_FILE}.bak.$(date +%Y%m%d%H%M%S)"
+            log "Single-user install — backing up ${ENV_FILE} -> ${backup_path}"
+            if [[ "${DRY_RUN}" -eq 1 ]]; then
+                echo "DRY-RUN: mv ${ENV_FILE} ${backup_path}"
+            else
+                run_cmd mv "${ENV_FILE}" "${backup_path}"
+            fi
+        fi
+
+        log "Single-user install — symlinking ${ENV_FILE} -> ${repo_env}"
+        if [[ "${DRY_RUN}" -eq 1 ]]; then
+            echo "DRY-RUN: ln -sf ${repo_env} ${ENV_FILE}"
+        else
+            run_cmd ln -sf "${repo_env}" "${ENV_FILE}"
+        fi
         return
     fi
 
@@ -147,24 +178,6 @@ install_env_file() {
     if [[ -f "${ENV_FILE}" ]]; then
         log "Preserving existing environment file ${ENV_FILE}"
         return
-    fi
-
-    # Single-user install: if the repo has a populated .env and the invoking
-    # user owns the repo, create a symlink so edits to .env are picked up on
-    # the next service restart without re-running the installer.
-    local repo_env="${REPO_ROOT}/.env"
-    if [[ -f "${repo_env}" && -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
-        local repo_owner
-        repo_owner="$(stat -c '%U' "${REPO_ROOT}")"
-        if [[ "${repo_owner}" == "${SUDO_USER}" ]]; then
-            log "Single-user install — symlinking ${ENV_FILE} -> ${repo_env}"
-            if [[ "${DRY_RUN}" -eq 1 ]]; then
-                echo "DRY-RUN: ln -sf ${repo_env} ${ENV_FILE}"
-            else
-                run_cmd ln -sf "${repo_env}" "${ENV_FILE}"
-            fi
-            return
-        fi
     fi
 
     # Multi-user / system install: copy the example template.
