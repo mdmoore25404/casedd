@@ -42,10 +42,11 @@ widgets:
         source: invokeai.models.loaded_count
         precision: 0
         color: "#a4f2a9"
-      - type: value
-        label: Version
-        source: invokeai.version
-        color: "#d2dbe6"
+      - type: image
+        path: assets/invokeai/invokeai-logo.png
+        scale: fit
+        background: "#11151a"
+        padding: [4, 6]
 
   preview:
     type: image
