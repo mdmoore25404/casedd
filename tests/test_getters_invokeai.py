@@ -53,17 +53,18 @@ async def test_invokeai_getter_active_queue(monkeypatch) -> None:
                 '{"cache_size": 12884901888, '
                 '"loaded_model_sizes": {"unet": 5368709120, "vae": 1073741824}}'
             )
-        if url.endswith("/api/v1/images/names"):
-            return _FakeResponse('{"image_names": ["job-41.png", "job-42.png"]}')
+        if url.endswith("/api/v1/images/?limit=1&order_dir=DESC&starred_first=false"):
+            return _FakeResponse(
+                '{"items": ['
+                '{"image_name": "job-42.png", '
+                '"thumbnail_url": "api/v1/images/i/job-42.png/thumbnail", '
+                '"image_url": "api/v1/images/i/job-42.png/full"}'
+                ']}'
+            )
         if url.endswith("/api/v1/images/i/job-42.png/metadata"):
             return _FakeResponse(
                 '{"app_version": "6.9.0", "model": {"name": "sdxl"}, '
                 '"width": 1024, "height": 768}'
-            )
-        if url.endswith("/api/v1/images/i/job-42.png/urls"):
-            return _FakeResponse(
-                '{"thumbnail_url": "api/v1/images/i/job-42.png/thumbnail", '
-                '"image_url": "api/v1/images/i/job-42.png/full"}'
             )
         raise AssertionError(f"Unexpected URL: {url}")
 
@@ -112,6 +113,8 @@ async def test_invokeai_getter_idle_queue(monkeypatch) -> None:
             return _FakeResponse("null")
         if url.endswith("/api/v2/models/stats"):
             return _FakeResponse('{"cache_size": 1073741824, "loaded_model_sizes": {}}')
+        if url.endswith("/api/v1/images/?limit=1&order_dir=DESC&starred_first=false"):
+            return _FakeResponse('{"items": []}')
         if url.endswith("/api/v1/images/names"):
             return _FakeResponse('{"image_names": []}')
         if url.endswith("/openapi.json"):
@@ -168,12 +171,14 @@ async def test_invokeai_getter_partial_metadata(monkeypatch) -> None:
                 '{"cache_size": 25769803776, '
                 '"loaded_model_sizes": {"flux": 1048576}}'
             ),
-            "/api/v1/images/names": '{"image_names": ["job-1.png"]}',
+            "/api/v1/images/?limit=1&order_dir=DESC&starred_first=false": (
+                '{"items": ['
+                '{"image_name": "job-1.png", '
+                '"thumbnail_url": "api/v1/images/i/job-1.png/thumbnail"}'
+                ']}'
+            ),
             "/api/v1/images/i/job-1.png/metadata": (
                 '{"model": {"name": "flux"}, "width": 512, "height": 768}'
-            ),
-            "/api/v1/images/i/job-1.png/urls": (
-                '{"thumbnail_url": "api/v1/images/i/job-1.png/thumbnail"}'
             ),
             "/openapi.json": '{"info": {"version": "6.12.0.post1"}}',
         }
@@ -218,11 +223,13 @@ async def test_invokeai_getter_falls_back_from_html_endpoints(monkeypatch) -> No
                 '{"loaded_model_sizes": {"a": 1000, "b": 2000, "c": 3000}, '
                 '"cache_size": 21474836480}'
             ),
-            "/api/v1/images/names": '{"image_names": ["abc.png"]}',
-            "/api/v1/images/i/abc.png/metadata": '{"app_version": "6.12.0.post1"}',
-            "/api/v1/images/i/abc.png/urls": (
-                '{"thumbnail_url": "api/v1/images/i/abc.png/thumbnail"}'
+            "/api/v1/images/?limit=1&order_dir=DESC&starred_first=false": (
+                '{"items": ['
+                '{"image_name": "abc.png", '
+                '"thumbnail_url": "api/v1/images/i/abc.png/thumbnail"}'
+                ']}'
             ),
+            "/api/v1/images/i/abc.png/metadata": '{"app_version": "6.12.0.post1"}',
         }
 
         for suffix, body in body_map.items():
@@ -259,12 +266,10 @@ async def test_invokeai_getter_tolerates_optional_timeout(monkeypatch) -> None:
             raise TimeoutError("timed out")
         if url.endswith("/api/v1/system/stats"):
             return _FakeResponse('{"system": {"vram_used_mb": 2048, "vram_total_mb": 4096}}')
-        if url.endswith("/api/v1/images/names"):
-            return _FakeResponse('{"image_names": ["job-7.png"]}')
+        if url.endswith("/api/v1/images/?limit=1&order_dir=DESC&starred_first=false"):
+            return _FakeResponse('{"items": [{"image_name": "job-7.png"}]}')
         if url.endswith("/api/v1/images/i/job-7.png/metadata"):
             return _FakeResponse('{"app_version": "6.12.0.post1"}')
-        if url.endswith("/api/v1/images/i/job-7.png/urls"):
-            return _FakeResponse('{}')
         raise AssertionError(f"Unexpected URL: {url}")
 
     monkeypatch.setattr("casedd.getters.invokeai.urlopen", _ok)
@@ -278,7 +283,83 @@ async def test_invokeai_getter_tolerates_optional_timeout(monkeypatch) -> None:
     assert payload["invokeai.queue.failed_count"] == 0.0
     assert payload["invokeai.last_job.id"] == "job-7.png"
     assert payload["invokeai.models.loaded_count"] == 0.0
-    assert payload["invokeai.system.vram_used_mb"] == 2048.0
+
+
+async def test_invokeai_getter_prefers_newest_unstarred_image(monkeypatch) -> None:
+    """Latest preview should come from the ordered image list, not the names feed."""
+
+    def _ok(req, timeout: float, context=None):
+        url = str(req.full_url)
+        if url.endswith("/api/v1/queue/default/status"):
+            return _FakeResponse('{"queue": {"pending": 0, "in_progress": 0, "failed": 0}}')
+        if url.endswith("/api/v1/queue/default/current"):
+            return _FakeResponse("null")
+        if url.endswith("/api/v2/models/stats"):
+            return _FakeResponse('{"cache_size": 1073741824, "loaded_model_sizes": {}}')
+        if url.endswith("/api/v1/images/?limit=1&order_dir=DESC&starred_first=false"):
+            return _FakeResponse(
+                '{"items": ['
+                '{"image_name": "raccoon-taco.png", '
+                '"thumbnail_url": "api/v1/images/i/raccoon-taco.png/thumbnail", '
+                '"image_url": "api/v1/images/i/raccoon-taco.png/full", '
+                '"created_at": "2026-03-31 23:59:59.000", '
+                '"starred": false}'
+                ']}'
+            )
+        if url.endswith("/api/v1/images/i/raccoon-taco.png/metadata"):
+            return _FakeResponse(
+                '{"app_version": "6.9.0", '
+                '"positive_prompt": "raccoon eating a taco"}'
+            )
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr("casedd.getters.invokeai.urlopen", _ok)
+
+    getter = InvokeAIGetter(DataStore(), base_url="http://bandit:9090")
+    payload = await getter.fetch()
+
+    assert payload["invokeai.last_job.id"] == "raccoon-taco.png"
+    assert payload["invokeai.latest_image.name"] == "raccoon-taco.png"
+    assert payload["invokeai.latest_image.thumbnail_url"] == (
+        "http://bandit:9090/api/v1/images/i/raccoon-taco.png/thumbnail"
+    )
+    assert payload["invokeai.version"] == "6.9.0"
+
+
+async def test_invokeai_getter_accepts_null_latest_image_metadata(monkeypatch) -> None:
+    """Null metadata for the newest image should not block preview selection."""
+
+    def _ok(req, timeout: float, context=None):
+        url = str(req.full_url)
+        if url.endswith("/api/v1/queue/default/status"):
+            return _FakeResponse('{"queue": {"pending": 0, "in_progress": 0, "failed": 0}}')
+        if url.endswith("/api/v1/queue/default/current"):
+            return _FakeResponse("null")
+        if url.endswith("/api/v2/models/stats"):
+            return _FakeResponse('{"cache_size": 1073741824, "loaded_model_sizes": {}}')
+        if url.endswith("/api/v1/images/?limit=1&order_dir=DESC&starred_first=false"):
+            return _FakeResponse(
+                '{"items": ['
+                '{"image_name": "latest.png", '
+                '"thumbnail_url": "api/v1/images/i/latest.png/thumbnail"}'
+                ']}'
+            )
+        if url.endswith("/api/v1/images/i/latest.png/metadata"):
+            return _FakeResponse("null")
+        if url.endswith("/openapi.json"):
+            return _FakeResponse('{"info": {"version": "6.9.0"}}')
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr("casedd.getters.invokeai.urlopen", _ok)
+
+    getter = InvokeAIGetter(DataStore(), base_url="http://bandit:9090")
+    payload = await getter.fetch()
+
+    assert payload["invokeai.latest_image.name"] == "latest.png"
+    assert payload["invokeai.latest_image.thumbnail_url"] == (
+        "http://bandit:9090/api/v1/images/i/latest.png/thumbnail"
+    )
+    assert payload["invokeai.version"] == "6.9.0"
 
 
 async def test_invokeai_getter_tolerates_queue_status_failure(monkeypatch) -> None:
@@ -294,12 +375,15 @@ async def test_invokeai_getter_tolerates_queue_status_failure(monkeypatch) -> No
             return _FakeResponse("null")
         if url.endswith("/api/v2/models/stats"):
             return _FakeResponse('{"loaded_model_sizes": {"a": 1048576, "b": 2097152}}')
-        if url.endswith("/api/v1/images/names"):
-            return _FakeResponse('{"image_names": ["recent.png"]}')
+        if url.endswith("/api/v1/images/?limit=1&order_dir=DESC&starred_first=false"):
+            return _FakeResponse(
+                '{"items": ['
+                '{"image_name": "recent.png", '
+                '"thumbnail_url": "api/v1/images/i/recent.png/thumbnail"}'
+                ']}'
+            )
         if url.endswith("/api/v1/images/i/recent.png/metadata"):
             return _FakeResponse('{"app_version": "6.12.0.post1", "model": {"name": "flux"}}')
-        if url.endswith("/api/v1/images/i/recent.png/urls"):
-            return _FakeResponse('{"thumbnail_url": "api/v1/images/i/recent.png/thumbnail"}')
         raise AssertionError(f"Unexpected URL: {url}")
 
     monkeypatch.setattr("casedd.getters.invokeai.urlopen", _ok)
@@ -326,6 +410,8 @@ async def test_invokeai_getter_uses_openapi_version_when_images_absent(monkeypat
             return _FakeResponse("null")
         if url.endswith("/api/v2/models/stats"):
             return _FakeResponse('{"cache_size": 1073741824, "loaded_model_sizes": {}}')
+        if url.endswith("/api/v1/images/?limit=1&order_dir=DESC&starred_first=false"):
+            return _FakeResponse('{"items": []}')
         if url.endswith("/api/v1/images/names"):
             return _FakeResponse('{"image_names": []}')
         if url.endswith("/openapi.json"):

@@ -58,6 +58,7 @@ _MODELS_PATHS: tuple[str, ...] = (
     "/api/v1/models",
 )
 
+_IMAGES_LIST_PATH = "/api/v1/images/?limit=1&order_dir=DESC&starred_first=false"
 _IMAGES_NAMES_PATH = "/api/v1/images/names"
 _OPENAPI_PATH = "/openapi.json"
 
@@ -194,6 +195,20 @@ class InvokeAIGetter(BaseGetter):
         self,
     ) -> tuple[str, dict[str, object], dict[str, object]]:
         """Fetch latest image name plus optional metadata and URL payloads."""
+        image_list_payload = self._request_json_optional(_IMAGES_LIST_PATH)
+        latest_image_name, latest_image_urls = _extract_latest_image_from_list(
+            image_list_payload,
+            self._base_url,
+        )
+        if latest_image_name:
+            encoded_image_name = quote(latest_image_name, safe="")
+            latest_image_metadata = self._request_json_or_null(
+                f"/api/v1/images/i/{encoded_image_name}/metadata"
+            )
+            if latest_image_metadata is None:
+                latest_image_metadata = {}
+            return latest_image_name, latest_image_metadata, latest_image_urls
+
         image_names_payload = self._request_json_optional(_IMAGES_NAMES_PATH)
         latest_image_name = _extract_latest_image_name(image_names_payload)
         if not latest_image_name:
@@ -621,6 +636,32 @@ def _extract_latest_image_name(payload: dict[str, object]) -> str:
     if not names:
         return ""
     return names[-1]
+
+
+def _extract_latest_image_from_list(
+    payload: dict[str, object],
+    base_url: str,
+) -> tuple[str, dict[str, object]]:
+    """Return the newest image name and URLs from the ordered image DTO list."""
+    rows = payload.get("items")
+    if not isinstance(rows, list) or not rows:
+        return "", {}
+
+    first_row = rows[0]
+    if not isinstance(first_row, dict):
+        return "", {}
+
+    image_name = _first_text(first_row, [("image_name",)])
+    if not image_name:
+        return "", {}
+
+    thumbnail_url = _first_text(first_row, [("thumbnail_url",)])
+    image_url = _first_text(first_row, [("image_url",)])
+    urls: dict[str, object] = {
+        "thumbnail_url": urljoin(f"{base_url}/", thumbnail_url) if thumbnail_url else "",
+        "image_url": urljoin(f"{base_url}/", image_url) if image_url else "",
+    }
+    return image_name, urls
 
 
 def _normalize_mebibytes(value: float) -> float:
