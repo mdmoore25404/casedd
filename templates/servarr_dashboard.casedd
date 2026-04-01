@@ -1,0 +1,123 @@
+name: servarr_dashboard
+description: Combined Radarr and Sonarr queues with stacked summary stats
+background: "#101418"
+refresh_rate: 1.0
+
+grid:
+  template_areas: |
+    radarr_head
+    radarr_q
+    sonarr_head
+    sonarr_q
+  columns: 1fr
+  rows: 0.2fr 1fr 0.2fr 1fr
+
+widgets:
+  radarr_head:
+    type: panel
+    direction: row
+    align: center
+    gap: 10
+    padding: [4, 8]
+    children:
+      - type: image
+        path: assets/servarr/radarr-logo.png
+        scale: fit
+      - type: value
+        label: "Queue"
+        source: radarr.queue.total
+        precision: 0
+        color: "#9ac7ff"
+      - type: value
+        label: "Downloading"
+        source: radarr.queue.downloading
+        precision: 0
+        color: "#8fd8ff"
+      - type: value
+        label: "Importing"
+        source: radarr.queue.importing
+        precision: 0
+        color: "#9be6bc"
+      - type: value
+        label: "Warn"
+        source: radarr.health.warning_count
+        precision: 0
+        color: "#ffd28f"
+      - type: value
+        label: "Err"
+        source: radarr.health.error_count
+        precision: 0
+        color: "#ff9b9b"
+      - type: value
+        label: "Upcoming"
+        source: radarr.calendar.upcoming_count
+        precision: 0
+        color: "#c8d6ea"
+      - type: value
+        label: "Free GB"
+        source: radarr.disk.free_gb
+        precision: 1
+        color: "#c8d6ea"
+
+  radarr_q:
+    type: table
+    source: radarr.queue.rows
+    table_fit_text: false
+    max_items: 10
+    max_font_size: 14
+    color: "#dfeaf4"
+    padding: [2, 8]
+
+  sonarr_head:
+    type: panel
+    direction: row
+    align: center
+    gap: 10
+    padding: [4, 8]
+    children:
+      - type: image
+        path: assets/servarr/sonarr-logo.png
+        scale: fit
+      - type: value
+        label: "Queue"
+        source: sonarr.queue.total
+        precision: 0
+        color: "#9ac7ff"
+      - type: value
+        label: "Downloading"
+        source: sonarr.queue.downloading
+        precision: 0
+        color: "#8fd8ff"
+      - type: value
+        label: "Importing"
+        source: sonarr.queue.importing
+        precision: 0
+        color: "#9be6bc"
+      - type: value
+        label: "Warn"
+        source: sonarr.health.warning_count
+        precision: 0
+        color: "#ffd28f"
+      - type: value
+        label: "Err"
+        source: sonarr.health.error_count
+        precision: 0
+        color: "#ff9b9b"
+      - type: value
+        label: "Upcoming"
+        source: sonarr.calendar.upcoming_count
+        precision: 0
+        color: "#c8d6ea"
+      - type: value
+        label: "Free GB"
+        source: sonarr.disk.free_gb
+        precision: 1
+        color: "#c8d6ea"
+
+  sonarr_q:
+    type: table
+    source: sonarr.queue.rows
+    table_fit_text: false
+    max_items: 10
+    color: "#dfeaf4"
+    padding: [2, 8]

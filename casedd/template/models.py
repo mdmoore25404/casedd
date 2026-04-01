@@ -234,6 +234,7 @@ class WidgetConfig(BaseModel):
     background: str | None = None
     # font_size is int or "auto"
     font_size: int | str = Field(default="auto")
+    max_font_size: int | None = Field(default=None, ge=8, le=128)
     padding: int | list[int] = Field(default=0)
 
     # Ranged widgets (bar, gauge, histogram, sparkline)

@@ -220,3 +220,36 @@ def test_pihole_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
         assert cfg.pihole_timeout == 6.0
         assert cfg.pihole_verify_tls is False
         assert cfg.pihole_interval == 15.0
+
+
+def test_servarr_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
+        """Radarr/Sonarr env vars should map into typed config fields."""
+        monkeypatch_obj = monkeypatch
+        monkeypatch_obj.setenv("CASEDD_CONFIG", str(tmp_path / "missing.yaml"))
+        monkeypatch_obj.setenv("CASEDD_RADARR_BASE_URL", "https://radarr.local")
+        monkeypatch_obj.setenv("CASEDD_RADARR_API_KEY", "radarr-key")
+        monkeypatch_obj.setenv("CASEDD_RADARR_INTERVAL", "20")
+        monkeypatch_obj.setenv("CASEDD_RADARR_TIMEOUT", "5")
+        monkeypatch_obj.setenv("CASEDD_RADARR_CALENDAR_DAYS", "10")
+        monkeypatch_obj.setenv("CASEDD_RADARR_VERIFY_TLS", "0")
+        monkeypatch_obj.setenv("CASEDD_SONARR_BASE_URL", "https://sonarr.local")
+        monkeypatch_obj.setenv("CASEDD_SONARR_API_KEY", "sonarr-key")
+        monkeypatch_obj.setenv("CASEDD_SONARR_INTERVAL", "25")
+        monkeypatch_obj.setenv("CASEDD_SONARR_TIMEOUT", "6")
+        monkeypatch_obj.setenv("CASEDD_SONARR_CALENDAR_DAYS", "9")
+        monkeypatch_obj.setenv("CASEDD_SONARR_VERIFY_TLS", "0")
+
+        cfg = load_config()
+
+        assert cfg.radarr_base_url == "https://radarr.local"
+        assert cfg.radarr_api_key == "radarr-key"
+        assert cfg.radarr_interval == 20.0
+        assert cfg.radarr_timeout == 5.0
+        assert cfg.radarr_calendar_days == 10
+        assert cfg.radarr_verify_tls is False
+        assert cfg.sonarr_base_url == "https://sonarr.local"
+        assert cfg.sonarr_api_key == "sonarr-key"
+        assert cfg.sonarr_interval == 25.0
+        assert cfg.sonarr_timeout == 6.0
+        assert cfg.sonarr_calendar_days == 9
+        assert cfg.sonarr_verify_tls is False

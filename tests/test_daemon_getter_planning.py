@@ -84,3 +84,10 @@ def test_needed_getters_include_forced_template() -> None:
 def test_getter_name_for_source_includes_pihole() -> None:
     """Pi-hole namespace should resolve to PiHoleGetter."""
     assert Daemon._getter_name_for_source("pihole.queries.total") == "PiHoleGetter"
+
+
+def test_getter_name_for_source_includes_servarr_namespaces() -> None:
+    """Servarr namespaces should resolve to their concrete getter names."""
+    assert Daemon._getter_name_for_source("radarr.queue.total") == "RadarrGetter"
+    assert Daemon._getter_name_for_source("sonarr.queue.total") == "SonarrGetter"
+    assert Daemon._getter_name_for_source("servarr.queue.total") == "ServarrAggregateGetter"

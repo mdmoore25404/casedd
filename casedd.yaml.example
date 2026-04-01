@@ -16,6 +16,22 @@ refresh_rate: 2.0
 # ollama_detailed: false
 # ollama_detail_max_models: 8
 
+# Servarr polling configuration (Radarr/Sonarr).
+# One-app setup: configure only Radarr or only Sonarr fields.
+# Two-app setup: configure both pairs of base URL + API key.
+# radarr_base_url: http://localhost:7878
+# radarr_api_key: ""
+# radarr_interval: 15.0
+# radarr_timeout: 4.0
+# radarr_calendar_days: 7
+# radarr_verify_tls: true
+# sonarr_base_url: http://localhost:8989
+# sonarr_api_key: ""
+# sonarr_interval: 15.0
+# sonarr_timeout: 4.0
+# sonarr_calendar_days: 7
+# sonarr_verify_tls: true
+
 # Framebuffer device.  Override when you have multiple /dev/fb* devices.
 # fb_device: /dev/fb1
 

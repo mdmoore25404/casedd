@@ -82,6 +82,56 @@ def test_load_ollama_host_template_file() -> None:
     assert tmpl.name == "ollama_host"
 
 
+def test_load_servarr_dashboard_template_file() -> None:
+    """servarr_dashboard.casedd in templates/ loads without validation errors."""
+    real = Path("templates/servarr_dashboard.casedd")
+    if not real.exists():
+        pytest.skip("templates/servarr_dashboard.casedd not present")
+    tmpl = load_template(real)
+    assert tmpl.name == "servarr_dashboard"
+
+
+def test_servarr_dashboard_logo_and_header_stats_layout() -> None:
+    """servarr_dashboard.casedd uses full-width queue tables with rich headers."""
+    real = Path("templates/servarr_dashboard.casedd")
+    if not real.exists():
+        pytest.skip("templates/servarr_dashboard.casedd not present")
+
+    tmpl = load_template(real)
+    radarr_head = tmpl.widgets.get("radarr_head")
+    assert radarr_head is not None
+    assert radarr_head.type.value == "panel"
+    assert radarr_head.children[0].type.value == "image"
+    assert radarr_head.children[0].path == "assets/servarr/radarr-logo.png"
+    assert any(child.label == "Warn" for child in radarr_head.children)
+    assert any(child.label == "Err" for child in radarr_head.children)
+    assert any(child.label == "Upcoming" for child in radarr_head.children)
+    assert any(child.label == "Free GB" for child in radarr_head.children)
+
+    radarr_q = tmpl.widgets.get("radarr_q")
+    assert radarr_q is not None
+    assert radarr_q.type.value == "table"
+    assert radarr_q.source == "radarr.queue.rows"
+
+    sonarr_head = tmpl.widgets.get("sonarr_head")
+    assert sonarr_head is not None
+    assert sonarr_head.type.value == "panel"
+    assert sonarr_head.children[0].type.value == "image"
+    assert sonarr_head.children[0].path == "assets/servarr/sonarr-logo.png"
+    assert any(child.label == "Warn" for child in sonarr_head.children)
+    assert any(child.label == "Err" for child in sonarr_head.children)
+    assert any(child.label == "Upcoming" for child in sonarr_head.children)
+    assert any(child.label == "Free GB" for child in sonarr_head.children)
+
+    sonarr_q = tmpl.widgets.get("sonarr_q")
+    assert sonarr_q is not None
+    assert sonarr_q.type.value == "table"
+    assert sonarr_q.source == "sonarr.queue.rows"
+
+    assert "radarr_stats" not in tmpl.widgets
+    assert "sonarr_stats" not in tmpl.widgets
+
+
 def test_ollama_host_template_structure() -> None:
     """ollama_host.casedd keeps running table and white transparent logo wiring."""
     real = Path("templates/ollama_host.casedd")
