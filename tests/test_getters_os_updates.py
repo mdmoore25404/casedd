@@ -139,6 +139,8 @@ async def test_os_updates_getter_apt_payload(monkeypatch) -> None:
     assert payload["os_updates.has_security_updates"] == 1
     assert payload["os_updates.phased_count"] == 1.0
     assert payload["os_updates.has_phased_updates"] == 1
+    assert payload["os_updates.actionable_count"] == 2.0  # 3 total minus 1 phased
+    assert payload["os_updates.has_actionable_updates"] == 1
     rows = str(payload["os_updates.rows"])
     assert "openssl|3.0.2-0ubuntu1.20 [SEC]" in rows
     assert "vim|2:9.1.0016-1ubuntu7.8" in rows
@@ -199,6 +201,8 @@ async def test_os_updates_getter_dnf_security_enrichment(monkeypatch) -> None:
     assert payload["os_updates.has_security_updates"] == 1
     assert payload["os_updates.phased_count"] == 0.0
     assert payload["os_updates.has_phased_updates"] == 0
+    assert payload["os_updates.actionable_count"] == 2.0
+    assert payload["os_updates.has_actionable_updates"] == 1
     rows = str(payload["os_updates.rows"])
     assert "openssl|3.2.2-1.fc41 [SEC]" in rows
     assert "bash|5.2.26-1.fc41" in rows
@@ -220,3 +224,58 @@ async def test_os_updates_getter_inactive_without_supported_manager(monkeypatch)
     assert payload["os_updates.has_updates"] == 0
     assert payload["os_updates.has_security_updates"] == 0
     assert payload["os_updates.has_phased_updates"] == 0
+    assert payload["os_updates.actionable_count"] == 0.0
+    assert payload["os_updates.has_actionable_updates"] == 0
+
+
+async def test_os_updates_getter_all_phased_has_no_actionable(monkeypatch) -> None:
+    """When every pending update is held for phasing, actionable_count must be 0.
+
+    This is the key invariant for skip_if: a template can safely skip on
+    ``os_updates.actionable_count == 0`` so that phasing-only queues do not
+    trigger unnecessary template display.
+    """
+
+    def _which(name: str) -> str | None:
+        return "/usr/bin/apt" if name == "apt" else None
+
+    apt_list_output = "\n".join([
+        "Listing...",
+        "firefox/jammy-updates 125.0-0ubuntu1 amd64 "
+        "[upgradable from: 124.0-0ubuntu1]",
+        "linux-firmware/jammy-updates 20240318.git3b128b60-0ubuntu1 amd64 "
+        "[upgradable from: 20231211.git4a51cc8a-0ubuntu2]",
+    ])
+    # Both packages are deferred due to phasing
+    apt_sim_output = "\n".join([
+        "Reading package lists... Done",
+        "Calculating upgrade... Done",
+        "The following upgrades have been deferred due to phasing:",
+        "  firefox linux-firmware",
+        "0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.",
+    ])
+
+    def _run(
+        args: list[str],
+        capture_output: bool = False,
+        text: bool = False,
+        timeout: int = 20,
+        check: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        if "--upgradable" in args:
+            return subprocess.CompletedProcess(args, 0, apt_list_output, "")
+        return subprocess.CompletedProcess(args, 0, apt_sim_output, "")
+
+    monkeypatch.setattr("casedd.getters.os_updates.shutil.which", _which)
+    monkeypatch.setattr("casedd.getters.os_updates.subprocess.run", _run)
+
+    getter = OsUpdatesGetter(DataStore(), manager="auto")
+    payload = await getter.fetch()
+
+    # total_count includes phased; actionable_count must be zero
+    assert payload["os_updates.total_count"] == 2.0
+    assert payload["os_updates.phased_count"] == 2.0
+    assert payload["os_updates.actionable_count"] == 0.0
+    assert payload["os_updates.has_actionable_updates"] == 0
+    # has_updates is still 1 (there ARE updates, they're just held back)
+    assert payload["os_updates.has_updates"] == 1

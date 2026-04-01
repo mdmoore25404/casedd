@@ -16,6 +16,8 @@ Store keys written:
     - ``os_updates.has_security_updates`` (0/1)
     - ``os_updates.phased_count`` (float)
     - ``os_updates.has_phased_updates`` (0/1)
+    - ``os_updates.actionable_count`` (float) — updates excluding phasing-held packages
+    - ``os_updates.has_actionable_updates`` (0/1) — true only when non-phased updates exist
     - ``os_updates.rows`` (newline-delimited ``name|version [SEC]`` rows)
     - ``os_updates.summary`` (short summary string)
 """
@@ -309,6 +311,7 @@ class OsUpdatesGetter(BaseGetter):
         total_count = len(updates)
         security_count = sum(1 for update in updates if update.security)
         phased_count = len(phased_packages)
+        actionable_count = total_count - phased_count
         shown_rows = updates[: self._max_rows]
         rendered_rows = [
             (
@@ -329,6 +332,8 @@ class OsUpdatesGetter(BaseGetter):
             "os_updates.has_security_updates": 1 if security_count > 0 else 0,
             "os_updates.phased_count": float(phased_count),
             "os_updates.has_phased_updates": 1 if phased_count > 0 else 0,
+            "os_updates.actionable_count": float(actionable_count),
+            "os_updates.has_actionable_updates": 1 if actionable_count > 0 else 0,
             "os_updates.rows": rows_text,
             "os_updates.summary": (
                 f"{total_count} updates ({security_count} security, "
@@ -348,6 +353,8 @@ class OsUpdatesGetter(BaseGetter):
             "os_updates.has_security_updates": 0,
             "os_updates.phased_count": 0.0,
             "os_updates.has_phased_updates": 0,
+            "os_updates.actionable_count": 0.0,
+            "os_updates.has_actionable_updates": 0,
             "os_updates.rows": "No package manager|—",
             "os_updates.summary": "No supported package manager detected",
         }
