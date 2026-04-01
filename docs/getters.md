@@ -210,12 +210,15 @@ Emits:
 - os_updates.security_count
 - os_updates.has_updates
 - os_updates.has_security_updates
+- os_updates.phased_count
+- os_updates.has_phased_updates
 - os_updates.rows
 - os_updates.summary
 
 Notes:
 - Security classification is best-effort.
 - apt uses channel hints like `*-security` from `apt list --upgradable`.
+- apt phasing is detected from `apt -s upgrade` deferred/phasing output when available.
 - dnf enriches security rows using `dnf updateinfo list security --updates` when available.
 
 Status defaults:

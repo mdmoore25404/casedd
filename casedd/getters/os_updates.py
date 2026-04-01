@@ -14,6 +14,8 @@ Store keys written:
     - ``os_updates.security_count`` (float)
     - ``os_updates.has_updates`` (0/1)
     - ``os_updates.has_security_updates`` (0/1)
+    - ``os_updates.phased_count`` (float)
+    - ``os_updates.has_phased_updates`` (0/1)
     - ``os_updates.rows`` (newline-delimited ``name|version [SEC]`` rows)
     - ``os_updates.summary`` (short summary string)
 """
@@ -97,6 +99,39 @@ def _parse_apt_upgradable(text: str) -> list[_PackageUpdate]:
         security = "security" in channels.lower()
         updates.append(_PackageUpdate(name=name, version=version, security=security))
     return updates
+
+
+def _parse_apt_phased_packages(text: str) -> set[str]:
+    """Parse package names deferred due to phasing from ``apt -s upgrade`` output."""
+    phased: set[str] = set()
+    in_phased_block = False
+
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        lower = stripped.lower()
+
+        if not stripped:
+            in_phased_block = False
+            continue
+
+        if "deferred" in lower and "phasing" in lower:
+            in_phased_block = True
+            continue
+
+        if not in_phased_block:
+            continue
+
+        if line.startswith((" ", "\t")):
+            for token in stripped.split():
+                token_clean = token.strip().strip(",")
+                if token_clean:
+                    phased.add(token_clean)
+            continue
+
+        in_phased_block = False
+
+    return phased
 
 
 def _parse_dnf_check_update(text: str) -> list[_PackageUpdate]:
@@ -191,9 +226,13 @@ class OsUpdatesGetter(BaseGetter):
                 self._warned_unavailable = True
             return self._inactive_payload()
 
-        updates = self._collect_apt_updates() if manager == "apt" else self._collect_dnf_updates()
+        if manager == "apt":
+            updates = self._collect_apt_updates()
+            phased = self._collect_apt_phased_packages()
+            return self._build_payload(manager, updates, phased)
 
-        return self._build_payload(manager, updates)
+        updates = self._collect_dnf_updates()
+        return self._build_payload(manager, updates, set())
 
     def _resolve_manager(self) -> str:
         """Return resolved manager name using config mode + binary availability."""
@@ -217,6 +256,13 @@ class OsUpdatesGetter(BaseGetter):
         if result is None:
             return []
         return _parse_apt_upgradable(result.stdout)
+
+    def _collect_apt_phased_packages(self) -> set[str]:
+        """Return package names currently deferred due to phasing on apt-based hosts."""
+        result = self._run_command(["apt", "-s", "upgrade"])
+        if result is None:
+            return set()
+        return _parse_apt_phased_packages(result.stdout)
 
     def _collect_dnf_updates(self) -> list[_PackageUpdate]:
         """Return package update list from dnf output with security enrichment."""
@@ -253,10 +299,16 @@ class OsUpdatesGetter(BaseGetter):
             )
         return enriched
 
-    def _build_payload(self, manager: str, updates: list[_PackageUpdate]) -> dict[str, StoreValue]:
+    def _build_payload(
+        self,
+        manager: str,
+        updates: list[_PackageUpdate],
+        phased_packages: set[str],
+    ) -> dict[str, StoreValue]:
         """Normalize package rows and booleans into store payload."""
         total_count = len(updates)
         security_count = sum(1 for update in updates if update.security)
+        phased_count = len(phased_packages)
         shown_rows = updates[: self._max_rows]
         rendered_rows = [
             f"{update.name}|{update.version}{' [SEC]' if update.security else ''}"
@@ -271,9 +323,12 @@ class OsUpdatesGetter(BaseGetter):
             "os_updates.security_count": float(security_count),
             "os_updates.has_updates": 1 if total_count > 0 else 0,
             "os_updates.has_security_updates": 1 if security_count > 0 else 0,
+            "os_updates.phased_count": float(phased_count),
+            "os_updates.has_phased_updates": 1 if phased_count > 0 else 0,
             "os_updates.rows": rows_text,
             "os_updates.summary": (
-                f"{total_count} updates ({security_count} security) via {manager}"
+                f"{total_count} updates ({security_count} security, "
+                f"{phased_count} phased) via {manager}"
             ),
         }
 
@@ -287,6 +342,8 @@ class OsUpdatesGetter(BaseGetter):
             "os_updates.security_count": 0.0,
             "os_updates.has_updates": 0,
             "os_updates.has_security_updates": 0,
+            "os_updates.phased_count": 0.0,
+            "os_updates.has_phased_updates": 0,
             "os_updates.rows": "No package manager|—",
             "os_updates.summary": "No supported package manager detected",
         }

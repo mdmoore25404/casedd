@@ -7,6 +7,7 @@ import subprocess
 from casedd.data_store import DataStore
 from casedd.getters.os_updates import (
     OsUpdatesGetter,
+    _parse_apt_phased_packages,
     _parse_apt_upgradable,
     _parse_dnf_check_update,
     _parse_dnf_security_nvras,
@@ -32,6 +33,25 @@ def test_parse_apt_upgradable_marks_security_rows() -> None:
     assert parsed[0].security is True
     assert parsed[1].name == "bash"
     assert parsed[1].security is False
+
+
+def test_parse_apt_phased_packages_extracts_deferred_names() -> None:
+    """Apt phased parser should return package names from deferred block."""
+    phased = _parse_apt_phased_packages(
+        "\n".join(
+            [
+                "Reading package lists... Done",
+                "Calculating upgrade... Done",
+                "The following upgrades have been deferred due to phasing:",
+                "  firefox firefox-locale-en",
+                "  linux-firmware",
+                "",
+                "0 upgraded, 0 newly installed, 0 to remove and 0 not upgraded.",
+            ]
+        )
+    )
+
+    assert phased == {"firefox", "firefox-locale-en", "linux-firmware"}
 
 
 def test_parse_dnf_outputs_extract_rows_and_security_nvras() -> None:
@@ -81,17 +101,28 @@ async def test_os_updates_getter_apt_payload(monkeypatch) -> None:
         assert text is True
         assert timeout == 20
         assert check is False
-        assert args == ["apt", "list", "--upgradable"]
-        return subprocess.CompletedProcess(
-            args=args,
-            returncode=0,
-            stdout=(
-                "Listing...\n"
-                "openssl/jammy-updates,jammy-security 3.0.2-0ubuntu1.20 amd64\n"
-                "vim/jammy-updates 2:9.1.0016-1ubuntu7.8 amd64\n"
-            ),
-            stderr="",
-        )
+        if args == ["apt", "list", "--upgradable"]:
+            return subprocess.CompletedProcess(
+                args=args,
+                returncode=0,
+                stdout=(
+                    "Listing...\n"
+                    "openssl/jammy-updates,jammy-security 3.0.2-0ubuntu1.20 amd64\n"
+                    "vim/jammy-updates 2:9.1.0016-1ubuntu7.8 amd64\n"
+                ),
+                stderr="",
+            )
+        if args == ["apt", "-s", "upgrade"]:
+            return subprocess.CompletedProcess(
+                args=args,
+                returncode=0,
+                stdout=(
+                    "The following upgrades have been deferred due to phasing:\n"
+                    "  firefox\n"
+                ),
+                stderr="",
+            )
+        raise AssertionError(f"Unexpected command: {args}")
 
     monkeypatch.setattr("casedd.getters.os_updates.shutil.which", _which)
     monkeypatch.setattr("casedd.getters.os_updates.subprocess.run", _run)
@@ -105,6 +136,8 @@ async def test_os_updates_getter_apt_payload(monkeypatch) -> None:
     assert payload["os_updates.security_count"] == 1.0
     assert payload["os_updates.has_updates"] == 1
     assert payload["os_updates.has_security_updates"] == 1
+    assert payload["os_updates.phased_count"] == 1.0
+    assert payload["os_updates.has_phased_updates"] == 1
     rows = str(payload["os_updates.rows"])
     assert "openssl|3.0.2-0ubuntu1.20 [SEC]" in rows
     assert "vim|2:9.1.0016-1ubuntu7.8" in rows
@@ -162,6 +195,8 @@ async def test_os_updates_getter_dnf_security_enrichment(monkeypatch) -> None:
     assert payload["os_updates.security_count"] == 1.0
     assert payload["os_updates.has_updates"] == 1
     assert payload["os_updates.has_security_updates"] == 1
+    assert payload["os_updates.phased_count"] == 0.0
+    assert payload["os_updates.has_phased_updates"] == 0
     rows = str(payload["os_updates.rows"])
     assert "openssl|3.2.2-1.fc41 [SEC]" in rows
     assert "bash|5.2.26-1.fc41" in rows
@@ -182,3 +217,4 @@ async def test_os_updates_getter_inactive_without_supported_manager(monkeypatch)
     assert payload["os_updates.active"] == 0
     assert payload["os_updates.has_updates"] == 0
     assert payload["os_updates.has_security_updates"] == 0
+    assert payload["os_updates.has_phased_updates"] == 0
