@@ -1,0 +1,45 @@
+{
+  "records": [
+    {
+      "at_ms": 0,
+      "update": {
+        "plex.server.name": "Demo Plex Server",
+        "plex.server.version": "1.32.5.7516",
+        "plex.server.platform": "Linux",
+        "plex.server.reachable": 1.0,
+        "plex.sessions.active_count": 3.0,
+        "plex.sessions.transcoding_count": 1.0,
+        "plex.sessions.direct_play_count": 2.0,
+        "plex.sessions.direct_stream_count": 0.0,
+        "plex.bandwidth.current_mbps": 48.6,
+        "plex.library.movies_count": 2417.0,
+        "plex.library.shows_count": 312.0,
+        "plex.library.music_albums_count": 0.0,
+        "plex.sessions.rows": "alice|Dune: Part Two|video|67.3|direct_play\nbob|The Bear S03E04|video|41.8|transcode\ncarol|Oppenheimer|video|22.5|direct_stream",
+        "plex.recently_added.count": 8.0,
+        "plex.recently_added.rows": "Movies|Dune: Part Two\nMovies|Kung Fu Panda 4\nTV Shows|The Bear S03E05\nTV Shows|Shogun S01E10\nMovies|Inside Out 2\nTV Shows|House of the Dragon S02E01\nMovies|Deadpool and Wolverine\nTV Shows|The Boys S04E08",
+        "plex.summary": "3 active / 1 transcode",
+        "plex.session_1.user": "alice",
+        "plex.session_1.title": "Dune: Part Two",
+        "plex.session_1.media_type": "video",
+        "plex.session_1.progress_percent": 67.3,
+        "plex.session_1.transcode_decision": "direct_play",
+        "plex.session_1.library": "Movies",
+        "plex.session_2.user": "bob",
+        "plex.session_2.title": "The Bear S03E04",
+        "plex.session_2.media_type": "video",
+        "plex.session_2.progress_percent": 41.8,
+        "plex.session_2.transcode_decision": "transcode",
+        "plex.session_2.library": "TV Shows",
+        "plex.session_3.user": "carol",
+        "plex.session_3.title": "Oppenheimer",
+        "plex.session_3.media_type": "video",
+        "plex.session_3.progress_percent": 22.5,
+        "plex.session_3.transcode_decision": "direct_stream",
+        "plex.session_3.library": "Movies"
+      }
+    }
+  ],
+  "loop": false,
+  "speed": 1.0
+}

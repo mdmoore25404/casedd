@@ -29,6 +29,7 @@ from casedd.template.models import Template, WidgetConfig
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_URL = "http://localhost:8080"
 DEFAULT_OUTPUT_DIR = REPO_ROOT / "docs" / "images" / "template_snaps"
+DEFAULT_FIXTURE_DIR = REPO_ROOT / "scripts" / "fixtures"
 DEFAULT_DATA_TIMEOUT_SECONDS = 20.0
 
 
@@ -195,7 +196,8 @@ def _write_manifest(output_dir: Path, templates: Sequence[str] | None = None) ->
         "generated_at": datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M UTC"),
         "templates": [
             {
-                "name": template_name,
+                # Strip _demo suffix so gallery shows the canonical template name.
+                "name": template_name.removesuffix("_demo"),
                 "image": f"images/template_snaps/{template_name}.png",
             }
             for template_name in manifest_templates
@@ -264,7 +266,43 @@ def _parse_args() -> argparse.Namespace:
         type=float,
         help="Seconds to wait for template source data to appear before capture",
     )
+    parser.add_argument(
+        "--fixture-dir",
+        default=str(DEFAULT_FIXTURE_DIR),
+        help=(
+            "Directory containing fixture JSON files named {template}.json. "
+            "When a matching fixture is found the data is pushed via /api/update "
+            "before capture and the output is saved as {template}_demo.png."
+        ),
+    )
     return parser.parse_args()
+
+
+def _fixture_path(fixture_dir: Path, template_name: str) -> Path | None:
+    """Return the fixture JSON path for a template, or None if absent."""
+    candidate = fixture_dir / f"{template_name}.json"
+    return candidate if candidate.is_file() else None
+
+
+def _push_fixture_data(base_url: str, fixture_path: Path) -> None:
+    """Push all update records from a fixture file via /api/update.
+
+    Reads a replay-format fixture file and POSTs each record's ``update``
+    payload to the daemon's REST ingestion endpoint, making the data
+    immediately available in the store before the snapshot is captured.
+
+    Args:
+        base_url: CASEDD daemon base URL.
+        fixture_path: Path to the fixture JSON file.
+    """
+    raw = json.loads(fixture_path.read_text(encoding="utf-8"))
+    records = raw.get("records", [])
+    if not records:
+        return
+    for record in records:
+        update = record.get("update")
+        if isinstance(update, dict) and update:
+            _request_json(base_url, "/api/update", method="POST", body={"update": update})
 
 
 def _collect_widget_sources(cfg: WidgetConfig, out: set[str]) -> None:
@@ -389,11 +427,16 @@ def main() -> None:
         return
 
     original_override = panel_info.forced_template or "auto"
+    fixture_dir = Path(args.fixture_dir)
     print(f"Capturing {len(approved_targets)} template snapshot(s) for panel '{panel_name}'...")
 
     try:
         for template_name in approved_targets:
-            print(f"  - {template_name}")
+            fix = _fixture_path(fixture_dir, template_name)
+            # Fixture-based captures use a _demo suffix so they pass the
+            # .gitignore negation rule and can be committed safely.
+            output_name = f"{template_name}_demo.png" if fix else f"{template_name}.png"
+            print(f"  - {template_name}{' (fixture)' if fix else ''}")
             _set_template_override(args.url, panel_name, template_name)
             _wait_for_template(
                 args.url,
@@ -401,13 +444,15 @@ def main() -> None:
                 template_name,
                 max(5.0, args.settle_seconds + 2.0),
             )
+            if fix:
+                _push_fixture_data(args.url, fix)
             _wait_for_template_data(
                 args.url,
                 template_name,
                 max(args.data_timeout_seconds, args.settle_seconds + 2.0),
             )
             time.sleep(max(0.1, float(args.settle_seconds)))
-            _capture_image(args.url, panel_name, output_dir / f"{template_name}.png")
+            _capture_image(args.url, panel_name, output_dir / output_name)
     finally:
         _set_template_override(args.url, panel_name, original_override)
 

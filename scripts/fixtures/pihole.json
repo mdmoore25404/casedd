@@ -1,0 +1,24 @@
+{
+  "records": [
+    {
+      "at_ms": 0,
+      "update": {
+        "pihole.version": "6.0.1",
+        "pihole.blocking.enabled": 1.0,
+        "pihole.queries.total": 28432.0,
+        "pihole.queries.blocked": 4271.0,
+        "pihole.queries.blocked_percent": 15.0,
+        "pihole.clients.active_count": 18.0,
+        "pihole.domains.blocked_count": 1247803.0,
+        "pihole.top_blocked.domain": "telemetry.microsoft.com",
+        "pihole.top_blocked.hits": 843.0,
+        "pihole.top_blocked.list": "telemetry.microsoft.com|843\ndoubleclick.net|612\nads.google.com|504\ngooglesyndication.com|391\nfacebook.com|278",
+        "pihole.top_client.name": "192.168.1.10",
+        "pihole.top_client.queries": 9104.0,
+        "pihole.top_client.list": "192.168.1.10|9104\n192.168.1.22|4832\n192.168.1.31|3211\n192.168.1.45|2109\n192.168.1.51|1847"
+      }
+    }
+  ],
+  "loop": false,
+  "speed": 1.0
+}
