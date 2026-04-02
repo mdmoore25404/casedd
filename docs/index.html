@@ -941,12 +941,7 @@
       </picture>
     </a>
     <div>
-      <p class="real-world-kicker">Real-world deployment</p>
-      <h2 class="real-world-title">What CASEDD looks like in an actual system</h2>
-      <p class="real-world-copy">
-        This is a live installation of CASEDD running in a real host. The homepage shows a fast thumbnail,
-        while the original photo stays full-resolution for anyone who wants the close-up detail.
-      </p>
+      <h2 class="real-world-title">CASEDD running in a real host</h2>
       <a class="real-world-link" href="images/real-world.jpg" target="_blank" rel="noopener">
         Open full-resolution photo
         <i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i>
@@ -1243,7 +1238,7 @@
     }
 
     if (getterTags) {
-      fetch('getter_types.json', { cache: 'no-store' })
+      fetch('getter_types.json')
         .then((response) => response.ok ? response.json() : null)
         .then((payload) => {
           if (!payload || !Array.isArray(payload.getter_types) || payload.getter_types.length === 0) {
@@ -1401,14 +1396,7 @@
       }
     });
 
-    const resolveValidEntries = (entries) => Promise.all(entries.map((entry) => new Promise((resolve) => {
-      const probe = new Image();
-      probe.onload = () => resolve(entry);
-      probe.onerror = () => resolve(null);
-      probe.src = entry.image;
-    }))).then((results) => results.filter((entry) => entry));
-
-    fetch('images/template_snaps/manifest.json', { cache: 'no-store' })
+    fetch('images/template_snaps/manifest.json')
       .then((response) => response.ok ? response.json() : null)
       .then((payload) => {
         if (!payload || !Array.isArray(payload.templates) || payload.templates.length === 0) {
@@ -1416,16 +1404,15 @@
         }
 
         const entries = payload.templates.filter((entry) => entry && entry.name && entry.image);
-        return resolveValidEntries(entries).then((validEntries) => {
-          if (validEntries.length === 0) {
-            return;
-          }
+        if (entries.length === 0) {
+          return;
+        }
 
-          const preferred = validEntries.find((entry) => entry.name === 'system_stats') || validEntries[0];
-          let activeIndex = validEntries.indexOf(preferred);
-          setHero(preferred);
+        const preferred = entries.find((entry) => entry.name === 'system_stats') || entries[0];
+        let activeIndex = entries.indexOf(preferred);
+        setHero(preferred);
 
-          galleryGrid.replaceChildren(...validEntries.map((entry, index) => {
+        galleryGrid.replaceChildren(...entries.map((entry, index) => {
             const card = document.createElement('div');
             card.className = 'template-card';
             card.id = `template-${entry.name.replace(/[^a-z0-9_-]/gi, '-')}`;
@@ -1435,7 +1422,7 @@
             button.addEventListener('click', () => {
               activeIndex = index;
               setHero(entry);
-              openModal(index, validEntries, payload.generated_at || '');
+              openModal(index, entries, payload.generated_at || '');
             });
 
             const image = document.createElement('img');
@@ -1461,13 +1448,12 @@
             return card;
           }));
 
-          if (validEntries.length > 1) {
-            window.setInterval(() => {
-              activeIndex = (activeIndex + 1) % validEntries.length;
-              setHero(validEntries[activeIndex]);
-            }, 4000);
-          }
-        });
+        if (entries.length > 1) {
+          window.setInterval(() => {
+            activeIndex = (activeIndex + 1) % entries.length;
+            setHero(entries[activeIndex]);
+          }, 4000);
+        }
       })
       .catch(() => undefined);
   })();
