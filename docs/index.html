@@ -981,13 +981,13 @@
     </p>
     <div class="feat-grid">
       <div class="fcard">
-        <span class="ficon">🧩</span>
+        <span class="ficon"><i class="fa-solid fa-puzzle-piece" aria-hidden="true"></i></span>
         <div class="ftitle">Built-in getter ecosystem</div>
         <div class="fdesc">From host telemetry to media and homelab apps: CPU, memory, disk, network, weather, UPS, Plex, Radarr, Sonarr, NZBGet, Pi-hole, containers, VMs, and more.</div>
         <div class="ftags" id="getter-types-tags"><span class="tag">loading getters…</span></div>
       </div>
       <div class="fcard">
-        <span class="ficon">🔌</span>
+        <span class="ficon"><i class="fa-solid fa-plug" aria-hidden="true"></i></span>
         <div class="ftitle">Custom data push API</div>
         <div class="fdesc">Push any JSON payload through REST or Unix socket and drive templates dynamically with your own schema. If you can emit JSON, CASEDD can visualize it.</div>
         <div class="ftags"><span class="tag">REST push</span><span class="tag">Unix socket</span><span class="tag">dynamic widgets</span></div>
@@ -999,37 +999,37 @@
         <div class="ftags"><span class="tag">WYSIWYG</span><span class="tag">data replay</span><span class="tag">random test data</span></div>
       </div>
       <div class="fcard">
-        <span class="ficon">🌐</span>
+        <span class="ficon"><i class="fa-solid fa-globe" aria-hidden="true"></i></span>
         <div class="ftitle">Live web view</div>
         <div class="fdesc">Each rendered frame is pushed over WebSocket to any browser instantly. An HTTP endpoint serves single-frame image exports.</div>
         <div class="ftags"><span class="tag">WebSocket</span><span class="tag">FastAPI</span><span class="tag">image export</span></div>
       </div>
       <div class="fcard">
-        <span class="ficon">🧭</span>
+        <span class="ficon"><i class="fa-solid fa-compass" aria-hidden="true"></i></span>
         <div class="ftitle">Multi-panel orchestration</div>
         <div class="fdesc">Drive multiple framebuffer targets with independent templates, schedules, rotations, and trigger behavior from a single daemon runtime.</div>
         <div class="ftags"><span class="tag">multi panel</span><span class="tag">per-panel policy</span><span class="tag">single daemon</span></div>
       </div>
       <div class="fcard">
-        <span class="ficon">🚨</span>
+        <span class="ficon"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span>
         <div class="ftitle">Triggered incident views</div>
         <div class="fdesc">Automatically pivot to high-priority templates when thresholds trip, with hold/cooldown semantics that prevent noisy flapping and preserve readability.</div>
         <div class="ftags"><span class="tag">trigger rules</span><span class="tag">hold/cooldown</span><span class="tag">incident focus</span></div>
       </div>
       <div class="fcard">
-        <span class="ficon">🛡️</span>
+        <span class="ficon"><i class="fa-solid fa-shield" aria-hidden="true"></i></span>
         <div class="ftitle">Production-safe deployment</div>
         <div class="fdesc">Run 24/7 under systemd or Docker with clean startup/shutdown framing, health endpoints, and restart-friendly service behavior for unattended hosts.</div>
         <div class="ftags"><span class="tag">systemd</span><span class="tag">docker</span><span class="tag">health + restart</span></div>
       </div>
       <div class="fcard">
-        <span class="ficon">🖥️</span>
+        <span class="ficon"><i class="fa-solid fa-desktop" aria-hidden="true"></i></span>
         <div class="ftitle">Auto framebuffer fit + rotation</div>
         <div class="fdesc">Detects framebuffer geometry and supports rotation so templates remain readable across many panel sizes without hand-tuning every layout.</div>
         <div class="ftags"><span class="tag">auto resolution</span><span class="tag">rotation</span><span class="tag">fb-compatible</span></div>
       </div>
       <div class="fcard">
-        <span class="ficon">🦝</span>
+        <span class="ficon"><i class="fa-solid fa-face-grin-wink" aria-hidden="true"></i></span>
         <div class="ftitle">Dynamic image state selection</div>
         <div class="fdesc">Image widgets can swap assets by live metric thresholds anywhere in your layout. The mascot is fully customizable, and the same state-selection pattern works for any image-driven panel.</div>
         <div class="mascot-states" aria-label="Mascot state progression">
@@ -1157,7 +1157,7 @@
     </p>
     <div class="docs-grid">
       <a href="/overview/" class="dcard">
-        <span class="dcard-icon">📖</span>
+        <span class="dcard-icon"><i class="fa-solid fa-book" aria-hidden="true"></i></span>
         <div>
           <div class="dcard-title">Project Overview</div>
           <div class="dcard-desc">Architecture, data flow, install options (systemd, Docker, bare Python), dev workflow, and full configuration reference.</div>
@@ -1165,7 +1165,7 @@
         </div>
       </a>
       <a href="/template_format/" class="dcard">
-        <span class="dcard-icon">🗂️</span>
+        <span class="dcard-icon"><i class="fa-solid fa-folder-open" aria-hidden="true"></i></span>
         <div>
           <div class="dcard-title">Template Format</div>
           <div class="dcard-desc">Full <code>.casedd</code> YAML specification: grid layout, every widget type, color syntax, and annotated examples.</div>
@@ -1173,7 +1173,7 @@
         </div>
       </a>
       <a href="/getters/" class="dcard">
-        <span class="dcard-icon">📡</span>
+        <span class="dcard-icon"><i class="fa-solid fa-tower-broadcast" aria-hidden="true"></i></span>
         <div>
           <div class="dcard-title">Getter Reference</div>
           <div class="dcard-desc">All built-in data collectors with their dotted store key namespaces, sample values, and configuration options.</div>
@@ -1181,7 +1181,7 @@
         </div>
       </a>
       <a href="/api/" class="dcard">
-        <span class="dcard-icon">🔗</span>
+        <span class="dcard-icon"><i class="fa-solid fa-link" aria-hidden="true"></i></span>
         <div>
           <div class="dcard-title">REST API</div>
           <div class="dcard-desc">All HTTP endpoints documented with request/response examples. Interactive Swagger UI at <code>/docs</code> on a running daemon.</div>
@@ -1190,7 +1190,7 @@
       </a>
     </div>
     <div class="deploy-cta">
-      <span class="icon">🚀</span>
+      <span class="icon"><i class="fa-solid fa-rocket" aria-hidden="true"></i></span>
       <div class="copy">
         <strong>Deploying to production?</strong>
         <p>Use the included systemd unit or Docker Compose config. The daemon is designed to run headless 24/7 with rotating logs and automatic restart on failure.</p>
