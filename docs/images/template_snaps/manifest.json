@@ -1,13 +1,53 @@
 {
-  "generated_at": "2026-04-02 20:24 UTC",
+  "generated_at": "2026-04-02 21:45 UTC",
   "templates": [
+    {
+      "name": "system_stats",
+      "image": "images/template_snaps/system_stats.png"
+    },
+    {
+      "name": "plex_dashboard",
+      "image": "images/template_snaps/plex_dashboard_demo.jpg"
+    },
+    {
+      "name": "servarr_dashboard",
+      "image": "images/template_snaps/servarr_dashboard_demo.jpg"
+    },
+    {
+      "name": "pihole",
+      "image": "images/template_snaps/pihole_demo.jpg"
+    },
+    {
+      "name": "invokeai",
+      "image": "images/template_snaps/invokeai_demo.jpg"
+    },
+    {
+      "name": "nzbget_dashboard",
+      "image": "images/template_snaps/nzbget_dashboard_demo.jpg"
+    },
+    {
+      "name": "nzbget_queue",
+      "image": "images/template_snaps/nzbget_queue_demo.jpg"
+    },
+    {
+      "name": "nvidia_detail",
+      "image": "images/template_snaps/nvidia_detail.jpg"
+    },
+    {
+      "name": "net_ports",
+      "image": "images/template_snaps/net_ports.jpg"
+    },
+    {
+      "name": "sysinfo",
+      "image": "images/template_snaps/sysinfo.jpg"
+    },
+    {
+      "name": "ups_status",
+      "image": "images/template_snaps/ups_stats.jpg"
+    },
     {
       "name": "apod",
       "image": "images/template_snaps/apod.png"
-    },
-    {
-      "name": "close_splash",
-      "image": "images/template_snaps/close_splash.png"
     },
     {
       "name": "docker_dashboard",
@@ -28,14 +68,6 @@
     {
       "name": "speedtest",
       "image": "images/template_snaps/speedtest.png"
-    },
-    {
-      "name": "startup_splash",
-      "image": "images/template_snaps/startup_splash.png"
-    },
-    {
-      "name": "system_stats",
-      "image": "images/template_snaps/system_stats.png"
     },
     {
       "name": "weather_nws",
