@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-02 22:11 UTC",
+  "generated_at": "2026-04-02 22:21 UTC",
   "templates": [
     {
       "name": "system_stats",
@@ -72,6 +72,10 @@
     {
       "name": "sysinfo",
       "image": "images/template_snaps/sysinfo.jpg"
+    },
+    {
+      "name": "ups_stats",
+      "image": "images/template_snaps/ups_stats.jpg"
     },
     {
       "name": "ups_status",
