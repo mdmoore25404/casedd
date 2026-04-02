@@ -6,7 +6,7 @@ After=network.target
 [Service]
 Type=simple
 User=@CASEDD_USER@
-SupplementaryGroups=video
+SupplementaryGroups=video input
 WorkingDirectory=@CASEDD_REPO_ROOT@
 EnvironmentFile=/etc/casedd/casedd.env
 Environment=CASEDD_LOG_LEVEL=NONE

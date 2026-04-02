@@ -97,6 +97,8 @@ Optional environment controls:
 - `CASEDD_EMERGENCY_EXIT_KEYS=0` disables this watcher.
 - `CASEDD_EMERGENCY_INPUT_GLOB=/dev/input/event*` overrides the input-event
   device glob (useful for integration tests).
+- The daemon user must have read access to `/dev/input/event*` (typically by
+  being in Linux group `input`); otherwise ESC/Q key-exit cannot trigger.
 
 ### Advanced React app (Vite)
 

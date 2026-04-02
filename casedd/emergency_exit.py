@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import errno
 import logging
 import os
 from pathlib import Path
@@ -49,6 +50,7 @@ class EmergencyExitWatcher:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        self._warned_open_paths: set[str] = set()
 
     def start(self) -> None:
         """Start the watcher thread if it is not already running."""
@@ -123,7 +125,22 @@ class EmergencyExitWatcher:
                 continue
             try:
                 fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
-            except OSError:
+            except OSError as exc:
+                if path not in self._warned_open_paths:
+                    self._warned_open_paths.add(path)
+                    if exc.errno == errno.EACCES:
+                        _log.warning(
+                            "Emergency key-exit cannot read %s (permission denied). "
+                            "Add the daemon user to the 'input' group or run with "
+                            "equivalent device-read permissions.",
+                            path,
+                        )
+                    else:
+                        _log.warning(
+                            "Emergency key-exit cannot read %s (%s)",
+                            path,
+                            exc,
+                        )
                 continue
             try:
                 poller.register(fd, select.POLLIN)
