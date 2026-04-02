@@ -22,5 +22,6 @@ Available getters:
     - :mod:`casedd.getters.speedtest` — Ookla speed test sampling
     - :mod:`casedd.getters.system` — Hostname, uptime, load average
     - :mod:`casedd.getters.ups` — UPS metrics via apcaccess/upsc/custom command
+    - :mod:`casedd.getters.vms` — KVM/libvirt VM telemetry via ``virsh``
     - :mod:`casedd.getters.weather` — NWS/open-meteo weather + alert telemetry
 """

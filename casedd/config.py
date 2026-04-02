@@ -300,6 +300,10 @@ class Config:
         ups_interval: UPS polling interval in seconds.
         ups_command: Optional custom UPS command override.
         ups_upsc_target: Target argument for ``upsc`` fallback mode.
+        vms_interval: KVM/libvirt VM polling interval in seconds.
+        vms_passive: Disable local virsh polling and expect external pushes.
+        vms_command: Virsh binary name or absolute path.
+        vms_max_items: Maximum indexed ``vms.<n>`` rows emitted.
         pihole_base_url: Pi-hole API base URL.
         radarr_base_url: Radarr API base URL.
         radarr_api_key: Radarr API key for X-Api-Key auth.
@@ -439,6 +443,10 @@ class Config:
     ups_interval: float = Field(default=5.0)
     ups_command: str | None = Field(default=None)
     ups_upsc_target: str = Field(default="ups@localhost")
+    vms_interval: float = Field(default=10.0)
+    vms_passive: bool = Field(default=False)
+    vms_command: str = Field(default="virsh")
+    vms_max_items: int = Field(default=8, ge=1, le=50)
     radarr_base_url: str = Field(default="")
     radarr_api_key: str | None = Field(default=None, repr=False)
     radarr_interval: float = Field(default=15.0)
@@ -791,6 +799,25 @@ class Config:
             msg = f"ups_interval must be between 1 and 3600 seconds, got {v}"
             raise ValueError(msg)
         return v
+
+    @field_validator("vms_interval")
+    @classmethod
+    def _validate_vms_interval(cls, v: float) -> float:
+        """Ensure VM polling interval is positive and practical."""
+        if not (1.0 <= v <= 3600.0):
+            msg = f"vms_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("vms_command")
+    @classmethod
+    def _validate_vms_command(cls, value: str) -> str:
+        """Normalize virsh command field and reject blank values."""
+        normalized = value.strip()
+        if not normalized:
+            msg = "vms_command must not be empty"
+            raise ValueError(msg)
+        return normalized
 
     @field_validator("radarr_interval", "sonarr_interval")
     @classmethod
@@ -1270,6 +1297,12 @@ def load_config() -> Config:
         ups_interval=float(str(_get("CASEDD_UPS_INTERVAL", "ups_interval", 5.0))),
         ups_command=str(_get("CASEDD_UPS_COMMAND", "ups_command", "")).strip() or None,
         ups_upsc_target=str(_get("CASEDD_UPS_UPSC_TARGET", "ups_upsc_target", "ups@localhost")),
+        vms_interval=float(str(_get("CASEDD_VMS_INTERVAL", "vms_interval", 10.0))),
+        vms_passive=str(_get("CASEDD_VMS_PASSIVE", "vms_passive", "0"))
+        not in {"0", "false", "False", ""},
+        vms_command=str(_get("CASEDD_VMS_COMMAND", "vms_command", "virsh")).strip()
+        or "virsh",
+        vms_max_items=int(str(_get("CASEDD_VMS_MAX_ITEMS", "vms_max_items", 8))),
         radarr_base_url=str(_get("CASEDD_RADARR_BASE_URL", "radarr_base_url", "")).strip(),
         radarr_api_key=str(_get("CASEDD_RADARR_API_KEY", "radarr_api_key", "")).strip()
         or None,
