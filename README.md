@@ -100,6 +100,12 @@ Optional environment controls:
 - The daemon user must have read access to `/dev/input/event*` (typically by
   being in Linux group `input`); otherwise ESC/Q key-exit cannot trigger.
 
+When CASEDD exits and releases the framebuffer, the login prompt should be
+restored on the display. You can either type your username and press Enter to
+reach the password prompt, or switch virtual terminals with Ctrl+Alt+F2 (or
+Ctrl+Alt+F3..F6) to get a login prompt immediately. This avoids running the
+daemon as root while still allowing easy local recovery.
+
 ### Advanced React app (Vite)
 
 `./dev.sh start` already launches the advanced app in Vite development mode for

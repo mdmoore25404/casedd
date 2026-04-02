@@ -320,6 +320,13 @@ install_service() {
         echo "  Env file: ${ENV_FILE}"
     fi
     echo
+    # Guidance for recovering host login after CASEDD exits
+    echo "After CASEDD exits (for example via ESC/Q emergency exit), the host"
+    echo "login prompt should be available on the display. You can type your"
+    echo "username and press Enter to reach the password prompt, or switch to"
+    echo "another virtual terminal using Ctrl+Alt+F2 (or F3..F6) to get a login"
+    echo "prompt immediately."
+    echo
     echo "Useful commands:"
     echo "  sudo systemctl status ${SERVICE_NAME}"
     echo "  sudo journalctl -u ${SERVICE_NAME} -n 100"
