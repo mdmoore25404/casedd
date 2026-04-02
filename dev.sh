@@ -272,6 +272,16 @@ cmd_start() {
 
     export CASEDD_NO_FB="${CASEDD_DEV_NO_FB:-1}"
 
+    # Emergency key-exit requires read access to /dev/input/event*.
+    local emergency_keys_enabled
+    emergency_keys_enabled="${CASEDD_EMERGENCY_EXIT_KEYS:-1}"
+    if [[ "$emergency_keys_enabled" != "0" && "$emergency_keys_enabled" != "false" && "$emergency_keys_enabled" != "False" ]]; then
+        if ! id -nG "$USER" | tr ' ' '\n' | grep -qx input; then
+            echo "WARNING: emergency ESC/Q exit is enabled, but user '$USER' is not in group 'input'."
+            echo "         Key-exit will not work until /dev/input/event* read permissions are granted."
+        fi
+    fi
+
     export CASEDD_PID_FILE="${CASEDD_DEV_PID_FILE:-$DEV_PID_FILE}"
     export CASEDD_LOG_DIR="${CASEDD_DEV_LOG_DIR:-$REPO_ROOT/logs}"
 

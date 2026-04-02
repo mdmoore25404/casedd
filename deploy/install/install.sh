@@ -38,6 +38,8 @@ Notes:
     it is backed up and replaced with the symlink.
   - casedd.yaml is read directly from the repository working tree via the
     service WorkingDirectory; it is not copied into /etc/casedd.
+  - Installer prompts to enable /dev/input/event* read access for ESC/Q
+    emergency-exit support. Skipping this leaves ESC/Q exit unavailable.
 EOF
 }
 
@@ -66,6 +68,80 @@ run_shell() {
         return 0
     fi
     eval "${command}"
+}
+
+user_in_group() {
+    local user_name="$1"
+    local group_name="$2"
+
+    id -nG "${user_name}" 2>/dev/null | tr ' ' '\n' | grep -qx "${group_name}"
+}
+
+grant_input_acl() {
+    local user_name="$1"
+    local event_nodes=()
+
+    mapfile -t event_nodes < <(find /dev/input -maxdepth 1 -type c -name 'event*' 2>/dev/null)
+    if [[ "${#event_nodes[@]}" -eq 0 ]]; then
+        log "No /dev/input/event* nodes found; skipping ACL grant for ${user_name}."
+        return
+    fi
+
+    if ! command -v setfacl >/dev/null 2>&1; then
+        log "setfacl not found; skipping immediate ACL grant for ${user_name}."
+        return
+    fi
+
+    for node in "${event_nodes[@]}"; do
+        run_cmd setfacl -m "u:${user_name}:rw" "${node}"
+    done
+}
+
+prompt_input_access_setup() {
+    local service_user="$1"
+    local installer_user="${SUDO_USER:-}"
+    local reply=""
+
+    echo
+    echo "ESC/Q emergency daemon exit requires read access to /dev/input/event*."
+    echo "Without input-device read permission, ESC/Q emergency exit support will NOT work."
+
+    if [[ -n "${installer_user}" && "${installer_user}" != "root" ]]; then
+        echo "Detected installer user: ${installer_user}"
+    fi
+    echo "Detected service user: ${service_user}"
+
+    if [[ ! -t 0 ]]; then
+        log "Non-interactive install: skipping input-access prompt."
+        return
+    fi
+
+    read -r -p "Enable input-device read access for ESC/Q emergency exit now? [Y/n] " reply
+    if [[ -n "${reply}" && "${reply}" =~ ^[Nn]$ ]]; then
+        log "Input-device access not changed. ESC/Q emergency exit may remain unavailable."
+        return
+    fi
+
+    if ! user_in_group "${service_user}" input; then
+        log "Adding ${service_user} to group 'input'"
+        run_cmd usermod -aG input "${service_user}"
+    else
+        log "Service user ${service_user} is already in group 'input'"
+    fi
+
+    if [[ -n "${installer_user}" && "${installer_user}" != "root" ]]; then
+        if ! user_in_group "${installer_user}" input; then
+            log "Adding ${installer_user} to group 'input'"
+            run_cmd usermod -aG input "${installer_user}"
+        else
+            log "Installer user ${installer_user} is already in group 'input'"
+        fi
+        log "Attempting immediate ACL grant on existing /dev/input/event* for ${installer_user}"
+        grant_input_acl "${installer_user}"
+    fi
+
+    echo "Input access update complete."
+    echo "Note: group membership changes require logout/login (or reboot) to fully apply."
 }
 
 require_root() {
@@ -232,6 +308,7 @@ install_service() {
     install_env_file
     install_logs_dir
     install_unit "${service_user}"
+    prompt_input_access_setup "${service_user}"
 
     echo
     echo "Installation complete."
@@ -242,6 +319,13 @@ install_service() {
     else
         echo "  Env file: ${ENV_FILE}"
     fi
+    echo
+    # Guidance for recovering host login after CASEDD exits
+    echo "After CASEDD exits (for example via ESC/Q emergency exit), the host"
+    echo "login prompt should be available on the display. You can type your"
+    echo "username and press Enter to reach the password prompt, or switch to"
+    echo "another virtual terminal using Ctrl+Alt+F2 (or F3..F6) to get a login"
+    echo "prompt immediately."
     echo
     echo "Useful commands:"
     echo "  sudo systemctl status ${SERVICE_NAME}"
