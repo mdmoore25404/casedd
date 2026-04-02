@@ -5,6 +5,10 @@
 *pihole*.png
 *servarr*.png
 
+# Splash/UI screenshots are not template gallery entries.
+close_splash.png
+startup_splash.png
+
 # Allow sanitized demo snapshots to be committed.
 !*_demo*.png
 

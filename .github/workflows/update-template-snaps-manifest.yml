@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - docs/images/template_snaps/*.png
+      - docs/images/template_snaps/*.jpg
       - docs/images/template_snaps/.gitignore
       - scripts/capture_template_snaps.py
       - .github/workflows/update-template-snaps-manifest.yml
@@ -40,7 +41,10 @@ jobs:
           output_dir = Path("docs/images/template_snaps")
           output_dir.mkdir(parents=True, exist_ok=True)
 
-          rules = []
+          # --- Load exclusion/inclusion rules from the .gitignore ---
+          # Rules only apply to PNG files (the JPG files are all safe to include).
+          # Splash/UI screenshots are excluded via the .gitignore as well.
+          rules: list[tuple[str, bool]] = []
           gitignore_path = output_dir / ".gitignore"
           if gitignore_path.exists():
               for line in gitignore_path.read_text(encoding="utf-8").splitlines():
@@ -55,31 +59,76 @@ jobs:
                   rules.append((pattern, is_negated))
 
           def include_file(file_name: str) -> bool:
+              """Return True if this file should appear in the gallery manifest.
+
+              PNG files are evaluated against .gitignore exclusion rules.
+              JPG files are always included (they are either safe originals or
+              explicitly named _demo variants).
+              """
+              if file_name.lower().endswith(".jpg"):
+                  return True
               included = True
               for pattern, is_negated in rules:
                   if fnmatch.fnmatch(file_name, pattern):
                       included = is_negated
               return included
 
-          names = [
-              path.stem
-              for path in sorted(output_dir.glob("*.png"))
-              if include_file(path.name)
-          ]
+          def template_name(stem: str) -> str:
+              """Derive canonical template name by stripping any _demo suffix."""
+              if stem.endswith("_demo"):
+                  return stem[: -len("_demo")]
+              return stem
+
+          # --- Collect all candidate image files ---
+          candidates: list[Path] = sorted(
+              p for p in output_dir.iterdir()
+              if p.suffix.lower() in {".png", ".jpg"} and include_file(p.name)
+          )
+
+          # --- Build one entry per canonical template name.
+          # If both a _demo variant and a plain variant exist, prefer the _demo.
+          # Among multiple _demo files for the same base name, keep the first
+          # alphabetically (e.g. nzbget_dashboard_demo before nzbget_queue_demo).
+          seen: dict[str, Path] = {}
+          for path in candidates:
+              name = template_name(path.stem)
+              existing = seen.get(name)
+              if existing is None:
+                  seen[name] = path
+              else:
+                  # Prefer the _demo variant over the plain one
+                  if "_demo" in path.stem and "_demo" not in existing.stem:
+                      seen[name] = path
+
+          # --- Order: system_stats first (hero), then _demo variants
+          # (featured content), then remaining alphabetically.
+          def sort_key(item: tuple[str, Path]) -> tuple[int, str]:
+              name, path = item
+              if name == "system_stats":
+                  return (0, name)
+              if "_demo" in path.stem:
+                  return (1, name)
+              return (2, name)
+
+          ordered = sorted(seen.items(), key=sort_key)
+
           manifest = {
               "generated_at": datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M UTC"),
               "templates": [
                   {
                       "name": name,
-                      "image": f"images/template_snaps/{name}.png",
+                      "image": f"images/template_snaps/{path.name}",
                   }
-                  for name in names
+                  for name, path in ordered
               ],
           }
           (output_dir / "manifest.json").write_text(
               json.dumps(manifest, indent=2) + "\n",
               encoding="utf-8",
           )
+          print(f"Manifest written with {len(ordered)} entries.")
+          for name, path in ordered:
+              print(f"  {name} -> {path.name}")
           PY
 
       - name: Commit manifest update
