@@ -1,0 +1,70 @@
+# docker_dashboard.casedd — container runtime status dashboard
+
+name: docker_dashboard
+description: Container runtime overview across Docker, Podman, or containerd.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0b1118"
+refresh_rate: 4.0
+
+grid:
+  template_areas: |
+    "runtime running paused exited"
+    "table table table table"
+  columns: "1.3fr 0.9fr 0.9fr 0.9fr"
+  rows: "0.28fr 0.72fr"
+
+widgets:
+  runtime:
+    type: panel
+    background: "#101822"
+    padding: 8
+    grid:
+      template_areas: |
+        "logo"
+      columns: "1fr"
+      rows: "1fr"
+    children_named:
+      logo:
+        type: image
+        source: containers.logo_path
+        scale: fit
+        background: transparent
+
+  running:
+    type: value
+    source: containers.count_running
+    label: "Running"
+    color: "#74d680"
+    background: "#0f1a24"
+    font_size: auto
+    padding: 8
+
+  paused:
+    type: value
+    source: containers.count_paused
+    label: "Paused"
+    color: "#ffd166"
+    background: "#0f1a24"
+    font_size: auto
+    padding: 8
+
+  exited:
+    type: value
+    source: containers.count_exited
+    label: "Exited"
+    color: "#ff8c69"
+    background: "#0f1a24"
+    font_size: auto
+    padding: 8
+
+  table:
+    type: table
+    source: containers.rows
+    label: "Containers"
+    color: "#dfe7ef"
+    background: "#101822"
+    font_size: auto
+    table_fit_text: true
+    max_items: 12
+    padding: [8, 10]

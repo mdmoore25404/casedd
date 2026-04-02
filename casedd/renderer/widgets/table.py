@@ -10,7 +10,9 @@ Data source keys consumed:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 import re
+import time
 
 from PIL import Image, ImageDraw
 from PIL.ImageFont import FreeTypeFont, ImageFont
@@ -68,6 +70,38 @@ class _LayoutSpec:
     max_font_size: int | None
 
 
+@dataclass(frozen=True)
+class _ContainerTableRow:
+    """One parsed containers table row with icon keys."""
+
+    name: str
+    status_icon: str
+    health_icon: str
+    uptime: str
+    image: str
+
+
+@dataclass(frozen=True)
+class _ContainerRenderContext:
+    """Container-specific table render inputs bundled for lint-friendly callsites."""
+
+    draw: ImageDraw.ImageDraw
+    inner: Rect
+    label_h: int
+    source_text: str
+    font_size: int | str
+    max_items: int | None
+    color: str | None
+
+
+_ICON_RETRY_BACKOFF_SEC = 10.0
+_ICON_CACHE: dict[str, Image.Image] = {}
+_ICON_MTIME: dict[str, float] = {}
+_ICON_RETRY_AFTER: dict[str, float] = {}
+_STATUS_ICON_BASE = "assets/icons/status"
+_HEALTH_ICON_BASE = "assets/icons/health"
+
+
 class TableWidget(BaseWidget):
     """Render a compact two-column table with dynamic font scaling."""
 
@@ -98,6 +132,19 @@ class TableWidget(BaseWidget):
 
         raw = resolve_value(cfg, data)
         source_text = str(raw) if raw is not None else ""
+        if cfg.source == "containers.rows":
+            context = _ContainerRenderContext(
+                draw=draw,
+                inner=inner,
+                label_h=label_h,
+                source_text=source_text,
+                font_size=cfg.font_size,
+                max_items=cfg.max_items,
+                color=cfg.color,
+            )
+            if self._draw_containers_table(img, context):
+                return
+
         rows = _parse_rows(source_text)
 
         if cfg.max_items is not None and cfg.max_items > 0:
@@ -174,6 +221,91 @@ class TableWidget(BaseWidget):
                 )
             y += prepared.row_h
 
+    def _draw_containers_table(
+        self,
+        img: Image.Image,
+        context: _ContainerRenderContext,
+    ) -> bool:
+        """Render containers.rows in 5-column mode with icon assets.
+
+        Returns:
+            True when container table mode was rendered.
+        """
+        rows = _parse_container_rows(context.source_text)
+        if not rows:
+            return False
+
+        if context.max_items is not None and context.max_items > 0:
+            rows = rows[: context.max_items]
+
+        color = parse_color(context.color, fallback=(220, 225, 230))
+        header_color = (160, 170, 182)
+        inner = context.inner
+        draw = context.draw
+        y = inner.y + context.label_h + 2
+        avail_w = inner.w - 4
+        x0 = inner.x + 2
+        name_x = x0
+        status_x = x0 + int(avail_w * 0.31)
+        health_x = x0 + int(avail_w * 0.43)
+        uptime_x = x0 + int(avail_w * 0.56)
+        image_x = x0 + int(avail_w * 0.75)
+
+        resolved_font_size = _to_font_size(context.font_size, inner)
+        header_font = get_font(max(10, int(resolved_font_size * 0.78)))
+        body_font = get_font(resolved_font_size)
+
+        draw.text((name_x, y), "Container", fill=header_color, font=header_font)
+        draw.text((status_x, y), "Status", fill=header_color, font=header_font)
+        draw.text((health_x, y), "Health", fill=header_color, font=header_font)
+        draw.text((uptime_x, y), "Uptime", fill=header_color, font=header_font)
+        draw.text((image_x, y), "Image", fill=header_color, font=header_font)
+
+        header_bb = draw.textbbox((0, 0), "Ag", font=header_font)
+        row_h = int((draw.textbbox((0, 0), "Ag", font=body_font)[3]) + 2)
+        y += int(header_bb[3] - header_bb[1]) + 5
+        draw.line((x0, y, inner.x + inner.w - 2, y), fill=(56, 64, 74), width=1)
+        y += 4
+
+        icon_size = max(10, row_h - 4)
+        for row in rows:
+            if y + row_h > inner.y + inner.h:
+                break
+
+            name_text = _ellipsize(
+                draw,
+                body_font,
+                row.name,
+                status_x - name_x - 6,
+                {},
+            )
+            draw.text((name_x, y), name_text, fill=color, font=body_font)
+
+            status_icon = _load_icon(f"{_STATUS_ICON_BASE}-{row.status_icon}.png")
+            health_icon = _load_icon(f"{_HEALTH_ICON_BASE}-{row.health_icon}.png")
+            if status_icon is not None:
+                status_scaled = status_icon.resize(
+                    (icon_size, icon_size),
+                    Image.Resampling.LANCZOS,
+                )
+                img.paste(status_scaled, (status_x, y + 1), status_scaled)
+            if health_icon is not None:
+                health_scaled = health_icon.resize(
+                    (icon_size, icon_size),
+                    Image.Resampling.LANCZOS,
+                )
+                img.paste(health_scaled, (health_x, y + 1), health_scaled)
+
+            draw.text((uptime_x, y), row.uptime, fill=color, font=body_font)
+            draw.text(
+                (image_x, y),
+                _ellipsize(draw, body_font, row.image, inner.x + inner.w - image_x - 4, {}),
+                fill=color,
+                font=body_font,
+            )
+            y += row_h
+        return True
+
 
 def _layout_from_cache(
     state: dict[str, object],
@@ -241,6 +373,71 @@ def _parse_rows(source_text: str) -> list[_Row]:
         if left or right:
             rows.append(_Row(left=left or "—", right=right or "—"))
     return rows
+
+
+def _parse_container_rows(source_text: str) -> list[_ContainerTableRow]:
+    """Parse 5-column containers table rows.
+
+    Format per line: ``name|status_icon|health_icon|uptime|image``.
+    """
+    rows: list[_ContainerTableRow] = []
+    for raw_line in source_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split("|", maxsplit=4)
+        if len(parts) != 5:
+            return []
+        rows.append(
+            _ContainerTableRow(
+                name=parts[0].strip() or "—",
+                status_icon=parts[1].strip() or "unknown",
+                health_icon=parts[2].strip() or "unknown",
+                uptime=parts[3].strip() or "-",
+                image=parts[4].strip() or "—",
+            )
+        )
+    return rows
+
+
+def _to_font_size(font_size: int | str, inner: Rect) -> int:
+    """Resolve table font size value to a concrete integer."""
+    if isinstance(font_size, int):
+        return max(10, font_size)
+    return max(12, min(inner.h // 12, inner.w // 34))
+
+
+def _load_icon(path_text: str) -> Image.Image | None:
+    """Load and cache icon image by path with local mtime invalidation."""
+    retry_after = _ICON_RETRY_AFTER.get(path_text)
+    if retry_after is not None and retry_after > time.monotonic():
+        return None
+
+    path = Path(path_text)
+    if not path.is_file():
+        _ICON_RETRY_AFTER[path_text] = time.monotonic() + _ICON_RETRY_BACKOFF_SEC
+        return None
+
+    try:
+        mtime = path.stat().st_mtime
+    except OSError:
+        mtime = -1.0
+
+    cached = _ICON_CACHE.get(path_text)
+    cached_mtime = _ICON_MTIME.get(path_text)
+    if cached is not None and cached_mtime == mtime:
+        return cached
+
+    try:
+        loaded = Image.open(path).convert("RGBA")
+    except OSError:
+        _ICON_RETRY_AFTER[path_text] = time.monotonic() + _ICON_RETRY_BACKOFF_SEC
+        return None
+
+    _ICON_CACHE[path_text] = loaded
+    _ICON_MTIME[path_text] = mtime
+    _ICON_RETRY_AFTER.pop(path_text, None)
+    return loaded
 
 
 def _strip_rank_prefix(value: str) -> str:

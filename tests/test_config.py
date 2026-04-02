@@ -271,6 +271,21 @@ def test_vms_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
         assert cfg.vms_max_items == 12
 
 
+def test_containers_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
+        """Containers env vars should map into typed config fields."""
+        monkeypatch_obj = monkeypatch
+        monkeypatch_obj.setenv("CASEDD_CONFIG", str(tmp_path / "missing.yaml"))
+        monkeypatch_obj.setenv("CASEDD_CONTAINERS_INTERVAL", "11")
+        monkeypatch_obj.setenv("CASEDD_CONTAINERS_RUNTIME", "podman")
+        monkeypatch_obj.setenv("CASEDD_CONTAINERS_MAX_ITEMS", "25")
+
+        cfg = load_config()
+
+        assert cfg.containers_interval == 11.0
+        assert cfg.containers_runtime == "podman"
+        assert cfg.containers_max_items == 25
+
+
 def test_servarr_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
         """Radarr/Sonarr env vars should map into typed config fields."""
         monkeypatch_obj = monkeypatch

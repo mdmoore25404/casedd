@@ -106,3 +106,8 @@ def test_getter_name_for_source_includes_os_updates() -> None:
 def test_getter_name_for_source_includes_vms() -> None:
     """vms namespace should resolve to VmGetter."""
     assert Daemon._getter_name_for_source("vms.count_running") == "VmGetter"
+
+
+def test_getter_name_for_source_includes_containers() -> None:
+    """containers namespace should resolve to ContainersGetter."""
+    assert Daemon._getter_name_for_source("containers.count_running") == "ContainersGetter"

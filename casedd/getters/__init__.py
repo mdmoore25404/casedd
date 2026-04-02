@@ -5,6 +5,7 @@ that polls a system data source at a configurable interval and pushes values
 into the shared :class:`~casedd.data_store.DataStore`.
 
 Available getters:
+    - :mod:`casedd.getters.containers` — Docker/Podman/containerd status
     - :mod:`casedd.getters.cpu` — CPU usage, temperature, fan RPM
     - :mod:`casedd.getters.fans` — system/CPU/GPU fan telemetry
     - :mod:`casedd.getters.gpu` — NVIDIA GPU stats via ``nvidia-smi``
