@@ -100,6 +100,15 @@ def test_load_speedtest_template_file() -> None:
     assert tmpl.name == "speedtest"
 
 
+def test_load_docker_dashboard_template_file() -> None:
+    """docker_dashboard.casedd in templates/ loads without validation errors."""
+    real = Path("templates/docker_dashboard.casedd")
+    if not real.exists():
+        pytest.skip("templates/docker_dashboard.casedd not present")
+    tmpl = load_template(real)
+    assert tmpl.name == "docker_dashboard"
+
+
 def test_speedtest_template_uses_split_last_run_display() -> None:
     """speedtest.casedd uses the newline-friendly last test display field."""
     real = Path("templates/speedtest.casedd")

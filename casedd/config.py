@@ -252,6 +252,9 @@ class Config:
         procfs_path: Linux procfs root path used by psutil.
         disk_mount: Filesystem mount point to monitor for disk metrics.
         viewer_bg: Default browser viewer page background color.
+        containers_interval: Container runtime polling interval in seconds.
+        containers_runtime: Preferred runtime backend (auto/docker/podman/containerd).
+        containers_max_items: Maximum indexed ``containers.<n>`` rows emitted.
         speedtest_interval: Interval between speed tests in seconds.
         speedtest_startup_delay: Delay before first speed test run in seconds.
         speedtest_advertised_down_mbps: Advertised download speed in Mb/s.
@@ -405,6 +408,9 @@ class Config:
     disk_mount: str = Field(default="/")
     viewer_bg: str = Field(default="#0d0f12")
     display_padding: int | list[int] = Field(default=0)
+    containers_interval: float = Field(default=8.0)
+    containers_runtime: str = Field(default="auto")
+    containers_max_items: int = Field(default=12, ge=1, le=100)
     speedtest_interval: float = Field(default=1800.0)
     speedtest_startup_delay: float = Field(default=0.0)
     speedtest_advertised_down_mbps: float = Field(default=2000.0)
@@ -552,6 +558,26 @@ class Config:
             msg = f"refresh_rate must be between 0.1 and 60.0 Hz, got {v}"
             raise ValueError(msg)
         return v
+
+    @field_validator("containers_interval")
+    @classmethod
+    def _validate_containers_interval(cls, v: float) -> float:
+        """Ensure container polling interval is positive and practical."""
+        if not (1.0 <= v <= 3600.0):
+            msg = f"containers_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("containers_runtime")
+    @classmethod
+    def _validate_containers_runtime(cls, value: str) -> str:
+        """Validate preferred container runtime selector."""
+        normalized = value.strip().lower()
+        valid = {"auto", "docker", "podman", "containerd"}
+        if normalized not in valid:
+            msg = f"containers_runtime must be one of {sorted(valid)}, got {value!r}"
+            raise ValueError(msg)
+        return normalized
 
     @field_validator("startup_frame_seconds")
     @classmethod
@@ -1190,6 +1216,15 @@ def load_config() -> Config:
         procfs_path=str(_get("CASEDD_PROCFS_PATH", "procfs_path", "/proc")),
         disk_mount=str(_get("CASEDD_DISK_MOUNT", "disk_mount", "/")),
         viewer_bg=str(_get("CASEDD_VIEWER_BG", "viewer_bg", "#0d0f12")),
+        containers_interval=float(
+            str(_get("CASEDD_CONTAINERS_INTERVAL", "containers_interval", 8.0))
+        ),
+        containers_runtime=str(
+            _get("CASEDD_CONTAINERS_RUNTIME", "containers_runtime", "auto")
+        ),
+        containers_max_items=int(
+            str(_get("CASEDD_CONTAINERS_MAX_ITEMS", "containers_max_items", 12))
+        ),
         speedtest_interval=float(
             str(_get("CASEDD_SPEEDTEST_INTERVAL", "speedtest_interval", 1800.0))
         ),

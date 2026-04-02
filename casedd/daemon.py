@@ -45,6 +45,7 @@ from casedd.emergency_exit import (
 from casedd.getter_health import GetterHealthRegistry
 from casedd.getters.apod import ApodGetter
 from casedd.getters.base import BaseGetter
+from casedd.getters.containers import ContainersGetter
 from casedd.getters.cpu import CpuGetter
 from casedd.getters.disk import DiskGetter
 from casedd.getters.fans import FanGetter
@@ -1110,6 +1111,12 @@ class Daemon:
             NetworkGetter(self._store, interfaces=self._cfg.net_interfaces),
             SystemGetter(self._store),
             FanGetter(self._store),
+            ContainersGetter(
+                self._store,
+                interval=self._cfg.containers_interval,
+                runtime=self._cfg.containers_runtime,
+                max_items=self._cfg.containers_max_items,
+            ),
             HtopGetter(
                 self._store,
                 interval=self._cfg.htop_interval,
@@ -1338,6 +1345,7 @@ class Daemon:
             ("net.", "NetworkGetter"),
             ("system.", "SystemGetter"),
             ("fans.", "FanGetter"),
+            ("containers.", "ContainersGetter"),
             ("speedtest.", "SpeedtestGetter"),
             ("invokeai.", "InvokeAIGetter"),
             ("ollama.", "OllamaGetter"),
