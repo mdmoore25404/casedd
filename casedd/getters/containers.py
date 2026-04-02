@@ -92,41 +92,65 @@ class ContainersGetter(BaseGetter):
 
     def _sample(self) -> dict[str, StoreValue]:
         """Blocking runtime sample implementation."""
-        backend = self._select_backend()
-        if backend is None:
+        backends = self._candidate_backends()
+        result: dict[str, StoreValue]
+        if not backends:
             if not self._warned_unavailable:
                 _log.info(
                     "Containers getter inactive: no accessible docker/podman/ctr runtime found"
                 )
                 self._warned_unavailable = True
-            return _unavailable_payload()
+            if self._runtime != _RUNTIME_AUTO:
+                result = _unavailable_payload(
+                    self._runtime,
+                    "Runtime command not found",
+                )
+            else:
+                result = _unavailable_payload()
+            return result
 
-        rows = self._collect_rows(backend)
-        if rows is None:
-            return _unavailable_payload(backend.name)
-        if not rows:
-            return _empty_payload(backend.name)
+        last_failed_runtime: str | None = None
+        for backend in backends:
+            rows = self._collect_rows(backend)
+            if rows is None:
+                last_failed_runtime = backend.name
+                # In auto mode, try the next installed runtime.
+                continue
+            if not rows:
+                result = _empty_payload(backend.name)
+            else:
+                result = self._build_payload(backend.name, rows)
+            return result
 
-        return self._build_payload(backend.name, rows)
+        if self._runtime != _RUNTIME_AUTO:
+            result = _unavailable_payload(
+                self._runtime,
+                "Runtime query failed (permission/socket issue likely)",
+            )
+        elif last_failed_runtime is not None:
+            result = _unavailable_payload(
+                last_failed_runtime,
+                "All detected runtimes failed to query",
+            )
+        else:
+            result = _unavailable_payload()
+        return result
 
-    def _select_backend(self) -> _RuntimeBackend | None:
-        """Return the preferred available runtime backend."""
-        backends: tuple[_RuntimeBackend, ...] = (
+    def _candidate_backends(self) -> list[_RuntimeBackend]:
+        """Return available runtime backends in preference order."""
+        candidates: tuple[_RuntimeBackend, ...] = (
             _RuntimeBackend(name="docker", command=self._docker_cmd or ""),
             _RuntimeBackend(name="podman", command=self._podman_cmd or ""),
             _RuntimeBackend(name="containerd", command=self._ctr_cmd or ""),
         )
 
         if self._runtime != _RUNTIME_AUTO:
-            for backend in backends:
+            for backend in candidates:
                 if backend.name == self._runtime and backend.command:
-                    return backend
-            return None
+                    return [backend]
+            return []
 
-        for backend in backends:
-            if backend.command:
-                return backend
-        return None
+        return [backend for backend in candidates if backend.command]
 
     def _collect_rows(self, backend: _RuntimeBackend) -> list[_ContainerRow] | None:
         """Collect normalized rows for the chosen runtime backend."""
@@ -210,7 +234,18 @@ class ContainersGetter(BaseGetter):
                 timeout=8,
                 check=True,
             )
-        except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        except subprocess.CalledProcessError as exc:
+            err_text = f"{exc.stderr or ''} {exc.stdout or ''}".lower()
+            if "permission denied" in err_text:
+                _log.warning(
+                    "Container runtime command permission denied: %s. "
+                    "Ensure CASEDD user has socket/group access.",
+                    args,
+                )
+            else:
+                _log.debug("Container runtime command failed: %s", args, exc_info=True)
+            return None
+        except (subprocess.TimeoutExpired, OSError):
             _log.debug("Container runtime command failed: %s", args, exc_info=True)
             return None
         return proc.stdout.strip()
@@ -351,8 +386,12 @@ def _health_icon_key(status: str) -> str:
     return "unknown"
 
 
-def _unavailable_payload(runtime: str = "unavailable") -> dict[str, StoreValue]:
+def _unavailable_payload(
+    runtime: str = "unavailable",
+    detail: str | None = None,
+) -> dict[str, StoreValue]:
     """Return payload when no runtime backend is available."""
+    row = _UNAVAILABLE_ROW if detail is None else f"{_UNAVAILABLE_ROW} ({detail})"
     return {
         "containers.available": 0.0,
         "containers.runtime": runtime,
@@ -361,7 +400,7 @@ def _unavailable_payload(runtime: str = "unavailable") -> dict[str, StoreValue]:
         "containers.count_running": 0.0,
         "containers.count_exited": 0.0,
         "containers.count_paused": 0.0,
-        "containers.rows": _UNAVAILABLE_ROW,
+        "containers.rows": row,
     }
 
 

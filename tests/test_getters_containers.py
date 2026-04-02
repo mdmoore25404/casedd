@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from unittest.mock import patch
 
 from casedd.data_store import DataStore
@@ -100,3 +101,55 @@ def test_parse_containerd_rows_merges_tasks_status() -> None:
     assert rows[0].name == "alpha"
     assert rows[0].status == "Running"
     assert rows[1].status == "Exited"
+
+
+def test_auto_runtime_falls_back_when_docker_permission_denied() -> None:
+    """Auto mode should fall back to podman if docker command is inaccessible."""
+
+    class _CompletedProcess:
+        def __init__(self, stdout: str) -> None:
+            self.stdout = stdout
+
+    def _run_side_effect(args: list[str], **_: object) -> object:
+        if args[0] == "/usr/bin/docker":
+            raise subprocess.CalledProcessError(
+                returncode=1,
+                cmd=args,
+                stderr="permission denied while trying to connect to docker socket",
+            )
+        return _CompletedProcess("svc|Up 10 minutes|ghcr.io/demo/svc:latest\n")
+
+    with (
+        patch(
+            "casedd.getters.containers.shutil.which",
+            side_effect=["/usr/bin/docker", "/usr/bin/podman", None],
+        ),
+        patch("casedd.getters.containers.subprocess.run", side_effect=_run_side_effect),
+    ):
+        payload = ContainersGetter(DataStore(), runtime="auto")._sample()
+
+    assert payload["containers.available"] == 1.0
+    assert payload["containers.runtime"] == "podman"
+
+
+def test_explicit_runtime_permission_denied_is_unavailable() -> None:
+    """Explicit docker mode should report unavailable when docker query fails."""
+    with (
+        patch(
+            "casedd.getters.containers.shutil.which",
+            side_effect=["/usr/bin/docker", None, None],
+        ),
+        patch(
+            "casedd.getters.containers.subprocess.run",
+            side_effect=subprocess.CalledProcessError(
+                returncode=1,
+                cmd=["/usr/bin/docker", "ps"],
+                stderr="permission denied",
+            ),
+        ),
+    ):
+        payload = ContainersGetter(DataStore(), runtime="docker")._sample()
+
+    assert payload["containers.available"] == 0.0
+    assert payload["containers.runtime"] == "docker"
+    assert "permission/socket issue" in str(payload["containers.rows"])
