@@ -10,6 +10,7 @@ Provides:
 - Template rotation endpoints ``GET/PUT /api/panels/{name}/rotation``
 - Global test-mode endpoints ``GET/POST /api/test-mode``
 - Simulation endpoints for replay/randomized test data
+- Fixture endpoints ``GET /api/fixtures``, ``GET /api/fixtures/{name}``
 - Data store snapshot endpoint ``GET /api/data``
 - Render buffer inspection endpoint ``GET /api/debug/render-state``
 - Rotation documentation endpoint ``GET /api/docs/rotation``
@@ -24,6 +25,7 @@ import binascii
 from collections.abc import Callable
 import contextlib
 import io
+import json
 import logging
 import os
 from pathlib import Path
@@ -634,6 +636,7 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     api_basic_user: str | None = None,
     api_basic_password: str | None = None,
     rate_limiter: _RateLimiter | None = None,
+    fixtures_dir: Path | None = None,
 ) -> FastAPI:
     """Build and configure FastAPI app for viewer and control APIs."""
     app = FastAPI(
@@ -1010,6 +1013,35 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     async def sim_status() -> dict[str, object]:
         return simulation.status()
 
+    @app.get("/api/fixtures", summary="List available replay fixture names")
+    async def list_fixtures() -> dict[str, object]:
+        """Return sorted fixture names loadable via GET /api/fixtures/{name}."""
+        if not fixtures_dir or not fixtures_dir.is_dir():
+            return {"fixtures": []}
+        names = sorted(p.stem for p in fixtures_dir.glob("*.json"))
+        return {"fixtures": names}
+
+    @app.get("/api/fixtures/{name}", summary="Get replay records for a named fixture")
+    async def get_fixture(name: str) -> dict[str, object]:
+        """Return the ``records`` array from a fixture JSON file by name."""
+        if not fixtures_dir or not fixtures_dir.is_dir():
+            raise HTTPException(status_code=404, detail="Fixtures directory not configured")
+        # Restrict access to a known set of fixture files under fixtures_dir.
+        fixtures = {p.stem: p for p in fixtures_dir.glob("*.json")}
+        if name not in fixtures:
+            raise HTTPException(status_code=404, detail=f"Fixture '{name}' not found")
+        fixture_path = fixtures[name]
+        try:
+            payload = json.loads(fixture_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=500, detail=f"Could not read fixture: {exc}") from exc
+        # Support both bare array format and wrapped {records: [...]} object format.
+        if isinstance(payload, list):
+            records: list[object] = payload
+        else:
+            records = payload.get("records", [])
+        return {"records": records}
+
     @app.get("/api/data", summary="Snapshot of current data store")
     async def get_data_snapshot(
         prefix: str = Query(default="", description="Optional key prefix filter"),
@@ -1223,6 +1255,7 @@ class HttpViewerOutput:
         api_basic_user: str | None = None,
         api_basic_password: str | None = None,
         api_rate_limit: int = 0,
+        fixtures_dir: Path | None = None,
     ) -> None:
         """Initialize HTTP viewer output."""
         self._host = host
@@ -1254,6 +1287,7 @@ class HttpViewerOutput:
             api_basic_user=api_basic_user,
             api_basic_password=api_basic_password,
             rate_limiter=_limiter,
+            fixtures_dir=fixtures_dir,
         )
         self._task: asyncio.Task[None] | None = None
 

@@ -1,0 +1,33 @@
+[
+  {
+    "at_ms": 0,
+    "update": {
+      "nzbget.version": "21.3",
+      "nzbget.status.download_queue_enabled": 1.0,
+      "nzbget.status.download_paused": 0.0,
+      "nzbget.status.postprocess_paused": 0.0,
+      "nzbget.status.scan_paused": 0.0,
+      "nzbget.queue.total": 12.0,
+      "nzbget.queue.active_count": 3.0,
+      "nzbget.queue.current_count": 12.0,
+      "nzbget.queue.active_download_percent": 58.3,
+      "nzbget.queue.remaining_mb": 18432.0,
+      "nzbget.queue.remaining_size": "18.0 GB",
+      "nzbget.rate.mbps": 92.4,
+      "nzbget.eta_seconds": 1587.0,
+      "nzbget.eta_hms": "00:26:27",
+      "nzbget.postprocess.active_count": 1.0,
+      "nzbget.history.success_count": 247.0,
+      "nzbget.history.failed_count": 3.0,
+      "nzbget.current_1.name": "The.Bear.S03E05.1080p.WEB-DL",
+      "nzbget.current_1.progress_percent": 74.2,
+      "nzbget.current_1.category": "tv",
+      "nzbget.current_2.name": "Dune.Part.Two.2024.2160p.UHD.BluRay",
+      "nzbget.current_2.progress_percent": 38.9,
+      "nzbget.current_2.category": "movies",
+      "nzbget.current_3.name": "The.Boys.S04E08.1080p.WEB-DL",
+      "nzbget.current_3.progress_percent": 12.1,
+      "nzbget.current_3.category": "tv"
+    }
+  }
+]

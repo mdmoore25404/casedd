@@ -45,10 +45,12 @@ def test_write_manifest_excludes_private_patterns_unless_demo(tmp_path: Path) ->
     capture_template_snaps._write_manifest(tmp_path)
 
     payload = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
-    assert [entry["name"] for entry in payload["templates"]] == [
-        "servarr_dashboard_demo",
-        "system_stats",
-    ]
+    # _demo suffix is stripped from display name; image path retains full filename.
+    entries = {e["name"]: e["image"] for e in payload["templates"]}
+    assert list(entries.keys()) == ["servarr_dashboard", "system_stats"]
+    assert entries["servarr_dashboard"] == (
+        "images/template_snaps/servarr_dashboard_demo.png"
+    )
 
 
 def test_write_manifest_respects_custom_snapshot_gitignore_rules(tmp_path: Path) -> None:
@@ -65,10 +67,10 @@ def test_write_manifest_respects_custom_snapshot_gitignore_rules(tmp_path: Path)
     capture_template_snaps._write_manifest(tmp_path)
 
     payload = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
-    assert [entry["name"] for entry in payload["templates"]] == [
-        "apod_demo",
-        "system_stats",
-    ]
+    # _demo suffix is stripped from display name; image path retains full filename.
+    entries = {e["name"]: e["image"] for e in payload["templates"]}
+    assert list(entries.keys()) == ["apod", "system_stats"]
+    assert entries["apod"] == "images/template_snaps/apod_demo.png"
 
 
 def test_prompt_confirmation_supports_skip_and_approve_all(

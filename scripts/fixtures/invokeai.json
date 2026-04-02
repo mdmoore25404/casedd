@@ -1,0 +1,29 @@
+[
+  {
+    "at_ms": 0,
+    "update": {
+      "invokeai.version": "4.1.1",
+      "invokeai.queue.pending_count": 3.0,
+      "invokeai.queue.in_progress_count": 1.0,
+      "invokeai.queue.failed_count": 2.0,
+      "invokeai.queue.completed_count": 47.0,
+      "invokeai.last_job.id": "a3f7b2c1-4d9e-11ef-demo",
+      "invokeai.last_job.status": "completed",
+      "invokeai.last_job.model": "sdxl-turbo",
+      "invokeai.last_job.dimensions": "1024 \u00d7 768",
+      "invokeai.last_job.width": 1024.0,
+      "invokeai.last_job.height": 768.0,
+      "invokeai.last_job.completed_at": "2024-03-15T14:23:07Z",
+      "invokeai.system.vram_used_mb": 9216.0,
+      "invokeai.system.vram_total_mb": 16384.0,
+      "invokeai.system.vram_percent": 56.25,
+      "invokeai.models.cache_used_mb": 6144.0,
+      "invokeai.models.cache_capacity_mb": 8192.0,
+      "invokeai.models.cache_percent": 75.0,
+      "invokeai.models.loaded_count": 3.0,
+      "invokeai.latest_image.name": "",
+      "invokeai.latest_image.thumbnail_url": "",
+      "invokeai.latest_image.full_url": ""
+    }
+  }
+]
