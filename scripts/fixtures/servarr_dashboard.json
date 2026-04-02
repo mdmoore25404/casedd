@@ -1,31 +1,27 @@
-{
-  "records": [
-    {
-      "at_ms": 0,
-      "update": {
-        "radarr.active": 1.0,
-        "radarr.queue.total": 4.0,
-        "radarr.queue.downloading": 2.0,
-        "radarr.queue.importing": 1.0,
-        "radarr.queue.rows": "Iron Horizon|downloading / 8.2GB\nVoid Runner|downloading / 12.7GB\nProject Midnight|importing / 4.1GB\nCold Meridian|queued",
-        "radarr.health.warning_count": 0.0,
-        "radarr.health.error_count": 0.0,
-        "radarr.calendar.upcoming_count": 3.0,
-        "radarr.disk.free_gb": 412.8,
-        "radarr.summary": "q:4 d:2 i:1 w:0 e:0 free:412.8GB",
-        "sonarr.active": 1.0,
-        "sonarr.queue.total": 6.0,
-        "sonarr.queue.downloading": 4.0,
-        "sonarr.queue.importing": 0.0,
-        "sonarr.queue.rows": "Dark Waters S02E04|downloading / 3.4GB\nSignal Peak S01E08|downloading / 2.8GB\nThe Hollowing S03E12|downloading / 4.1GB\nParallel Lines S01E01|downloading / 3.9GB\nCascade S02E04|queued\nNeon Depths S01E03|queued",
-        "sonarr.health.warning_count": 1.0,
-        "sonarr.health.error_count": 0.0,
-        "sonarr.calendar.upcoming_count": 7.0,
-        "sonarr.disk.free_gb": 1024.3,
-        "sonarr.summary": "q:6 d:4 i:0 w:1 e:0 free:1024.3GB"
-      }
+[
+  {
+    "at_ms": 0,
+    "update": {
+      "radarr.active": 1.0,
+      "radarr.queue.total": 4.0,
+      "radarr.queue.downloading": 2.0,
+      "radarr.queue.importing": 1.0,
+      "radarr.queue.rows": "Iron Horizon|downloading / 8.2GB\nVoid Runner|downloading / 12.7GB\nProject Midnight|importing / 4.1GB\nCold Meridian|queued",
+      "radarr.health.warning_count": 0.0,
+      "radarr.health.error_count": 0.0,
+      "radarr.calendar.upcoming_count": 3.0,
+      "radarr.disk.free_gb": 412.8,
+      "radarr.summary": "q:4 d:2 i:1 w:0 e:0 free:412.8GB",
+      "sonarr.active": 1.0,
+      "sonarr.queue.total": 6.0,
+      "sonarr.queue.downloading": 4.0,
+      "sonarr.queue.importing": 0.0,
+      "sonarr.queue.rows": "Dark Waters S02E04|downloading / 3.4GB\nSignal Peak S01E08|downloading / 2.8GB\nThe Hollowing S03E12|downloading / 4.1GB\nParallel Lines S01E01|downloading / 3.9GB\nCascade S02E04|queued\nNeon Depths S01E03|queued",
+      "sonarr.health.warning_count": 1.0,
+      "sonarr.health.error_count": 0.0,
+      "sonarr.calendar.upcoming_count": 7.0,
+      "sonarr.disk.free_gb": 1024.3,
+      "sonarr.summary": "q:6 d:4 i:0 w:1 e:0 free:1024.3GB"
     }
-  ],
-  "loop": false,
-  "speed": 1.0
-}
+  }
+]

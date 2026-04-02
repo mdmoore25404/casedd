@@ -296,7 +296,8 @@ def _push_fixture_data(base_url: str, fixture_path: Path) -> None:
         fixture_path: Path to the fixture JSON file.
     """
     raw = json.loads(fixture_path.read_text(encoding="utf-8"))
-    records = raw.get("records", [])
+    # Fixtures may be a bare array (web-UI-compatible) or a wrapped object.
+    records: list[object] = raw if isinstance(raw, list) else raw.get("records", [])
     if not records:
         return
     for record in records:

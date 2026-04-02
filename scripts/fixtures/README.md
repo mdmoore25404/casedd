@@ -24,26 +24,25 @@ two ways:
 
 ## Replay format
 
-Each file conforms to the CASEDD replay API schema:
+Each file is a **bare JSON array** of replay records — the exact format the web
+UI replay textarea accepts. Paste the whole file and click **Start Replay**.
 
 ```json
-{
-  "records": [
-    {
-      "at_ms": 0,
-      "update": {
-        "some.key": 42.0
-      }
+[
+  {
+    "at_ms": 0,
+    "update": {
+      "some.key": 42.0
     }
-  ],
-  "loop": false,
-  "speed": 1.0
-}
+  }
+]
 ```
 
 The `update` object uses the same dotted key namespace as the getter that would
-normally populate the store.  Values are `float`, `int`, or `str` — the same
-types the store accepts.
+normally populate the store.  Values are `float`, `int`, or `str`.
+
+The capture script's `_push_fixture_data()` also accepts the wrapped API object
+shape (`{ "records": [...] }`) for forward-compatibility.
 
 ## Usage: web UI test mode
 
