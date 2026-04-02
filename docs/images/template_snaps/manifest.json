@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-02 06:35 UTC",
+  "generated_at": "2026-04-02 20:24 UTC",
   "templates": [
     {
       "name": "apod",
@@ -16,10 +16,6 @@
     {
       "name": "kvm_vms",
       "image": "images/template_snaps/kvm_vms.png"
-    },
-    {
-      "name": "nvidia_detail",
-      "image": "images/template_snaps/nvidia_detail.jpg"
     },
     {
       "name": "ollama_host",
