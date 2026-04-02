@@ -1026,10 +1026,11 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         """Return the ``records`` array from a fixture JSON file by name."""
         if not fixtures_dir or not fixtures_dir.is_dir():
             raise HTTPException(status_code=404, detail="Fixtures directory not configured")
-        safe_name = Path(name).name  # strip any path traversal
-        fixture_path = fixtures_dir / f"{safe_name}.json"
-        if not fixture_path.is_file():
-            raise HTTPException(status_code=404, detail=f"Fixture '{safe_name}' not found")
+        # Restrict access to a known set of fixture files under fixtures_dir.
+        fixtures = {p.stem: p for p in fixtures_dir.glob("*.json")}
+        if name not in fixtures:
+            raise HTTPException(status_code=404, detail=f"Fixture '{name}' not found")
+        fixture_path = fixtures[name]
         try:
             payload = json.loads(fixture_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError) as exc:
