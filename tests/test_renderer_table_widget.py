@@ -150,3 +150,20 @@ def test_table_widget_max_font_size_caps_auto_selection() -> None:
 
     # Capped version should render noticeably smaller.
     assert capped_h < uncapped_h
+
+
+def test_table_widget_renders_container_multicolumn_mode() -> None:
+    """Containers table mode should render 5-column rows with icon columns."""
+    img = Image.new("RGB", (900, 320), (0, 0, 0))
+    store = DataStore()
+    store.set(
+        "containers.rows",
+        "invokeai|exited|unknown|-|ghcr.io/invoke-ai/invokeai:latest\n"
+        "ollama|started|healthy|3 hours|ollama/ollama",
+    )
+
+    widget = TableWidget()
+    cfg = WidgetConfig(type=WidgetType.TABLE, source="containers.rows", font_size="auto")
+    widget.draw(img, Rect(x=0, y=0, w=900, h=320), cfg, store, {})
+
+    assert img.getbbox() is not None

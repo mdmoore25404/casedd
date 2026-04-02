@@ -39,8 +39,11 @@ def test_docker_getter_builds_summary_payload() -> None:
     assert payload["containers.count_paused"] == 1.0
     assert payload["containers.logo_path"] == "assets/docker/docker-official-logo.png"
     assert payload["containers.1.name"] == "web"
+    assert payload["containers.1.status_icon"] == "started"
+    assert payload["containers.1.health_icon"] == "healthy"
     assert payload["containers.2.status"] == "Exited"
-    assert "Health healthy" in str(payload["containers.rows"])
+    first_row = str(payload["containers.rows"]).splitlines()[0]
+    assert first_row.startswith("web|started|healthy|")
 
 
 def test_getter_falls_back_to_unavailable() -> None:

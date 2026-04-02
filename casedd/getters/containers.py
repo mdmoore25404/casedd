@@ -10,7 +10,8 @@ Store keys written:
     - ``containers.count_running`` (float)
     - ``containers.count_exited`` (float)
     - ``containers.count_paused`` (float)
-    - ``containers.rows`` (str) -- newline-delimited ``name|summary`` rows
+        - ``containers.rows`` (str) -- newline-delimited
+            ``name|status_icon|health_icon|uptime|image`` rows
     - ``containers.<index>.*`` (top N per-container fields)
 """
 
@@ -52,8 +53,10 @@ class _ContainerRow:
     name: str
     image: str
     status: str
+    status_icon: str
     uptime: str
     health: str
+    health_icon: str
 
 
 class ContainersGetter(BaseGetter):
@@ -173,15 +176,19 @@ class ContainersGetter(BaseGetter):
             else:
                 exited += 1
 
-            summary = f"{row.status} | UP {row.uptime} | Health {row.health} | {row.image}"
-            rendered.append(f"{row.name}|{summary}")
+            uptime = row.uptime if row.status.lower() == "running" else "-"
+            rendered.append(
+                f"{row.name}|{row.status_icon}|{row.health_icon}|{uptime}|{row.image}"
+            )
 
             if idx <= self._max_items:
                 base = f"containers.{idx}"
                 payload[f"{base}.name"] = row.name
                 payload[f"{base}.status"] = row.status
+                payload[f"{base}.status_icon"] = row.status_icon
                 payload[f"{base}.uptime"] = row.uptime
                 payload[f"{base}.health"] = row.health
+                payload[f"{base}.health_icon"] = row.health_icon
                 payload[f"{base}.image"] = row.image
 
         payload["containers.count_running"] = float(running)
@@ -227,8 +234,10 @@ def _parse_docker_like_rows(text: str) -> list[_ContainerRow]:
                 name=name or "unknown",
                 image=image or "unknown",
                 status=_status_from_runtime_text(status_text),
+                status_icon=_status_icon_key(status_text),
                 uptime=_uptime_from_runtime_text(status_text),
                 health=_health_from_runtime_text(status_text),
+                health_icon=_health_icon_key(status_text),
             )
         )
     return rows
@@ -270,8 +279,10 @@ def _parse_containerd_rows(
                 name=name,
                 image=image,
                 status=status,
+                status_icon="started" if status == "Running" else "exited",
                 uptime="unknown",
                 health="unknown",
+                health_icon="unknown",
             )
         )
     return rows
@@ -313,6 +324,30 @@ def _health_from_runtime_text(status: str) -> str:
         return "unhealthy"
     if "starting" in lower:
         return "starting"
+    return "unknown"
+
+
+def _status_icon_key(status: str) -> str:
+    """Return icon key used by table widget for status column."""
+    normalized = _status_from_runtime_text(status).lower()
+    if normalized == "running":
+        return "started"
+    if normalized == "paused":
+        return "paused"
+    if normalized == "created":
+        return "created"
+    if normalized == "exited":
+        return "exited"
+    return "unknown"
+
+
+def _health_icon_key(status: str) -> str:
+    """Return icon key used by table widget for health column."""
+    normalized = _health_from_runtime_text(status)
+    if normalized == "healthy":
+        return "healthy"
+    if normalized == "unhealthy":
+        return "unhealthy"
     return "unknown"
 
 
