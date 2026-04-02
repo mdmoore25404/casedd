@@ -1,0 +1,11 @@
+{
+  "targets": [
+    {
+      "source": "real-world.jpg",
+      "thumb_max_width": 560,
+      "thumb_max_height": 560,
+      "jpeg_quality": 72,
+      "webp_quality": 76
+    }
+  ]
+}

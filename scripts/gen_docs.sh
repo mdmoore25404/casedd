@@ -10,6 +10,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOCS_DIR="$REPO_ROOT/docs"
 OUTPUT="$DOCS_DIR/api.json"
+GETTER_TYPES_OUTPUT="$DOCS_DIR/getter_types.json"
 ENV_FILE="$REPO_ROOT/.env"
 VENV="$REPO_ROOT/.venv"
 
@@ -66,6 +67,41 @@ echo "==> Fetching OpenAPI schema from $BASE_URL/openapi.json"
 mkdir -p "$DOCS_DIR"
 curl -sf "$BASE_URL/openapi.json" | python3 -m json.tool --indent 2 > "$OUTPUT"
 echo "==> Saved to $OUTPUT"
+
+echo "==> Generating getter type list from daemon source mapping"
+python3 - <<PY
+from __future__ import annotations
+
+from datetime import UTC, datetime
+import json
+from pathlib import Path
+import re
+
+repo_root = Path("$REPO_ROOT")
+daemon_src = (repo_root / "casedd" / "daemon.py").read_text(encoding="utf-8")
+prefixes = sorted(set(re.findall(r'\("([a-z0-9_]+)\.",\s*"[A-Za-z0-9_]+"\)', daemon_src)))
+
+# Expand aggregate namespaces into common app names users search for.
+expanded: list[str] = []
+for prefix in prefixes:
+    if prefix == "servarr":
+        expanded.extend(["radarr", "sonarr", "servarr"])
+    else:
+        expanded.append(prefix)
+
+payload = {
+    "generated_at": datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M UTC"),
+    "getter_types": sorted(set(expanded)),
+}
+(repo_root / "docs" / "getter_types.json").write_text(
+    json.dumps(payload, indent=2) + "\n",
+    encoding="utf-8",
+)
+PY
+echo "==> Saved to $GETTER_TYPES_OUTPUT"
+
+echo "==> Optimizing docs images (incremental: changed sources only)"
+python3 "$REPO_ROOT/scripts/optimize_docs_images.py"
 
 if [[ "$STARTED_HERE" == "true" ]]; then
     echo "==> Stopping temporarily started casedd..."
