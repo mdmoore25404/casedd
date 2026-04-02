@@ -155,10 +155,10 @@ widgets:
 
   disk_read:
     type: sparkline
-    label: "Disk R (Mb/s)"
-    source: disk.read_mbps
+    label: "Disk R (MB/s)"
+    source: disk.read_mb_s
     padding: [2, 6]
-    unit: Mb/s
+    unit: MB/s
     precision: 2
     min: 0
     max: 200
@@ -171,10 +171,10 @@ widgets:
 
   disk_write:
     type: sparkline
-    label: "Disk W (Mb/s)"
-    source: disk.write_mbps
+    label: "Disk W (MB/s)"
+    source: disk.write_mb_s
     padding: [2, 6]
-    unit: Mb/s
+    unit: MB/s
     precision: 2
     min: 0
     max: 200

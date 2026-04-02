@@ -101,3 +101,8 @@ class BaseGetter(ABC):
     def stop(self) -> None:
         """Signal the polling loop to exit after its current sleep."""
         self._running = False
+
+    @property
+    def interval_seconds(self) -> float:
+        """Return the configured poll interval in seconds."""
+        return self._interval

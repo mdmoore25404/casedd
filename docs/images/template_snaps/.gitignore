@@ -1,0 +1,13 @@
+# Private snapshot patterns are managed manually with demo-safe data.
+*plex*.png
+*invoke*.png
+*nzbget*.png
+*pihole*.png
+*servarr*.png
+
+# Allow sanitized demo snapshots to be committed.
+!*_demo*.png
+
+# Keep gallery metadata and ignore rules tracked.
+!manifest.json
+!.gitignore

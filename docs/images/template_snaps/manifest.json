@@ -1,0 +1,49 @@
+{
+  "generated_at": "2026-04-02 05:23 UTC",
+  "templates": [
+    {
+      "name": "apod",
+      "image": "images/template_snaps/apod.png"
+    },
+    {
+      "name": "close_splash",
+      "image": "images/template_snaps/close_splash.png"
+    },
+    {
+      "name": "docker_dashboard",
+      "image": "images/template_snaps/docker_dashboard.png"
+    },
+    {
+      "name": "kvm_vms",
+      "image": "images/template_snaps/kvm_vms.png"
+    },
+    {
+      "name": "nvidia_detail",
+      "image": "images/template_snaps/nvidia_detail.png"
+    },
+    {
+      "name": "ollama_host",
+      "image": "images/template_snaps/ollama_host.png"
+    },
+    {
+      "name": "os_updates",
+      "image": "images/template_snaps/os_updates.png"
+    },
+    {
+      "name": "speedtest",
+      "image": "images/template_snaps/speedtest.png"
+    },
+    {
+      "name": "startup_splash",
+      "image": "images/template_snaps/startup_splash.png"
+    },
+    {
+      "name": "system_stats",
+      "image": "images/template_snaps/system_stats.png"
+    },
+    {
+      "name": "weather_nws",
+      "image": "images/template_snaps/weather_nws.png"
+    }
+  ]
+}

@@ -55,6 +55,20 @@ def test_load_template_widget_count(tmp_path: Path) -> None:
     assert "widget_a" in tmpl.widgets
 
 
+def test_load_template_refresh_rate_hz(tmp_path: Path) -> None:
+    """Templates should parse the new refresh_rate_hz metadata field."""
+    path = _write(tmp_path, _MINIMAL_VALID + "refresh_rate_hz: 5.0\n")
+    tmpl = load_template(path)
+    assert tmpl.refresh_rate_hz == 5.0
+
+
+def test_load_template_legacy_refresh_rate_alias(tmp_path: Path) -> None:
+    """Templates should continue accepting the legacy refresh_rate field."""
+    path = _write(tmp_path, _MINIMAL_VALID + "refresh_rate: 4.0\n")
+    tmpl = load_template(path)
+    assert tmpl.refresh_rate_hz == 4.0
+
+
 def test_load_from_real_template_file() -> None:
     """system_stats.casedd in the templates/ directory loads without error."""
     real = Path("templates/system_stats.casedd")

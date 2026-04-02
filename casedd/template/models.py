@@ -21,7 +21,7 @@ from enum import StrEnum
 import re
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from casedd.config import RotationSkipCondition
 
@@ -386,7 +386,7 @@ class Template(BaseModel):
         layout_mode: Whether the layout stretches to the full output or fits
             inside it while preserving aspect ratio.
         background: Canvas background color.
-        refresh_rate: Override render rate in Hz (``None`` uses daemon default).
+        refresh_rate_hz: Override render rate in Hz (``None`` uses daemon default).
         grid: Top-level CSS grid layout.
         widgets: Named widget definitions corresponding to grid area names.
     """
@@ -400,7 +400,11 @@ class Template(BaseModel):
     aspect_ratio: str | None = None
     layout_mode: TemplateLayoutMode = TemplateLayoutMode.STRETCH
     background: str = "#000000"
-    refresh_rate: float | None = Field(default=None, gt=0)
+    refresh_rate_hz: float | None = Field(
+        default=None,
+        gt=0,
+        validation_alias=AliasChoices("refresh_rate_hz", "refresh_rate"),
+    )
     grid: GridConfig
     widgets: dict[str, WidgetConfig]
     # Template-level skip conditions.  Used as fallback when a rotation entry
@@ -434,6 +438,11 @@ class Template(BaseModel):
         if ratio <= 0:
             raise ValueError("aspect_ratio must be > 0")
         return cleaned
+
+    @property
+    def refresh_rate(self) -> float | None:
+        """Return the template refresh override under the legacy field name."""
+        return self.refresh_rate_hz
 
     @model_validator(mode="after")
     def _check_widget_names(self) -> Template:

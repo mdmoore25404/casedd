@@ -4,7 +4,7 @@ A lightweight, high-performance Python daemon that drives a small USB framebuffe
 mounted inside a PC case, while simultaneously serving the same content over WebSocket and
 HTTP for remote viewing.
 
-**Target hardware:** Waveshare 5-inch USB Monitor, 800×480, Type-C  
+**Target hardware:** Any Linux framebuffer-compatible display device  
 **OS:** Ubuntu 24.04 (headless)  
 **Stack:** Python 3.12, FastAPI, uvicorn, Pillow, Pydantic v2, psutil, PyYAML
 
@@ -23,7 +23,7 @@ Interested in commercial use or white-label rights? Feel free to reach out.
 
 ## Features
 
-- **Dual output** — push rendered images to `/dev/fb1` (framebuffer) AND a browser via WebSocket simultaneously
+- **Dual output** — push rendered images to a Linux framebuffer device (for example `/dev/fb0`, `/dev/fb1`) AND a browser via WebSocket simultaneously
 - **Custom layout engine** — declare layouts in `.casedd` YAML files using CSS Grid Template Areas syntax; widget tree supports unlimited nesting via `type: panel`
 - **Extended widget set** — includes system widgets plus `plex_now_playing` and `plex_recently_added` table widgets for media dashboards
 - **Live data getters** — CPU, fan telemetry (CPU/system/GPU), NVIDIA GPU (including multi-GPU keys), RAM, disk, network, system uptime/host, speedtest, Ollama API runtime state, UPS telemetry, Plex server/session/library telemetry

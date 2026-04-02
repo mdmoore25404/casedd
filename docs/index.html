@@ -9,9 +9,18 @@
   <meta property="og:description" content="Drive your case display with live CPU, GPU, RAM, and temperature data. Serve the same content live to any browser via WebSocket.">
   <meta property="og:url" content="https://casedd.dev/">
   <meta property="og:type" content="website">
+  <link rel="icon" type="image/x-icon" href="/favicon.ico">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48x48.png">
+  <link rel="icon" type="image/png" sizes="64x64" href="/favicon-64x64.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+  <meta name="theme-color" content="#090c10">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer">
   <style>
     :root {
       --bg:          #090c10;
@@ -277,6 +286,29 @@
       color: var(--faint);
       font-family: var(--mono);
     }
+    .disp-screen img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .disp-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    .disp-status {
+      font-family: var(--mono);
+      font-size: .72rem;
+      color: var(--text);
+      border: 1px solid var(--border-hi);
+      background: var(--surface2);
+      border-radius: 999px;
+      padding: 4px 10px;
+      white-space: nowrap;
+    }
 
     /* ── STATS STRIP ──────────────────────────────────── */
     .stats-strip {
@@ -306,6 +338,63 @@
     .stat-l {
       font-size: .78rem;
       color: var(--muted);
+    }
+
+    /* ── REAL-WORLD INSTALL ─────────────────────────── */
+    .real-world-section {
+      padding: 28px 32px 20px;
+      background: linear-gradient(180deg, rgba(12, 18, 28, .58), rgba(9, 12, 16, 0));
+    }
+    .real-world-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 400px) 1fr;
+      gap: 22px;
+      align-items: center;
+    }
+    .real-world-media {
+      display: block;
+      border: 1px solid var(--border-hi);
+      border-radius: var(--r);
+      overflow: hidden;
+      box-shadow: 0 16px 42px rgba(0, 0, 0, .28);
+      background: #06080d;
+    }
+    .real-world-media img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .real-world-kicker {
+      font-family: var(--mono);
+      color: var(--green);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      font-size: .72rem;
+      margin-bottom: 8px;
+    }
+    .real-world-title {
+      font-size: clamp(1.15rem, 2vw, 1.45rem);
+      line-height: 1.25;
+      margin-bottom: 8px;
+      letter-spacing: -.01em;
+    }
+    .real-world-copy {
+      color: var(--muted);
+      font-size: .92rem;
+      line-height: 1.7;
+      max-width: 66ch;
+    }
+    .real-world-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      margin-top: 10px;
+      font-size: .86rem;
+      color: var(--text);
+    }
+    .real-world-link i {
+      color: var(--green);
+      font-size: .78rem;
     }
 
     /* ── SECTION SCAFFOLDING ──────────────────────────── */
@@ -373,12 +462,45 @@
     .tag {
       font-family: var(--mono);
       font-size: .65rem;
-      background: var(--surface2);
-      color: var(--faint);
+      background: #182131;
+      color: #c8d2df;
+      border: 1px solid #2a3648;
       border-radius: 4px;
       padding: 2px 6px;
     }
-    .tag.a { background: var(--green-dim); color: var(--green); }
+    .tag.a {
+      background: #193628;
+      color: #8ce5a1;
+      border: 1px solid #2f6b45;
+    }
+    .mascot-states {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .mascot-state {
+      background: #0b111d;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      overflow: hidden;
+      text-align: center;
+      padding: 6px 4px 5px;
+    }
+    .mascot-state img {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      object-fit: contain;
+      display: block;
+      margin-bottom: 4px;
+    }
+    .mascot-state span {
+      display: block;
+      font-family: var(--mono);
+      font-size: .6rem;
+      color: var(--muted);
+      white-space: nowrap;
+    }
 
     /* ── QUICK START ──────────────────────────────────── */
     .qs-section {
@@ -448,6 +570,178 @@
 
     /* ── DOCS CARDS ───────────────────────────────────── */
     .docs-section { background: var(--bg); }
+    .gallery-section { background: var(--surface); border-top: 1px solid var(--border); }
+    .gallery-note {
+      font-size: .9rem;
+      color: var(--muted);
+      max-width: 780px;
+      margin-bottom: 28px;
+      line-height: 1.7;
+    }
+    .template-gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+    .template-card {
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(22,27,34,.96), rgba(13,17,23,.98));
+      border-radius: var(--r);
+      overflow: hidden;
+      box-shadow: 0 18px 40px rgba(0,0,0,.18);
+    }
+    .template-card button {
+      display: block;
+      width: 100%;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      text-align: left;
+      padding: 0;
+    }
+    .template-card img {
+      display: block;
+      width: 100%;
+      aspect-ratio: 5 / 3;
+      object-fit: cover;
+      background: #05070b;
+      border-bottom: 1px solid var(--border);
+    }
+    .template-card-copy {
+      padding: 12px 14px 14px;
+    }
+    .template-card-title {
+      font-family: var(--mono);
+      font-size: .84rem;
+      color: var(--text);
+      margin-bottom: 4px;
+    }
+    .template-card-sub {
+      color: var(--muted);
+      font-size: .78rem;
+    }
+    .template-modal[hidden] { display: none; }
+    .template-modal {
+      position: fixed;
+      inset: 0;
+      z-index: 1200;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .template-modal-backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(2, 6, 12, .82);
+      backdrop-filter: blur(4px);
+      border: 0;
+      cursor: pointer;
+    }
+    .template-modal-dialog {
+      position: relative;
+      width: min(1120px, 94vw);
+      max-height: 90vh;
+      border-radius: var(--r);
+      border: 1px solid var(--border-hi);
+      background: linear-gradient(180deg, rgba(14, 20, 31, .98), rgba(9, 13, 21, .98));
+      box-shadow: 0 24px 64px rgba(0, 0, 0, .45);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .template-modal-close {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--border-hi);
+      background: rgba(0, 0, 0, .45);
+      color: #e7eefc;
+      font-size: 1.2rem;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 1;
+    }
+    .template-modal-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      border: 1px solid var(--border-hi);
+      background: rgba(0, 0, 0, .45);
+      color: #e7eefc;
+      font-size: 1.05rem;
+      line-height: 1;
+      cursor: pointer;
+      z-index: 1;
+    }
+    .template-modal-nav.prev { left: 10px; }
+    .template-modal-nav.next { right: 10px; }
+    .template-modal-nav:disabled {
+      opacity: .45;
+      cursor: default;
+    }
+    .template-modal img {
+      width: 100%;
+      max-height: 76vh;
+      object-fit: contain;
+      display: block;
+      background: #03060c;
+    }
+    .template-modal-meta {
+      padding: 12px 14px 14px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+      align-items: center;
+    }
+    .template-modal-title {
+      font-family: var(--mono);
+      font-size: .9rem;
+      color: var(--text);
+    }
+    .template-modal-sub {
+      font-size: .8rem;
+      color: var(--muted);
+    }
+    .template-modal-links {
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 10px;
+      margin-top: 2px;
+    }
+    .template-modal-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: .76rem;
+      color: #c8dbff;
+      text-decoration: none;
+      padding: 4px 8px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: rgba(16, 22, 35, .75);
+    }
+    .template-modal-link:hover {
+      text-decoration: none;
+      border-color: var(--green-dim);
+      color: #eaf2ff;
+    }
+    .template-modal-link i {
+      font-size: .72rem;
+      opacity: .8;
+    }
+    .template-modal-link .fallback-ext {
+      font-size: .72rem;
+      opacity: .8;
+      display: inline-block;
+    }
     .docs-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -551,9 +845,14 @@
         gap: 40px;
         padding: 56px 24px 48px;
       }
+      .real-world-grid {
+        grid-template-columns: 1fr;
+        gap: 16px;
+      }
       .disp-wrap { order: -1; max-width: 480px; margin: 0 auto; width: 100%; }
       .feat-grid { grid-template-columns: 1fr 1fr; }
       .qs-grid { grid-template-columns: 1fr; }
+      .disp-meta { flex-direction: column; align-items: flex-start; }
       .docs-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 620px) {
@@ -624,8 +923,37 @@
 	     <!-- Mini display mockup -->
     <div class="disp-wrap">
       <div class="disp-bezel">
-	    <div class="disp-screen"> <img src="images/system_stats.png" width="100%" />
-      <p class="disp-caption">Live output from a running daemon</p>
+	    <div class="disp-screen"><img id="hero-template-image" src="images/system_stats.png" alt="system_stats template snapshot" /></div>
+      <div class="disp-meta">
+        <p class="disp-caption" id="hero-template-caption">Live output from a running daemon</p>
+        <span class="disp-status" id="hero-template-status">system_stats</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── REAL-WORLD ──────────────────────────────────────── -->
+<section class="real-world-section">
+  <div class="inner real-world-grid">
+    <a class="real-world-media" href="images/real-world.jpg" target="_blank" rel="noopener">
+      <picture>
+        <source srcset="images/real-world-thumb.webp" type="image/webp" />
+        <img
+          src="images/real-world-thumb.jpg"
+          alt="CASEDD in active use inside a real system build"
+          loading="lazy"
+          decoding="async"
+          width="486"
+          height="560"
+        />
+      </picture>
+    </a>
+    <div>
+      <h2 class="real-world-title">CASEDD running in a real host</h2>
+      <a class="real-world-link" href="images/real-world.jpg" target="_blank" rel="noopener">
+        Open full-resolution photo
+        <i class="fa-solid fa-up-right-from-square" aria-hidden="true"></i>
+      </a>
     </div>
   </div>
 </section>
@@ -639,7 +967,6 @@
    
     <div class="stat"><span class="stat-n">tested up to 4K</span><span class="stat-l">dynamic display</span></div>
     <div class="stat"><span class="stat-n">2 Hz</span><span class="stat-l">default refresh</span></div>
-    <div class="stat"><span class="stat-n">~2%</span><span class="stat-l">idle CPU overhead</span></div>
   </div>
 </div>
 
@@ -654,58 +981,64 @@
     </p>
     <div class="feat-grid">
       <div class="fcard">
-        <span class="ficon">🖥️</span>
-        <div class="ftitle">Framebuffer output</div>
-        <div class="fdesc">Writes directly to <code>/dev/fb1</code> via memory-mapped I/O. Zero desktop, zero X11, zero GPU overhead(non-HDMI).</div>
-        <div class="ftags"><span class="tag">mmap</span><span class="tag">/dev/fb1</span><span class="tag">Waveshare 5"</span></div>
+        <span class="ficon">🧩</span>
+        <div class="ftitle">Built-in getter ecosystem</div>
+        <div class="fdesc">From host telemetry to media and homelab apps: CPU, memory, disk, network, weather, UPS, Plex, Radarr, Sonarr, NZBGet, Pi-hole, containers, VMs, and more.</div>
+        <div class="ftags" id="getter-types-tags"><span class="tag">loading getters…</span></div>
+      </div>
+      <div class="fcard">
+        <span class="ficon">🔌</span>
+        <div class="ftitle">Custom data push API</div>
+        <div class="fdesc">Push any JSON payload through REST or Unix socket and drive templates dynamically with your own schema. If you can emit JSON, CASEDD can visualize it.</div>
+        <div class="ftags"><span class="tag">REST push</span><span class="tag">Unix socket</span><span class="tag">dynamic widgets</span></div>
+      </div>
+      <div class="fcard">
+        <span class="ficon"><i class="fa-solid fa-sliders" aria-hidden="true"></i></span>
+        <div class="ftitle">Advanced web UI</div>
+        <div class="fdesc">Use WYSIWYG layout tools, switch into test mode, replay captured data streams, or generate random data to validate templates before going live.</div>
+        <div class="ftags"><span class="tag">WYSIWYG</span><span class="tag">data replay</span><span class="tag">random test data</span></div>
       </div>
       <div class="fcard">
         <span class="ficon">🌐</span>
         <div class="ftitle">Live web view</div>
-        <div class="fdesc">Each rendered frame is pushed over WebSocket to any browser instantly. An HTTP endpoint serves single-frame PNG exports.</div>
-        <div class="ftags"><span class="tag">WebSocket</span><span class="tag">FastAPI</span><span class="tag">PNG export</span></div>
+        <div class="fdesc">Each rendered frame is pushed over WebSocket to any browser instantly. An HTTP endpoint serves single-frame image exports.</div>
+        <div class="ftags"><span class="tag">WebSocket</span><span class="tag">FastAPI</span><span class="tag">image export</span></div>
       </div>
       <div class="fcard">
-        <span class="ficon">🎨</span>
-        <div class="ftitle">CSS Grid templates</div>
-        <div class="fdesc">Declare layouts in <code>.casedd</code> YAML files using CSS Grid Template Areas. A drag-and-drop editor is built into the web UI.</div>
-        <div class="ftags"><span class="tag a">.casedd YAML</span><span class="tag">CSS Grid</span><span class="tag">nested panels</span></div>
+        <span class="ficon">🧭</span>
+        <div class="ftitle">Multi-panel orchestration</div>
+        <div class="fdesc">Drive multiple framebuffer targets with independent templates, schedules, rotations, and trigger behavior from a single daemon runtime.</div>
+        <div class="ftags"><span class="tag">multi panel</span><span class="tag">per-panel policy</span><span class="tag">single daemon</span></div>
       </div>
       <div class="fcard">
-        <span class="ficon">📊</span>
-        <div class="ftitle">Rich widget palette</div>
-        <div class="fdesc">value, text, bar, gauge, histogram, sparkline, clock, image, slideshow, htop, net_ports, sysinfo, ups, apod, and more.</div>
-        <div class="ftags"><span class="tag">gauge</span><span class="tag">sparkline</span><span class="tag">htop</span><span class="tag">apod</span></div>
+        <span class="ficon">🚨</span>
+        <div class="ftitle">Triggered incident views</div>
+        <div class="fdesc">Automatically pivot to high-priority templates when thresholds trip, with hold/cooldown semantics that prevent noisy flapping and preserve readability.</div>
+        <div class="ftags"><span class="tag">trigger rules</span><span class="tag">hold/cooldown</span><span class="tag">incident focus</span></div>
       </div>
       <div class="fcard">
-        <span class="ficon">🔄</span>
-        <div class="ftitle">Template rotation, scheduling, and alerting</div>
-        <div class="fdesc">Cycle templates on a timer, switch by time of day, or trigger swaps from live data thresholds. Configurable per-panel. Alerts via webhook (Pushover, Discord, Slack. etc.)</div>
-        <div class="ftags"><span class="tag">rotation</span><span class="tag">schedule</span><span class="tag">triggers</span></div>
+        <span class="ficon">🛡️</span>
+        <div class="ftitle">Production-safe deployment</div>
+        <div class="fdesc">Run 24/7 under systemd or Docker with clean startup/shutdown framing, health endpoints, and restart-friendly service behavior for unattended hosts.</div>
+        <div class="ftags"><span class="tag">systemd</span><span class="tag">docker</span><span class="tag">health + restart</span></div>
       </div>
       <div class="fcard">
-        <span class="ficon">🔌</span>
-        <div class="ftitle">Push-based ingestion</div>
-        <div class="fdesc">Any external process can inject values via Unix domain socket or REST API. Perfect for custom sensors and external monitors.</div>
-        <div class="ftags"><span class="tag">Unix socket</span><span class="tag">REST POST</span><span class="tag">JSON</span></div>
+        <span class="ficon">🖥️</span>
+        <div class="ftitle">Auto framebuffer fit + rotation</div>
+        <div class="fdesc">Detects framebuffer geometry and supports rotation so templates remain readable across many panel sizes without hand-tuning every layout.</div>
+        <div class="ftags"><span class="tag">auto resolution</span><span class="tag">rotation</span><span class="tag">fb-compatible</span></div>
       </div>
       <div class="fcard">
-        <span class="ficon">🧠</span>
-        <div class="ftitle">Ollama integration</div>
-        <div class="fdesc">Reads active model name, VRAM usage, GPU utilization, and runtime from a local Ollama API. Built for AI rigs.</div>
-        <div class="ftags"><span class="tag">Ollama</span><span class="tag">VRAM</span><span class="tag">GPU</span></div>
-      </div>
-      <div class="fcard">
-        <span class="ficon">🔬</span>
-        <div class="ftitle">Test mode &amp; simulation</div>
-        <div class="fdesc">Disable live getters and drive the display with synthetic data — random values, replay sequences, or manual JSON pushes. Also inclides `loadtest/' with scripts to actually push CPU/RAM (actual stress test) & GPU/VRAM values. </div>
-        <div class="ftags"><span class="tag">test mode</span><span class="tag">replay</span><span class="tag">simulation</span></div>
-      </div>
-      <div class="fcard">
-        <span class="ficon">⚡</span>
-        <div class="ftitle">Lightweight by design</div>
-        <div class="fdesc">Pure Python async. Getters only run when their namespace is referenced by the active template — no wasted polling.</div>
-        <div class="ftags"><span class="tag">asyncio</span><span class="tag">psutil</span><span class="tag">template-aware</span></div>
+        <span class="ficon">🦝</span>
+        <div class="ftitle">Dynamic image state selection</div>
+        <div class="fdesc">Image widgets can swap assets by live metric thresholds anywhere in your layout. The mascot is fully customizable, and the same state-selection pattern works for any image-driven panel.</div>
+        <div class="mascot-states" aria-label="Mascot state progression">
+          <div class="mascot-state"><img src="images/mascot_states/normal.png" alt="Mascot normal state" /><span>normal</span></div>
+          <div class="mascot-state"><img src="images/mascot_states/stressed.png" alt="Mascot stressed state" /><span>stressed</span></div>
+          <div class="mascot-state"><img src="images/mascot_states/angry.png" alt="Mascot angry state" /><span>angry</span></div>
+          <div class="mascot-state"><img src="images/mascot_states/fire.png" alt="Mascot fire state" /><span>fire</span></div>
+        </div>
+        <div class="ftags"><span class="tag">image tiers</span><span class="tag">threshold driven</span><span class="tag">mascot states</span></div>
       </div>
     </div>
   </div>
@@ -781,6 +1114,33 @@
           <a href="https://github.com/mdmoore25404/casedd/blob/main/.env.example"
              class="btn btn-s" style="font-size:.84rem;padding:8px 16px"
              target="_blank" rel="noopener">.env.example</a>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="gallery-section" id="template-gallery">
+  <div class="inner">
+    <p class="sh">Stats Pages</p>
+    <h2>Template Examples</h2>
+    <p class="gallery-note">
+      These examples are generated from live runtime frames. Templates can rotate on schedule,
+      be triggered by conditions, be skipped when data is irrelevant, and emit alerts through
+      notification/webhook flows.
+    </p>
+    <div class="template-gallery-grid" id="template-gallery-grid"></div>
+    <div class="template-modal" id="template-modal" hidden>
+      <button class="template-modal-backdrop" id="template-modal-backdrop" type="button" aria-label="Close snapshot preview"></button>
+      <div class="template-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="template-modal-title">
+        <button class="template-modal-close" id="template-modal-close" type="button" aria-label="Close snapshot preview">×</button>
+        <button class="template-modal-nav prev" id="template-modal-prev" type="button" aria-label="Show previous snapshot">❮</button>
+        <button class="template-modal-nav next" id="template-modal-next" type="button" aria-label="Show next snapshot">❯</button>
+        <img id="template-modal-image" src="" alt="" />
+        <div class="template-modal-meta">
+          <span class="template-modal-title" id="template-modal-title"></span>
+          <span class="template-modal-sub" id="template-modal-sub"></span>
+          <div class="template-modal-links" id="template-modal-links"></div>
         </div>
       </div>
     </div>
@@ -870,6 +1230,248 @@
     </p>
   </div>
 </footer>
+
+<script>
+  (() => {
+    const heroImage = document.getElementById('hero-template-image');
+    const heroCaption = document.getElementById('hero-template-caption');
+    const heroStatus = document.getElementById('hero-template-status');
+    const galleryGrid = document.getElementById('template-gallery-grid');
+    const getterTags = document.getElementById('getter-types-tags');
+    const modal = document.getElementById('template-modal');
+    const modalBackdrop = document.getElementById('template-modal-backdrop');
+    const modalClose = document.getElementById('template-modal-close');
+    const modalPrev = document.getElementById('template-modal-prev');
+    const modalNext = document.getElementById('template-modal-next');
+    const modalImage = document.getElementById('template-modal-image');
+    const modalTitle = document.getElementById('template-modal-title');
+    const modalSub = document.getElementById('template-modal-sub');
+    const modalLinks = document.getElementById('template-modal-links');
+    if (!heroImage || !heroCaption || !heroStatus || !galleryGrid || !modal || !modalBackdrop || !modalClose || !modalPrev || !modalNext || !modalImage || !modalTitle || !modalSub || !modalLinks) {
+      return;
+    }
+
+    if (getterTags) {
+      fetch('getter_types.json')
+        .then((response) => response.ok ? response.json() : null)
+        .then((payload) => {
+          if (!payload || !Array.isArray(payload.getter_types) || payload.getter_types.length === 0) {
+            return;
+          }
+          const tags = payload.getter_types.slice(0, 16).map((name) => {
+            const span = document.createElement('span');
+            span.className = 'tag';
+            span.textContent = name;
+            return span;
+          });
+          getterTags.replaceChildren(...tags);
+        })
+        .catch(() => undefined);
+    }
+
+    const docsByTemplate = {
+      apod: {
+        widgets: ['apod', 'image']
+      },
+      docker_dashboard: {
+        widgets: ['docker_stats', 'value', 'text']
+      },
+      kvm_vms: {
+        widgets: ['vm_table', 'value', 'panel']
+      },
+      nvidia_detail: {
+        widgets: ['sparkline', 'gauge', 'value']
+      },
+      ollama_host: {
+        widgets: ['ollama_models', 'value', 'text']
+      },
+      os_updates: {
+        widgets: ['os_updates', 'value']
+      },
+      speedtest: {
+        widgets: ['gauge', 'value', 'text']
+      },
+      system_stats: {
+        widgets: ['sparkline', 'gauge', 'image', 'value']
+      },
+      weather_nws: {
+        widgets: ['weather_current', 'weather_forecast', 'weather_radar']
+      }
+    };
+
+    const widgetDocLink = (widgetType) => `/template_format/#${widgetType}`;
+
+    const newTabIcon = () => {
+      const icon = document.createElement('i');
+      icon.className = 'fa-solid fa-up-right-from-square';
+      icon.setAttribute('aria-hidden', 'true');
+      const fallback = document.createElement('span');
+      fallback.className = 'fallback-ext';
+      fallback.textContent = '↗';
+      icon.append(fallback);
+      return icon;
+    };
+
+    const buildModalLinks = (entry) => {
+      const info = docsByTemplate[entry.name] || { widgets: [] };
+
+      const links = [];
+      const templateAnchor = `template-${entry.name.replace(/[^a-z0-9_-]/gi, '-')}`;
+
+      const templateLink = document.createElement('a');
+      templateLink.className = 'template-modal-link';
+      templateLink.href = `/#${templateAnchor}`;
+      templateLink.target = '_blank';
+      templateLink.rel = 'noopener';
+      templateLink.textContent = 'Template docs (opens new tab)';
+      templateLink.append(newTabIcon());
+      links.push(templateLink);
+
+      const uniqueWidgets = [...new Set(info.widgets)];
+      uniqueWidgets.forEach((widgetType) => {
+        const link = document.createElement('a');
+        link.className = 'template-modal-link';
+        link.href = widgetDocLink(widgetType);
+        link.target = '_blank';
+        link.rel = 'noopener';
+        link.textContent = `Widget: ${widgetType} (opens new tab)`;
+        link.append(newTabIcon());
+        links.push(link);
+      });
+
+      modalLinks.replaceChildren(...links);
+    };
+
+    const setHero = (entry) => {
+      heroImage.src = entry.image;
+      heroImage.alt = `${entry.name} template snapshot`;
+      heroCaption.textContent = `Generated snapshot for ${entry.name}`;
+      heroStatus.textContent = entry.name;
+    };
+
+    const closeModal = () => {
+      modal.setAttribute('hidden', '');
+      modalImage.src = '';
+      modalImage.alt = '';
+    };
+
+    let modalEntries = [];
+    let modalIndex = 0;
+    let modalGeneratedAt = '';
+
+    const renderModal = () => {
+      const entry = modalEntries[modalIndex];
+      if (!entry) {
+        return;
+      }
+      modalImage.src = entry.image;
+      modalImage.alt = `${entry.name} template snapshot (large preview)`;
+      modalTitle.textContent = entry.name;
+      modalSub.textContent = modalGeneratedAt ? `Updated ${modalGeneratedAt}` : 'Generated snapshot';
+      buildModalLinks(entry);
+      modalPrev.disabled = modalEntries.length <= 1;
+      modalNext.disabled = modalEntries.length <= 1;
+    };
+
+    const openModal = (index, entries, generatedAt) => {
+      modalEntries = entries;
+      modalIndex = index;
+      modalGeneratedAt = generatedAt;
+      renderModal();
+      modal.removeAttribute('hidden');
+    };
+
+    const moveModal = (delta) => {
+      if (modalEntries.length <= 1) {
+        return;
+      }
+      modalIndex = (modalIndex + delta + modalEntries.length) % modalEntries.length;
+      renderModal();
+    };
+
+    modalBackdrop.addEventListener('click', closeModal);
+    modalClose.addEventListener('click', closeModal);
+    modalPrev.addEventListener('click', () => moveModal(-1));
+    modalNext.addEventListener('click', () => moveModal(1));
+    document.addEventListener('keydown', (event) => {
+      if (modal.hasAttribute('hidden')) {
+        return;
+      }
+      if (event.key === 'Escape') {
+        closeModal();
+        return;
+      }
+      if (event.key === 'ArrowLeft') {
+        moveModal(-1);
+        return;
+      }
+      if (event.key === 'ArrowRight') {
+        moveModal(1);
+      }
+    });
+
+    fetch('images/template_snaps/manifest.json')
+      .then((response) => response.ok ? response.json() : null)
+      .then((payload) => {
+        if (!payload || !Array.isArray(payload.templates) || payload.templates.length === 0) {
+          return;
+        }
+
+        const entries = payload.templates.filter((entry) => entry && entry.name && entry.image);
+        if (entries.length === 0) {
+          return;
+        }
+
+        const preferred = entries.find((entry) => entry.name === 'system_stats') || entries[0];
+        let activeIndex = entries.indexOf(preferred);
+        setHero(preferred);
+
+        galleryGrid.replaceChildren(...entries.map((entry, index) => {
+            const card = document.createElement('div');
+            card.className = 'template-card';
+            card.id = `template-${entry.name.replace(/[^a-z0-9_-]/gi, '-')}`;
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.addEventListener('click', () => {
+              activeIndex = index;
+              setHero(entry);
+              openModal(index, entries, payload.generated_at || '');
+            });
+
+            const image = document.createElement('img');
+            image.src = entry.image;
+            image.alt = `${entry.name} template snapshot`;
+            image.loading = 'lazy';
+            image.decoding = 'async';
+
+            const copy = document.createElement('div');
+            copy.className = 'template-card-copy';
+
+            const title = document.createElement('div');
+            title.className = 'template-card-title';
+            title.textContent = entry.name;
+
+            const sub = document.createElement('div');
+            sub.className = 'template-card-sub';
+            sub.textContent = payload.generated_at ? `Updated ${payload.generated_at}` : 'Generated snapshot';
+
+            copy.append(title, sub);
+            button.append(image, copy);
+            card.append(button);
+            return card;
+          }));
+
+        if (entries.length > 1) {
+          window.setInterval(() => {
+            activeIndex = (activeIndex + 1) % entries.length;
+            setHero(entries[activeIndex]);
+          }, 4000);
+        }
+      })
+      .catch(() => undefined);
+  })();
+</script>
 
 </body>
 </html>

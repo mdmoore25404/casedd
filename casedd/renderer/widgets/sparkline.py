@@ -17,9 +17,10 @@ Example .casedd config:
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import dataclass
 import time
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 from casedd.data_store import DataStore
 from casedd.renderer.color import parse_color
@@ -41,6 +42,14 @@ _SERIES_FALLBACK = (
     (77, 163, 255),
     (203, 141, 255),
 )
+
+
+@dataclass(frozen=True)
+class _LegendEntry:
+    """Legend text and resolved color for one multi-series sparkline entry."""
+
+    text: str
+    color: tuple[int, int, int]
 
 
 def _update_buffer(
@@ -175,7 +184,7 @@ class SparklineWidget(BaseWidget):
             parsed = None
 
         samples = _update_buffer(buf, parsed, cfg.samples, cfg.window_seconds)
-        if len(samples) < 2:
+        if not samples:
             return
 
         # Dynamic max: use the configured max, or auto-scale to buf peak
@@ -185,13 +194,18 @@ class SparklineWidget(BaseWidget):
         color = parse_color(cfg.color, fallback=(100, 200, 100))
 
         points = _build_points(samples, area_x, area_y, area_w, area_h, data_min, data_max)
-        _draw_filled_area(img, color, points, area_x, area_y, area_w, area_h)
+        if len(points) >= 2:
+            _draw_filled_area(img, color, points, area_x, area_y, area_w, area_h)
 
         # Redraw the draw handle after paste (img was modified)
         draw = ImageDraw.Draw(img)
 
-        # Draw the line itself
-        draw.line(points, fill=color, width=2)
+        # Draw a line once history exists, otherwise draw a single-point marker.
+        if len(points) >= 2:
+            draw.line(points, fill=color, width=2)
+        else:
+            x, y = points[0]
+            draw.ellipse((x - 2, y - 2, x + 2, y + 2), fill=color)
 
         # Current value text in top-right corner
         current_value = samples[-1]
@@ -209,7 +223,7 @@ class SparklineWidget(BaseWidget):
         tw = bbox[2] - bbox[0]
         draw.text((area_x + area_w - tw - 2, area_y + 2), current_str, fill=color, font=font)
 
-    def _draw_multi_series(  # noqa: PLR0912,PLR0913,PLR0915 -- explicit render context keeps widget path clear
+    def _draw_multi_series(  # noqa: PLR0912,PLR0913 -- explicit render context keeps widget path clear
         self,
         draw: ImageDraw.ImageDraw,
         img: Image.Image,
@@ -276,7 +290,26 @@ class SparklineWidget(BaseWidget):
                 _draw_filled_area(img, color, points, area_x, area_y, area_w, area_h)
                 draw = ImageDraw.Draw(img)
 
-        legend_parts: list[str] = []
+        legend_entries = self._legend_entries(cfg, current_values)
+
+        if legend_entries:
+            legend = "  ".join(entry.text for entry in legend_entries)
+            font = choose_font_for_box(
+                legend,
+                max(32, area_w - 4),
+                max(12, area_h // 6),
+                "auto",
+                min_size=10,
+            )
+            self._draw_legend_entries(draw, area_x + 2, area_y + 2, font, legend_entries)
+
+    def _legend_entries(
+        self,
+        cfg: WidgetConfig,
+        current_values: dict[str, float | None],
+    ) -> list[_LegendEntry]:
+        """Build legend entries so labels visibly match their series colors."""
+        entries: list[_LegendEntry] = []
         for idx, source in enumerate(cfg.sources):
             label = (
                 cfg.series_labels[idx]
@@ -285,23 +318,31 @@ class SparklineWidget(BaseWidget):
             )
             current = current_values.get(source)
             if current is None:
-                legend_parts.append(f"{label} --")
+                text = f"{label} --"
             else:
                 value_text = f"{current:.{cfg.precision}f}"
                 if cfg.unit:
                     value_text = f"{value_text} {cfg.unit}"
-                legend_parts.append(f"{label} {value_text}")
+                text = f"{label} {value_text}"
+            entries.append(_LegendEntry(text=text, color=self._series_color(cfg, idx)))
+        return entries
 
-        if legend_parts:
-            legend = "  ".join(legend_parts)
-            font = choose_font_for_box(
-                legend,
-                max(32, area_w - 4),
-                max(12, area_h // 6),
-                "auto",
-                min_size=10,
-            )
-            draw.text((area_x + 2, area_y + 2), legend, fill=(210, 210, 210), font=font)
+    def _draw_legend_entries(
+        self,
+        draw: ImageDraw.ImageDraw,
+        x: int,
+        y: int,
+        font: ImageFont.ImageFont | ImageFont.FreeTypeFont,
+        entries: list[_LegendEntry],
+    ) -> None:
+        """Draw multi-series legend entries using their corresponding colors."""
+        cursor_x = x
+        for idx, entry in enumerate(entries):
+            if idx > 0:
+                cursor_x += 12
+            draw.text((cursor_x, y), entry.text, fill=entry.color, font=font)
+            bbox = draw.textbbox((cursor_x, y), entry.text, font=font)
+            cursor_x += int(bbox[2] - bbox[0])
 
     def _series_color(self, cfg: WidgetConfig, idx: int) -> tuple[int, int, int]:
         """Resolve per-series color with explicit template overrides."""

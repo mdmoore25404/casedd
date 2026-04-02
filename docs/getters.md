@@ -103,8 +103,10 @@ Emits:
 - disk.used_gb
 - disk.total_gb
 - disk.free_gb
-- disk.read_mbps
-- disk.write_mbps
+- disk.read_mb_s
+- disk.write_mb_s
+- disk.read_mbps (legacy compatibility alias; value is MB/s)
+- disk.write_mbps (legacy compatibility alias; value is MB/s)
 
 ## Network getter
 

@@ -10,26 +10,26 @@ A lightweight, high-performance Python daemon that drives a small USB framebuffe
 mounted inside a PC case, while simultaneously serving the same content over WebSocket and
 HTTP for remote viewing.
 
-**Target hardware:** Waveshare 5-inch USB Monitor, 800×480, Type-C  
+**Target hardware:** Any Linux framebuffer-compatible display device  
 **OS:** Ubuntu 24.04 (headless)  
 **Stack:** Python 3.12, FastAPI, uvicorn, Pillow, Pydantic v2, psutil, PyYAML
 
 ---
 ## Licensing
 
-**casedd** is released under the **[Business Source License 1.1](LICENSE)**.
+**casedd** is released under the **[Business Source License 1.1](https://github.com/mdmoore25404/casedd/blob/main/LICENSE)**.
 
 - **Free** for personal, hobbyist, and home-lab use (including AI workstations and single-user setups).
 - **Commercial use**, white-labeling, enterprise deployments, or bundling with hardware requires a paid commercial license.
 
-See [`LICENSE`](LICENSE) and [`license-commercial.md`](license-commercial.md) for full details.
+See [`LICENSE`](https://github.com/mdmoore25404/casedd/blob/main/LICENSE) and [`LICENSE-COMMERCIAL.md`](https://github.com/mdmoore25404/casedd/blob/main/LICENSE-COMMERCIAL.md) for full details.
 
 Interested in commercial use or white-label rights? Feel free to reach out.
 
 
 ## Features
 
-- **Dual output** — push rendered images to `/dev/fb1` (framebuffer) AND a browser via WebSocket simultaneously
+- **Dual output** — push rendered images to a Linux framebuffer device (for example `/dev/fb0`, `/dev/fb1`) AND a browser via WebSocket simultaneously
 - **Custom layout engine** — declare layouts in `.casedd` YAML files using CSS Grid Template Areas syntax; widget tree supports unlimited nesting via `type: panel`
 - **10 widget types** — `value`, `text`, `bar`, `gauge`, `histogram`, `sparkline`, `image`, `slideshow`, `clock`, `panel`
 - **Live data getters** — CPU, fan telemetry (CPU/system/GPU), NVIDIA GPU (including multi-GPU keys), RAM, disk, network, system uptime/host, speedtest, Ollama API runtime state
@@ -101,7 +101,7 @@ cp .env.example .env
 ./casedd-ctl --json health
 ```
 
-See [docs/cli.md](cli.md) for the full command reference.
+See [CLI reference](/cli/) for the full command reference.
 
 ### Linting (must be clean before any commit)
 
@@ -141,11 +141,11 @@ mypy --strict casedd/
 
 ## Template format (.casedd)
 
-Templates are YAML files in `templates/`. See [docs/template_format.md](docs/template_format.md) for the full specification.
-Getter key reference lives at [docs/getters.md](docs/getters.md).
+Templates are YAML files in `templates/`. See [Template Format](/template_format/) for the full specification.
+Getter key reference lives at [Getter Reference](/getters/).
 
-- API docs are live from [docs/api.json](docs/api.json).
-- Template examples are available in [templates/](templates/) and in [docs/index.md](docs/index.md) for GitHub Pages.
+- API schema JSON is available at [/api.json](/api.json).
+- Template examples are available in [templates/ directory on GitHub](https://github.com/mdmoore25404/casedd/tree/main/templates) and on the [docs landing page](/).
 
 Quick example:
 
@@ -154,7 +154,7 @@ name: simple_stats
 aspect_ratio: "5:3"
 layout_mode: fit
 background: "#1a1a2e"
-refresh_rate: 2.0
+refresh_rate_hz: 2.0
 
 grid:
   template_areas: |
@@ -220,7 +220,7 @@ This is useful for quickly testing ingestion without leaving the browser.
 
 ### Push demo template
 
-An example template is provided at [templates/push_demo.casedd](templates/push_demo.casedd).
+An example template is provided at [templates/push_demo.casedd](https://github.com/mdmoore25404/casedd/blob/main/templates/push_demo.casedd).
 It visualizes externally pushed values like `outside_temp_f` and `custom.note`.
 
 To try it:
@@ -236,7 +236,7 @@ export CASEDD_TEMPLATE=push_demo
 
 ### Fan telemetry template
 
-An example fan dashboard is provided at [templates/fans.casedd](templates/fans.casedd).
+An example fan dashboard is provided at [templates/fans.casedd](https://github.com/mdmoore25404/casedd/blob/main/templates/fans.casedd).
 
 To try it:
 
@@ -392,7 +392,7 @@ entries with `seconds` override it per template.
 `template_rotation_enabled: false` to disable rotation and pin to `template`.
 
 Schedules and triggers are also configured in `casedd.yaml`.
-See [casedd.yaml.example](casedd.yaml.example) for a complete sample:
+See [casedd.yaml.example](https://github.com/mdmoore25404/casedd/blob/main/casedd.yaml.example) for a complete sample:
 
 ```yaml
 template_schedule:
@@ -429,7 +429,7 @@ casedd is released under the **Business Source License 1.1**.
 - **Free** for personal, hobbyist, and home-lab use.
 - **Commercial use**, white-labeling, or enterprise deployments require a paid license.
 
-See [`LICENSE`](LICENSE) and [`LICENSE-COMMERCIAL.md`](LICENSE-COMMERCIAL.md) for full details.
+See [`LICENSE`](https://github.com/mdmoore25404/casedd/blob/main/LICENSE) and [`LICENSE-COMMERCIAL.md`](https://github.com/mdmoore25404/casedd/blob/main/LICENSE-COMMERCIAL.md) for full details.
 
 ## Directory structure
 

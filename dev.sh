@@ -32,6 +32,7 @@ DEV_FB_PREF_FILE="$REPO_ROOT/run/casedd-dev-use-fb.pref"
 WEB_DIR="$REPO_ROOT/web"
 WEB_PID_FILE="$REPO_ROOT/run/casedd-web.pid"
 WEB_LOG_FILE="$REPO_ROOT/logs/casedd-web.log"
+PAGES_CONTAINER_NAME="casedd-pages-dev"
 DEV_CONFIG_FILE=""
 
 # ---------------------------------------------------------------------------
@@ -229,6 +230,44 @@ _stop_web() {
     echo "advanced app dev server stopped"
 }
 
+_stop_pages() {
+    local quiet="${1:-0}"
+
+    if ! command -v docker >/dev/null 2>&1; then
+        return 0
+    fi
+
+    local stopped=false
+    local named_container_id
+    named_container_id="$(docker ps -q -f "name=^/${PAGES_CONTAINER_NAME}$")"
+    if [[ -n "$named_container_id" ]]; then
+        echo "Stopping pages container ($PAGES_CONTAINER_NAME)..."
+        docker stop "$named_container_id" >/dev/null
+        echo "pages container stopped"
+        stopped=true
+    fi
+
+    # Backward compatibility: clean up any older pages containers that were
+    # launched without a stable name but still hold port 4000.
+    local legacy_ids
+    legacy_ids="$(docker ps --format '{{.ID}} {{.Ports}}' | awk '/0\.0\.0\.0:4000->/ {print $1}')"
+    if [[ -n "$legacy_ids" ]]; then
+        while IFS= read -r container_id; do
+            [[ -z "$container_id" ]] && continue
+            if [[ "$container_id" == "$named_container_id" ]]; then
+                continue
+            fi
+            echo "Stopping legacy pages container ($container_id)..."
+            docker stop "$container_id" >/dev/null
+            stopped=true
+        done <<< "$legacy_ids"
+    fi
+
+    if [[ "$stopped" == false && "$quiet" != "1" ]]; then
+        echo "pages container is not running"
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
@@ -353,6 +392,7 @@ cmd_start_fb() {
 
 cmd_stop() {
     _load_env
+    _stop_pages
     _stop_web
 
     if ! _is_running; then
@@ -458,12 +498,14 @@ cmd_docs() {
 cmd_pages() {
     echo "==> Serving GitHub Pages docs on http://localhost:4000"
     echo "    Press Ctrl-C to stop."
+    _stop_pages 1
     docker run --rm \
+        --name "$PAGES_CONTAINER_NAME" \
         --volume "$REPO_ROOT/docs:/srv/jekyll:Z" \
         --publish 4000:4000 \
         --workdir /srv/jekyll \
         ruby:3.3 \
-        bash -c "bundle install --quiet && bundle exec jekyll serve \
+        bash -c "export SASS_SILENCE_DEPRECATIONS=import,color-functions && bundle install --quiet && bundle exec jekyll serve \
             --port 4000 --host 0.0.0.0" 2>&1
 }
 

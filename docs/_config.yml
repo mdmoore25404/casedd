@@ -62,3 +62,9 @@ plugins:
   - jekyll-seo-tag
   - jekyll-include-cache
 
+sass:
+  quiet_deps: true
+  silence_deprecations:
+    - import
+    - color-functions
+
