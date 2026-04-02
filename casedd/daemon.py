@@ -269,6 +269,13 @@ class Daemon:
             await http_output.stop()
             await registry.stop()
             await self._blackout_framebuffers(panel_runtimes)
+            # Ensure the kernel framebuffer console and VT cursor are restored
+            # so the host login prompt is visible again after CASEDD exits.
+            try:
+                self._restore_console_and_cursor(panel_runtimes)
+            except Exception:
+                _log.exception("Failed to restore kernel console / VT cursor")
+
             _log.info("Daemon shutdown complete.")
 
     def _setup_emergency_exit_watcher(self) -> None:
@@ -779,6 +786,37 @@ class Daemon:
         for panel in panel_runtimes:
             black = Image.new("RGB", (panel.width, panel.height), (0, 0, 0))
             await asyncio.to_thread(panel.framebuffer.write, black)
+
+    def _restore_console_and_cursor(self, panel_runtimes: list[_PanelRuntime]) -> None:
+        """Attempt to re-enable kernel console and show VT cursor.
+
+        This helps ensure the host login prompt is redrawn after CASEDD
+        releases the framebuffer. Best-effort; failures are logged and
+        otherwise ignored.
+        """
+        # Try to re-enable kernel framebuffer console for each panel's fb
+        for panel in panel_runtimes:
+            try:
+                fb_sys = Path(f"/sys/class/graphics/{panel.fb_device.name}")
+                console_path = fb_sys / "console"
+                if console_path.exists():
+                    try:
+                        console_path.write_text("1")
+                        _log.debug("Re-enabled kernel console for %s", panel.fb_device)
+                    except Exception:
+                        _log.debug("Failed to write kernel console for %s", panel.fb_device)
+            except Exception:
+                _log.debug("Failed probing console sysfs for panel %s", panel.name)
+
+        # Show VT cursor and write a newline to common ttys to nudge getty to redraw
+        seq = "\x1b[?25h"  # show cursor
+        targets = [f"/dev/tty{i}" for i in range(1, 7)] + ["/dev/console"]
+        for t in targets:
+            try:
+                with Path(t).open("wb", buffering=0) as fh:
+                    fh.write(seq.encode("ascii") + b"\n")
+            except Exception as exc:
+                _log.debug("Failed writing cursor/newline to %s: %s", t, exc)
 
     def _make_trigger_callback(
         self,
