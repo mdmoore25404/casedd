@@ -40,6 +40,8 @@ Notes:
     service WorkingDirectory; it is not copied into /etc/casedd.
   - Installer prompts to enable /dev/input/event* read access for ESC/Q
     emergency-exit support. Skipping this leaves ESC/Q exit unavailable.
+    - Installer also prompts to configure container runtime socket access
+        (for example docker group membership).
 EOF
 }
 
@@ -141,6 +143,83 @@ prompt_input_access_setup() {
     fi
 
     echo "Input access update complete."
+    echo "Note: group membership changes require logout/login (or reboot) to fully apply."
+}
+
+prompt_container_runtime_access_setup() {
+    local service_user="$1"
+    local installer_user="${SUDO_USER:-}"
+    local reply=""
+    local group_name="docker"
+    local target_choice=""
+    local target_user=""
+
+    echo
+    echo "Container runtime getters need permission to query the runtime socket."
+    echo "For Docker this is usually group 'docker' (or root)."
+    echo "For Podman/containerd, choose a group that matches your socket policy."
+
+    if [[ ! -t 0 ]]; then
+        log "Non-interactive install: skipping container-runtime access prompt."
+        return
+    fi
+
+    read -r -p "Configure container runtime group access now? [Y/n] " reply
+    if [[ -n "${reply}" && "${reply}" =~ ^[Nn]$ ]]; then
+        log "Container runtime access not changed."
+        return
+    fi
+
+    read -r -p "Group name to grant (default: docker): " group_name
+    group_name="${group_name:-docker}"
+    if ! getent group "${group_name}" >/dev/null 2>&1; then
+        log "Group '${group_name}' does not exist; skipping group update."
+        return
+    fi
+
+    echo "Select user to add to '${group_name}':"
+    if [[ -n "${installer_user}" && "${installer_user}" != "root" ]]; then
+        echo "  1) current installer user (${installer_user})"
+    fi
+    echo "  2) service user (${service_user})"
+    echo "  3) another user"
+    echo "  4) skip"
+    read -r -p "Choice [1/2/3/4]: " target_choice
+
+    case "${target_choice}" in
+        1)
+            if [[ -n "${installer_user}" && "${installer_user}" != "root" ]]; then
+                target_user="${installer_user}"
+            else
+                log "No non-root installer user detected; skipping."
+                return
+            fi
+            ;;
+        2)
+            target_user="${service_user}"
+            ;;
+        3)
+            read -r -p "Enter username: " target_user
+            ;;
+        *)
+            log "Skipping container runtime group update."
+            return
+            ;;
+    esac
+
+    if [[ -z "${target_user}" ]] || ! id -u "${target_user}" >/dev/null 2>&1; then
+        log "User '${target_user}' does not exist; skipping group update."
+        return
+    fi
+
+    if user_in_group "${target_user}" "${group_name}"; then
+        log "User ${target_user} is already in group '${group_name}'"
+    else
+        log "Adding ${target_user} to group '${group_name}'"
+        run_cmd usermod -aG "${group_name}" "${target_user}"
+    fi
+
+    echo "Container runtime permission update complete."
     echo "Note: group membership changes require logout/login (or reboot) to fully apply."
 }
 
@@ -309,6 +388,7 @@ install_service() {
     install_logs_dir
     install_unit "${service_user}"
     prompt_input_access_setup "${service_user}"
+    prompt_container_runtime_access_setup "${service_user}"
 
     echo
     echo "Installation complete."

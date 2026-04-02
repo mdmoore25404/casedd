@@ -90,6 +90,9 @@ Use this section as a pre-flight checklist during implementation, not only at cl
 - **Do not use fixed font-size floors for wrapped/multiline text** (for example hardcoded
   minima like `8`/`10` or fixed `+2` line spacing). Compute minimum size and line gap from
   the widget container dimensions so dense lists remain readable across resolutions.
+- **Do not fetch logos or other static assets during frame rendering.** Resolve/download
+  brand assets ahead of time (install/build/getter phase), store local paths in config/store,
+  and rely on widget/engine caching and static-layer pre-rendering to avoid per-frame I/O.
 ### Self-learning anti-pattern protocol
 
 When the agent encounters a new ruff or mypy violation during an implementation session

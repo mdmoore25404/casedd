@@ -136,6 +136,7 @@ Module: casedd/getters/containers.py
 Emits:
 - containers.available
 - containers.runtime
+- containers.logo_path
 - containers.count_total
 - containers.count_running
 - containers.count_exited
@@ -143,6 +144,11 @@ Emits:
 - containers.rows
 - containers.1.name, containers.1.status, containers.1.uptime, containers.1.health, containers.1.image
 - containers.2.name, containers.2.status, ... up to configured max items
+
+Display note:
+- Container table rows render `Health <state>`.
+- `Health unknown` means the runtime did not expose an explicit health check state
+    for that container.
 
 Runtime selection:
 - auto (default): Docker first, then Podman, then containerd (`ctr`)

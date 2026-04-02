@@ -9,7 +9,7 @@ refresh_rate: 4.0
 
 grid:
   template_areas: |
-    "runtime total running"
+    "runtime runtime running"
     "paused exited exited"
     "table table table"
   columns: "1fr 1fr 1fr"
@@ -17,13 +17,27 @@ grid:
 
 widgets:
   runtime:
-    type: value
-    source: containers.runtime
-    label: "Runtime"
-    color: "#8ac6ff"
+    type: panel
     background: "#101822"
-    font_size: auto
     padding: 8
+    grid:
+      template_areas: |
+        "logo"
+        "name"
+      columns: "1fr"
+      rows: "0.72fr 0.28fr"
+    children_named:
+      logo:
+        type: image
+        source: containers.logo_path
+        scale: fit
+        background: transparent
+      name:
+        type: text
+        source: containers.runtime
+        label: "Runtime"
+        color: "#8ac6ff"
+        font_size: auto
 
   total:
     type: value

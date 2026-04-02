@@ -37,8 +37,10 @@ def test_docker_getter_builds_summary_payload() -> None:
     assert payload["containers.count_running"] == 1.0
     assert payload["containers.count_exited"] == 1.0
     assert payload["containers.count_paused"] == 1.0
+    assert payload["containers.logo_path"] == "assets/docker/docker-official-logo.png"
     assert payload["containers.1.name"] == "web"
     assert payload["containers.2.status"] == "Exited"
+    assert "Health healthy" in str(payload["containers.rows"])
 
 
 def test_getter_falls_back_to_unavailable() -> None:
@@ -48,6 +50,7 @@ def test_getter_falls_back_to_unavailable() -> None:
 
     assert payload["containers.available"] == 0.0
     assert payload["containers.runtime"] == "unavailable"
+    assert payload["containers.logo_path"] == "assets/casedd-logo.png"
     assert "No runtime available" in str(payload["containers.rows"])
 
 
@@ -64,6 +67,7 @@ def test_auto_runtime_prefers_podman_when_docker_missing() -> None:
         payload = ContainersGetter(DataStore(), runtime="auto")._sample()
 
     assert payload["containers.runtime"] == "podman"
+    assert payload["containers.logo_path"] == "assets/docker/podman-official-logo.webp"
     assert payload["containers.count_running"] == 1.0
 
 

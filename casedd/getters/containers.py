@@ -31,6 +31,8 @@ _log = logging.getLogger(__name__)
 _RUNTIME_AUTO = "auto"
 _UNAVAILABLE_ROW = "No runtime available|Install docker/podman/ctr or grant access"
 _EMPTY_ROW = "No containers|Runtime reachable but no containers found"
+_DOCKER_LOGO_PATH = "assets/docker/docker-official-logo.png"
+_PODMAN_LOGO_PATH = "assets/docker/podman-official-logo.webp"
 
 RuntimeName = Literal["docker", "podman", "containerd"]
 
@@ -158,6 +160,7 @@ class ContainersGetter(BaseGetter):
         payload: dict[str, StoreValue] = {
             "containers.available": 1.0,
             "containers.runtime": runtime,
+            "containers.logo_path": _runtime_logo_path(runtime),
             "containers.count_total": float(len(rows)),
         }
 
@@ -170,7 +173,7 @@ class ContainersGetter(BaseGetter):
             else:
                 exited += 1
 
-            summary = f"{row.status} | UP {row.uptime} | H {row.health} | {row.image}"
+            summary = f"{row.status} | UP {row.uptime} | Health {row.health} | {row.image}"
             rendered.append(f"{row.name}|{summary}")
 
             if idx <= self._max_items:
@@ -318,6 +321,7 @@ def _unavailable_payload(runtime: str = "unavailable") -> dict[str, StoreValue]:
     return {
         "containers.available": 0.0,
         "containers.runtime": runtime,
+        "containers.logo_path": _runtime_logo_path(runtime),
         "containers.count_total": 0.0,
         "containers.count_running": 0.0,
         "containers.count_exited": 0.0,
@@ -331,9 +335,20 @@ def _empty_payload(runtime: RuntimeName) -> dict[str, StoreValue]:
     return {
         "containers.available": 1.0,
         "containers.runtime": runtime,
+        "containers.logo_path": _runtime_logo_path(runtime),
         "containers.count_total": 0.0,
         "containers.count_running": 0.0,
         "containers.count_exited": 0.0,
         "containers.count_paused": 0.0,
         "containers.rows": _EMPTY_ROW,
     }
+
+
+def _runtime_logo_path(runtime: str) -> str:
+    """Return the local logo asset path for the active runtime."""
+    normalized = runtime.strip().lower()
+    if normalized == "podman":
+        return _PODMAN_LOGO_PATH
+    if normalized == "docker":
+        return _DOCKER_LOGO_PATH
+    return "assets/casedd-logo.png"
