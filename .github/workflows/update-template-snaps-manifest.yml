@@ -33,32 +33,32 @@ jobs:
           from __future__ import annotations
 
           from datetime import UTC, datetime
-            import fnmatch
+          import fnmatch
           import json
           from pathlib import Path
 
           output_dir = Path("docs/images/template_snaps")
           output_dir.mkdir(parents=True, exist_ok=True)
 
-            rules = []
-            gitignore_path = output_dir / ".gitignore"
-            if gitignore_path.exists():
+          rules = []
+          gitignore_path = output_dir / ".gitignore"
+          if gitignore_path.exists():
               for line in gitignore_path.read_text(encoding="utf-8").splitlines():
-                stripped = line.strip()
-                if not stripped or stripped.startswith("#"):
-                  continue
-                is_negated = stripped.startswith("!")
-                pattern = stripped[1:] if is_negated else stripped
-                pattern = pattern.strip()
-                if not pattern or pattern.endswith("/"):
-                  continue
-                rules.append((pattern, is_negated))
+                  stripped = line.strip()
+                  if not stripped or stripped.startswith("#"):
+                      continue
+                  is_negated = stripped.startswith("!")
+                  pattern = stripped[1:] if is_negated else stripped
+                  pattern = pattern.strip()
+                  if not pattern or pattern.endswith("/"):
+                      continue
+                  rules.append((pattern, is_negated))
 
-            def include_file(file_name: str) -> bool:
+          def include_file(file_name: str) -> bool:
               included = True
               for pattern, is_negated in rules:
-                if fnmatch.fnmatch(file_name, pattern):
-                  included = is_negated
+                  if fnmatch.fnmatch(file_name, pattern):
+                      included = is_negated
               return included
 
           names = [
