@@ -10,12 +10,12 @@
         "pihole.queries.blocked_percent": 15.0,
         "pihole.clients.active_count": 18.0,
         "pihole.domains.blocked_count": 1247803.0,
-        "pihole.top_blocked.domain": "telemetry.microsoft.com",
+        "pihole.top_blocked.domain": "ads.example.com",
         "pihole.top_blocked.hits": 843.0,
-        "pihole.top_blocked.list": "telemetry.microsoft.com|843\ndoubleclick.net|612\nads.google.com|504\ngooglesyndication.com|391\nfacebook.com|278",
+        "pihole.top_blocked.list": "ads.example.com|843\ntelemetry.example.net|612\ntracker.example.org|504\napi.ads-service.example|391\nmetrics.example.io|278",
         "pihole.top_client.name": "192.168.1.10",
         "pihole.top_client.queries": 9104.0,
-        "pihole.top_client.list": "192.168.1.10|9104\n192.168.1.22|4832\n192.168.1.31|3211\n192.168.1.45|2109\n192.168.1.51|1847"
+        "pihole.top_client.list": "192.168.1.10|9104\n192.168.1.22|4832\n10.0.0.5|3211\n172.16.0.3|2109\n192.168.1.55|1847"
       }
     }
   ],
