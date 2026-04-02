@@ -101,3 +101,8 @@ def test_getter_name_for_source_includes_invokeai() -> None:
 def test_getter_name_for_source_includes_os_updates() -> None:
     """os_updates namespace should resolve to OsUpdatesGetter."""
     assert Daemon._getter_name_for_source("os_updates.has_updates") == "OsUpdatesGetter"
+
+
+def test_getter_name_for_source_includes_vms() -> None:
+    """vms namespace should resolve to VmGetter."""
+    assert Daemon._getter_name_for_source("vms.count_running") == "VmGetter"

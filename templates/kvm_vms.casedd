@@ -1,0 +1,64 @@
+# kvm_vms.casedd — KVM/libvirt virtual machine dashboard
+
+name: kvm_vms
+description: Running/paused/shutoff VM summary with per-VM status table.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0b1118"
+refresh_rate: 5.0
+
+grid:
+  template_areas: |
+    "summary summary summary"
+    "running paused shutoff"
+    "table table table"
+  columns: "1fr 1fr 1fr"
+  rows: "0.22fr 0.22fr 0.56fr"
+
+widgets:
+  summary:
+    type: value
+    source: vms.count_total
+    label: "Total VMs"
+    color: "#8ac6ff"
+    background: "#101822"
+    font_size: auto
+    padding: 8
+
+  running:
+    type: value
+    source: vms.count_running
+    label: "Running"
+    color: "#74d680"
+    background: "#0f1a24"
+    font_size: auto
+    padding: 8
+
+  paused:
+    type: value
+    source: vms.count_paused
+    label: "Paused"
+    color: "#ffd166"
+    background: "#0f1a24"
+    font_size: auto
+    padding: 8
+
+  shutoff:
+    type: value
+    source: vms.count_shutoff
+    label: "Shut off"
+    color: "#ff8c69"
+    background: "#0f1a24"
+    font_size: auto
+    padding: 8
+
+  table:
+    type: table
+    source: vms.rows
+    label: "Virtual Machines"
+    color: "#dfe7ef"
+    background: "#101822"
+    font_size: auto
+    table_fit_text: true
+    max_items: 8
+    padding: [8, 10]

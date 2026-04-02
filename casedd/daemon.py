@@ -64,6 +64,7 @@ from casedd.getters.speedtest import SpeedtestGetter
 from casedd.getters.sysinfo import SysinfoGetter
 from casedd.getters.system import SystemGetter
 from casedd.getters.ups import UpsGetter
+from casedd.getters.vms import VmGetter
 from casedd.getters.weather import WeatherGetter
 from casedd.ingestion.unix_socket import UnixSocketIngestion
 from casedd.input_detect import has_local_keyboard_or_mouse
@@ -1152,6 +1153,13 @@ class Daemon:
                 command=self._cfg.ups_command,
                 upsc_target=self._cfg.ups_upsc_target,
             ),
+            VmGetter(
+                self._store,
+                interval=self._cfg.vms_interval,
+                passive=self._cfg.vms_passive,
+                command=self._cfg.vms_command,
+                max_items=self._cfg.vms_max_items,
+            ),
             PiHoleGetter(
                 self._store,
                 base_url=self._cfg.pihole_base_url,
@@ -1334,6 +1342,7 @@ class Daemon:
             ("invokeai.", "InvokeAIGetter"),
             ("ollama.", "OllamaGetter"),
             ("ups.", "UpsGetter"),
+            ("vms.", "VmGetter"),
             ("pihole.", "PiHoleGetter"),
             ("radarr.", "RadarrGetter"),
             ("sonarr.", "SonarrGetter"),
