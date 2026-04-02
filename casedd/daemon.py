@@ -592,6 +592,7 @@ class Daemon:
             api_basic_user=self._cfg.api_basic_user,
             api_basic_password=self._cfg.api_basic_password,
             api_rate_limit=self._cfg.api_rate_limit,
+            fixtures_dir=Path(self._cfg.templates_dir).parent / "scripts" / "fixtures",
         )
 
         unix_ingestion = UnixSocketIngestion(Path(self._cfg.socket_path), self._store)

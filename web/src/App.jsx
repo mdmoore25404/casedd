@@ -24,6 +24,8 @@ import {
 import {
   exportTemplateFile,
   fetchDataStore,
+  fetchFixture,
+  fetchFixtures,
   fetchRotation,
   fetchTemplate,
   fetchTemplates,
@@ -459,6 +461,8 @@ export function App() {
   const [simStatus, setSimStatus] = useState({ running: false, mode: "idle" });
   const [randomJson, setRandomJson] = useState(() => prettyJson({ interval: 1.0, fields: [] }));
   const [replayJson, setReplayJson] = useState(() => prettyJson([]));
+  const [fixtures, setFixtures] = useState([]);
+  const [selectedFixture, setSelectedFixture] = useState("");
   const [rotationEntries, setRotationEntries] = useState([]);
   const [rotationInterval, setRotationInterval] = useState(30);
   const [rotationEnabled, setRotationEnabled] = useState(true);
@@ -508,6 +512,18 @@ export function App() {
       setPreviewNonce(Date.now());
     }, 2000);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    fetchFixtures()
+      .then((payload) => {
+        const names = payload.fixtures || [];
+        setFixtures(names);
+        if (names.length > 0) {
+          setSelectedFixture(names[0]);
+        }
+      })
+      .catch(() => setFixtures([]));
   }, []);
 
   const panels = panelsData.panels || [];
@@ -1715,6 +1731,32 @@ export function App() {
                 <FontAwesomeIcon icon={faExpand} className="me-1" /> Large Editor
               </button>
               <label className="form-label small">Replay JSON records</label>
+              {fixtures.length > 0 && (
+                <div className="d-flex gap-2 mb-2">
+                  <select
+                    className="form-select form-select-sm flex-grow-1"
+                    value={selectedFixture}
+                    onChange={(event) => setSelectedFixture(event.target.value)}
+                  >
+                    {fixtures.map((name) => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn btn-outline-secondary btn-sm"
+                    onClick={() => {
+                      fetchFixture(selectedFixture)
+                        .then((payload) => {
+                          setReplayJson(prettyJson(payload.records || []));
+                          setStatus(`loaded fixture: ${selectedFixture}`);
+                        })
+                        .catch((err) => setStatus(`fixture load failed: ${err.message}`));
+                    }}
+                  >
+                    Load
+                  </button>
+                </div>
+              )}
               <textarea
                 className={`form-control form-control-sm font-monospace ${replayJsonState.error ? "is-invalid" : ""}`}
                 rows={7}
