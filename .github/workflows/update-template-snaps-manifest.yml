@@ -1,0 +1,95 @@
+name: Update Template Snapshot Manifest
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - docs/images/template_snaps/*.png
+      - docs/images/template_snaps/.gitignore
+      - scripts/capture_template_snaps.py
+      - .github/workflows/update-template-snaps-manifest.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  refresh-manifest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Rebuild docs snapshot manifest
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          from datetime import UTC, datetime
+            import fnmatch
+          import json
+          from pathlib import Path
+
+          output_dir = Path("docs/images/template_snaps")
+          output_dir.mkdir(parents=True, exist_ok=True)
+
+            rules = []
+            gitignore_path = output_dir / ".gitignore"
+            if gitignore_path.exists():
+              for line in gitignore_path.read_text(encoding="utf-8").splitlines():
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#"):
+                  continue
+                is_negated = stripped.startswith("!")
+                pattern = stripped[1:] if is_negated else stripped
+                pattern = pattern.strip()
+                if not pattern or pattern.endswith("/"):
+                  continue
+                rules.append((pattern, is_negated))
+
+            def include_file(file_name: str) -> bool:
+              included = True
+              for pattern, is_negated in rules:
+                if fnmatch.fnmatch(file_name, pattern):
+                  included = is_negated
+              return included
+
+          names = [
+              path.stem
+              for path in sorted(output_dir.glob("*.png"))
+              if include_file(path.name)
+          ]
+          manifest = {
+              "generated_at": datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M UTC"),
+              "templates": [
+                  {
+                      "name": name,
+                      "image": f"images/template_snaps/{name}.png",
+                  }
+                  for name in names
+              ],
+          }
+          (output_dir / "manifest.json").write_text(
+              json.dumps(manifest, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Commit manifest update
+        run: |
+          if git diff --quiet -- docs/images/template_snaps/manifest.json; then
+            echo "manifest unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/images/template_snaps/manifest.json
+          git commit -m "docs(snaps): refresh template snapshot manifest"
+          git push

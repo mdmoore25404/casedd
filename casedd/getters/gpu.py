@@ -119,19 +119,21 @@ class GpuGetter(BaseGetter):
                 continue
             try:
                 gpu_idx = int(parts[0])
+                memory_used_mb = self._parse_float(parts[4], fallback=0.0)
+                memory_total_mb = self._parse_float(parts[5], fallback=0.0)
                 row: _GpuRow = {
                     "idx": gpu_idx,
                     "name": parts[1],
-                    "percent": float(parts[2]),
-                    "temperature": float(parts[3]),
-                    "memory_used_mb": float(parts[4]),
-                    "memory_total_mb": float(parts[5]),
-                    "memory_free_mb": float(parts[5]) - float(parts[4]),
-                    "power_w": float(parts[6]),
+                    "percent": self._parse_float(parts[2], fallback=0.0),
+                    "temperature": self._parse_float(parts[3], fallback=0.0),
+                    "memory_used_mb": memory_used_mb,
+                    "memory_total_mb": memory_total_mb,
+                    "memory_free_mb": max(0.0, memory_total_mb - memory_used_mb),
+                    "power_w": self._parse_float(parts[6], fallback=0.0),
                 }
                 gpu_rows.append(row)
             except ValueError:
-                # Field may be "[N/A]" — leave the key absent rather than emit garbage
+                # A malformed GPU index means the row cannot be associated safely.
                 _log.debug("Could not parse nvidia-smi row: %r", line)
 
         if not gpu_rows:
@@ -168,3 +170,14 @@ class GpuGetter(BaseGetter):
         data["nvidia.total_memory_free_mb"] = sum(row["memory_free_mb"] for row in gpu_rows)
         data["nvidia.total_memory_mb"] = sum(row["memory_total_mb"] for row in gpu_rows)
         return data
+
+    @staticmethod
+    def _parse_float(value: str, fallback: float) -> float:
+        """Parse a numeric nvidia-smi token, falling back for ``[N/A]``-style values."""
+        cleaned = value.strip()
+        if cleaned in {"", "[N/A]", "N/A"}:
+            return fallback
+        try:
+            return float(cleaned)
+        except ValueError:
+            return fallback

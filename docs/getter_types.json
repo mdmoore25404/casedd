@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-04-02 06:10 UTC",
+  "getter_types": [
+    "apod",
+    "containers",
+    "cpu",
+    "disk",
+    "fans",
+    "htop",
+    "invokeai",
+    "memory",
+    "net",
+    "netports",
+    "nvidia",
+    "nzbget",
+    "ollama",
+    "os_updates",
+    "pihole",
+    "plex",
+    "radarr",
+    "servarr",
+    "sonarr",
+    "speedtest",
+    "sysinfo",
+    "system",
+    "ups",
+    "vms",
+    "weather"
+  ]
+}

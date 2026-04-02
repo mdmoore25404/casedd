@@ -7,7 +7,9 @@ brief station status when an image cannot be fetched.
 from __future__ import annotations
 
 from io import BytesIO
-from urllib.error import URLError
+import logging
+import time
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from PIL import Image, ImageDraw
@@ -17,6 +19,10 @@ from casedd.renderer.fonts import fit_font
 from casedd.renderer.widgets.base import BaseWidget, content_rect, draw_label, fill_background
 from casedd.template.grid import Rect
 from casedd.template.models import WidgetConfig
+
+_log = logging.getLogger(__name__)
+_RADAR_CACHE_TTL_SEC = 300.0
+_RADAR_RETRY_BACKOFF_SEC = 30.0
 
 
 class WeatherRadarWidget(BaseWidget):
@@ -48,6 +54,8 @@ class WeatherRadarWidget(BaseWidget):
 
         radar_image_url = str(data.get(f"{root}.radar_image_url") or "").strip()
         radar_station = str(data.get(f"{root}.radar_station") or "").strip()
+        radar_status = str(data.get(f"{root}.radar_status") or "").strip()
+        radar_error = str(data.get(f"{root}.radar_error") or "").strip()
         zoom = cfg.zoom if cfg.zoom >= 1.0 else 1.0
 
         image_rect = Rect(inner.x + 2, inner.y + label_h + 2, inner.w - 4, inner.h - label_h - 6)
@@ -72,6 +80,10 @@ class WeatherRadarWidget(BaseWidget):
             ty = image_rect.y + max(2, (image_rect.h - th) // 2)
             draw.text((tx, ty), fallback, fill=(195, 205, 215), font=font)
 
+        indicator_text = self._indicator_text(state, radar_status, radar_error)
+        if indicator_text:
+            self._draw_indicator(draw, inner, indicator_text)
+
     def _get_cached_image(
         self,
         state: dict[str, object],
@@ -80,6 +92,7 @@ class WeatherRadarWidget(BaseWidget):
     ) -> Image.Image | None:
         """Fetch radar image with simple URL cache and zoom-aware URL candidates."""
         if not url:
+            self._clear_fetch_issue(state)
             return None
 
         for candidate in self._zoom_candidates(url, zoom):
@@ -114,25 +127,130 @@ class WeatherRadarWidget(BaseWidget):
 
         cached_url = state.get("radar_image_url")
         cached_image = state.get("radar_image")
+        cached_at = state.get("radar_image_fetched_at")
+        retry_after = state.get("radar_retry_after")
+        now = time.monotonic()
+        url_matches = isinstance(cached_url, str) and cached_url == url
+
+        result: Image.Image | None = None
+
         if (
-            isinstance(cached_url, str)
-            and cached_url == url
+            url_matches
             and isinstance(cached_image, Image.Image)
+            and (
+                (isinstance(retry_after, float) and retry_after > now)
+                or (
+                    isinstance(cached_at, float)
+                    and (now - cached_at) < _RADAR_CACHE_TTL_SEC
+                )
+            )
         ):
-            return cached_image
+            result = cached_image
+        else:
+            req = Request(url, headers={"User-Agent": "CASEDD/0.2"}, method="GET")  # noqa: S310
+            try:
+                with urlopen(req, timeout=3) as resp:  # noqa: S310
+                    raw = resp.read()
+            except HTTPError as exc:
+                badge = str(exc.code) if exc.code in {403, 404, 429} else "HTTP"
+                reason = (
+                    "NWS radar image rate limited (HTTP 429)"
+                    if exc.code == 429
+                    else f"NWS radar image HTTP {exc.code}"
+                )
+                self._set_fetch_issue(state, reason, badge)
+                if url_matches and isinstance(cached_image, Image.Image):
+                    result = cached_image
+            except URLError:
+                state["radar_retry_after"] = now + _RADAR_RETRY_BACKOFF_SEC
+                self._set_fetch_issue(state, "NWS radar image network failure", "NET")
+                if url_matches and isinstance(cached_image, Image.Image):
+                    result = cached_image
+            else:
+                try:
+                    image = Image.open(BytesIO(raw)).convert("RGB")
+                except OSError:
+                    state["radar_retry_after"] = now + _RADAR_RETRY_BACKOFF_SEC
+                    self._set_fetch_issue(state, "NWS radar image decode failure", "BAD")
+                    if url_matches and isinstance(cached_image, Image.Image):
+                        result = cached_image
+                else:
+                    state["radar_image_url"] = url
+                    state["radar_image"] = image
+                    state["radar_image_fetched_at"] = now
+                    state.pop("radar_retry_after", None)
+                    self._clear_fetch_issue(state)
+                    result = image
 
-        req = Request(url, headers={"User-Agent": "CASEDD/0.2"}, method="GET")  # noqa: S310
-        try:
-            with urlopen(req, timeout=3) as resp:  # noqa: S310
-                raw = resp.read()
-        except URLError:
-            return None
+        return result
 
-        try:
-            image = Image.open(BytesIO(raw)).convert("RGB")
-        except OSError:
-            return None
+    def _indicator_text(
+        self,
+        state: dict[str, object],
+        radar_status: str,
+        radar_error: str,
+    ) -> str:
+        """Resolve a compact badge for degraded radar states."""
+        fetch_badge = state.get("radar_fetch_badge")
+        if isinstance(fetch_badge, str) and fetch_badge:
+            return fetch_badge
 
-        state["radar_image_url"] = url
-        state["radar_image"] = image
-        return image
+        status = radar_status.strip().lower()
+        indicator = ""
+        if status == "unavailable":
+            indicator = "N/A"
+        elif status == "unsupported":
+            indicator = "EXT"
+        elif status == "unconfigured":
+            indicator = "CFG"
+        elif status == "error":
+            indicator = "META"
+        elif status not in {"", "ok"} or radar_error:
+            indicator = "RAD"
+        return indicator
+
+    def _draw_indicator(
+        self,
+        draw: ImageDraw.ImageDraw,
+        inner: Rect,
+        text: str,
+    ) -> None:
+        """Draw a compact radar status badge in the widget header."""
+        font = fit_font(text, max(20, inner.w // 6), 18)
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_w = int(bbox[2] - bbox[0])
+        text_h = int(bbox[3] - bbox[1])
+        pad_x = 6
+        pad_y = 2
+        box_w = text_w + (pad_x * 2)
+        box_h = text_h + (pad_y * 2)
+        box_x = inner.x + inner.w - box_w - 2
+        box_y = inner.y + 2
+        draw.rounded_rectangle(
+            (box_x, box_y, box_x + box_w, box_y + box_h),
+            radius=6,
+            fill=(68, 24, 24),
+            outline=(190, 88, 88),
+        )
+        draw.text(
+            (box_x + pad_x, box_y + pad_y - int(bbox[1])),
+            text,
+            fill=(255, 230, 230),
+            font=font,
+        )
+
+    def _set_fetch_issue(self, state: dict[str, object], reason: str, badge: str) -> None:
+        """Store and log a radar image fetch problem once per change."""
+        previous = state.get("radar_fetch_reason")
+        state["radar_fetch_reason"] = reason
+        state["radar_fetch_badge"] = badge
+        if previous != reason:
+            _log.warning("weather radar degraded: %s", reason)
+
+    def _clear_fetch_issue(self, state: dict[str, object]) -> None:
+        """Clear a radar image fetch problem after successful recovery."""
+        previous = state.get("radar_fetch_reason")
+        state.pop("radar_fetch_reason", None)
+        state.pop("radar_fetch_badge", None)
+        if isinstance(previous, str) and previous:
+            _log.info("weather radar recovered")

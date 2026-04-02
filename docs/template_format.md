@@ -25,6 +25,96 @@ letterboxed inside the active output instead of being stretched.
 
 ---
 
+## Template examples
+
+Per-template runtime examples are loaded from `docs/images/template_snaps/manifest.json`.
+For privacy-safe variants, the docs first try a matching `_demo` image (for example,
+`system_stats_demo.png`) and fall back to the regular snapshot when a demo image is not
+present.
+
+<div id="template-examples-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px;margin:14px 0 20px;"></div>
+
+<script>
+  (() => {
+    const grid = document.getElementById('template-examples-grid');
+    if (!grid) {
+      return;
+    }
+
+    const probeImage = (src) => new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve(true);
+      image.onerror = () => resolve(false);
+      image.src = src;
+    });
+
+    const pickTemplateImage = async (entry) => {
+      const demo = entry.image.replace(/\.png$/i, '_demo.png');
+      if (demo !== entry.image && await probeImage(demo)) {
+        return demo;
+      }
+      if (await probeImage(entry.image)) {
+        return entry.image;
+      }
+      return null;
+    };
+
+    fetch('/images/template_snaps/manifest.json', { cache: 'no-store' })
+      .then((response) => response.ok ? response.json() : null)
+      .then(async (payload) => {
+        if (!payload || !Array.isArray(payload.templates) || payload.templates.length === 0) {
+          return;
+        }
+
+        const cards = [];
+        for (const entry of payload.templates) {
+          if (!entry || !entry.name || !entry.image) {
+            continue;
+          }
+          const resolvedImage = await pickTemplateImage(entry);
+          if (!resolvedImage) {
+            continue;
+          }
+
+          const card = document.createElement('a');
+          card.href = `https://github.com/mdmoore25404/casedd/blob/main/templates/${entry.name}.casedd`;
+          card.target = '_blank';
+          card.rel = 'noopener';
+          card.style.textDecoration = 'none';
+          card.style.background = '#0f1420';
+          card.style.border = '1px solid #2a3244';
+          card.style.borderRadius = '12px';
+          card.style.overflow = 'hidden';
+          card.style.display = 'block';
+
+          const image = document.createElement('img');
+          image.src = resolvedImage;
+          image.alt = `${entry.name} template snapshot`;
+          image.style.width = '100%';
+          image.style.aspectRatio = '5 / 3';
+          image.style.objectFit = 'cover';
+          image.style.display = 'block';
+
+          const caption = document.createElement('div');
+          caption.style.padding = '8px 10px 10px';
+          caption.style.color = '#dce5ff';
+          caption.style.fontWeight = '600';
+          caption.textContent = `${entry.name}.casedd`;
+
+          card.append(image, caption);
+          cards.push(card);
+        }
+
+        if (cards.length > 0) {
+          grid.replaceChildren(...cards);
+        }
+      })
+      .catch(() => undefined);
+  })();
+</script>
+
+---
+
 ## Top-level keys
 
 | Key | Type | Required | Default | Description |
@@ -36,7 +126,7 @@ letterboxed inside the active output instead of being stretched.
 | `aspect_ratio` | string | no | — | Optional logical layout aspect ratio such as `5:3` or `1.777` |
 | `layout_mode` | string | no | `stretch` | `stretch` fills the output, `fit` letterboxes to preserve aspect ratio |
 | `background` | string | no | `"#000000"` | Canvas background color (hex, rgb(), or gradient — see Color section) |
-| `refresh_rate` | float | no | config default | Render frequency in Hz (frame rate) |
+| `refresh_rate_hz` | float | no | config default | Render frequency in Hz (frame rate). Legacy `refresh_rate` is accepted as an alias. |
 | `grid` | Grid | yes | — | Layout definition (see Grid section) |
 | `widgets` | dict[str, Widget] | yes | — | Widget definitions keyed by name |
 

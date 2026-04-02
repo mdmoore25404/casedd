@@ -142,6 +142,19 @@ class _PanelRuntime:
     fb_device: Path
     rotation: int
     current_template: str = ""
+    next_render_at: float = 0.0
+    current_render_interval: float = 0.0
+    refresh_signature: tuple[object, ...] | None = None
+
+
+@dataclass(frozen=True)
+class _TemplateRefreshProfile:
+    """Effective refresh configuration for one template."""
+
+    requested_hz: float
+    effective_hz: float
+    getter_cap_hz: float | None
+    limiting_getters: tuple[str, ...]
 
 
 @dataclass
@@ -1028,22 +1041,40 @@ class Daemon:
         return runtimes
 
     async def _render_loop(self, context: _RenderLoopContext) -> None:
-        """Drive render/output cycle at configured refresh rate."""
-        interval = 1.0 / self._cfg.refresh_rate
+        """Drive render/output cycle using per-panel effective refresh rates."""
         last_getter_sync = 0.0
+        loop = asyncio.get_running_loop()
 
         while not self._shutdown.is_set():
-            tick_start = asyncio.get_event_loop().time()
+            tick_start = loop.time()
             snapshot = self._store.snapshot()
             active_templates: set[str] = set()
+            next_due_at: float | None = None
 
             for panel in context.panel_runtimes:
                 selected = panel.selector.select_template(snapshot)
                 active_templates.add(selected)
                 if selected != panel.current_template:
                     panel.current_template = selected
+                    panel.next_render_at = tick_start
                     self._store.set(f"{_TEMPLATE_CURRENT_PREFIX}{panel.name}", selected)
                     _log.info("Panel '%s' switched template to '%s'", panel.name, selected)
+
+                profile = self._template_refresh_profile(
+                    context.registry,
+                    selected,
+                    context.getters_by_name,
+                )
+                render_interval = self._apply_refresh_profile(
+                    panel,
+                    selected,
+                    profile,
+                    tick_start,
+                )
+
+                if tick_start + 1e-9 < panel.next_render_at:
+                    next_due_at = self._earliest_deadline(next_due_at, panel.next_render_at)
+                    continue
 
                 image = await asyncio.to_thread(
                     self._render_one,
@@ -1052,6 +1083,8 @@ class Daemon:
                     selected,
                 )
                 if image is None:
+                    panel.next_render_at = tick_start + render_interval
+                    next_due_at = self._earliest_deadline(next_due_at, panel.next_render_at)
                     continue
 
                 if panel.selector.is_trigger_held:
@@ -1062,6 +1095,8 @@ class Daemon:
                 context.http_output.set_latest_image(panel.name, image)
                 await context.ws_output.broadcast(image, panel=panel.name)
                 self._render_count += 1
+                panel.next_render_at = tick_start + render_interval
+                next_due_at = self._earliest_deadline(next_due_at, panel.next_render_at)
 
             if tick_start - last_getter_sync >= _GETTER_SYNC_INTERVAL_SEC:
                 await self._sync_getter_tasks(
@@ -1073,11 +1108,150 @@ class Daemon:
                 )
                 last_getter_sync = tick_start
 
-            elapsed = asyncio.get_event_loop().time() - tick_start
+            getter_sync_due = last_getter_sync + _GETTER_SYNC_INTERVAL_SEC
+            next_due_at = self._earliest_deadline(next_due_at, getter_sync_due)
+
+            elapsed = loop.time() - tick_start
             self._record_render_timing(elapsed * 1000.0)
-            sleep_time = max(0.0, interval - elapsed)
+            if next_due_at is None:
+                next_due_at = tick_start + (1.0 / self._cfg.refresh_rate)
+            sleep_time = max(0.0, next_due_at - loop.time())
             with contextlib.suppress(TimeoutError):
                 await asyncio.wait_for(asyncio.shield(self._shutdown.wait()), timeout=sleep_time)
+
+    @staticmethod
+    def _earliest_deadline(current: float | None, candidate: float) -> float:
+        """Return the earliest non-null deadline."""
+        if current is None:
+            return candidate
+        return min(current, candidate)
+
+    def _template_refresh_profile(
+        self,
+        registry: TemplateRegistry,
+        template_name: str,
+        getters_by_name: dict[str, BaseGetter],
+    ) -> _TemplateRefreshProfile:
+        """Resolve the effective refresh profile for a template."""
+        try:
+            template = registry.get(template_name)
+        except Exception:
+            return _TemplateRefreshProfile(
+                requested_hz=self._cfg.refresh_rate,
+                effective_hz=self._cfg.refresh_rate,
+                getter_cap_hz=None,
+                limiting_getters=(),
+            )
+
+        requested_hz = (
+            template.refresh_rate_hz
+            if template.refresh_rate_hz is not None
+            else self._cfg.refresh_rate
+        )
+        getter_caps: list[tuple[str, float]] = []
+        for getter_name in self._template_getter_names(template):
+            getter = getters_by_name.get(getter_name)
+            if getter is None:
+                continue
+            interval_seconds = getter.interval_seconds
+            if interval_seconds <= 0.0:
+                continue
+            getter_caps.append((getter_name, 1.0 / interval_seconds))
+
+        if not getter_caps:
+            return _TemplateRefreshProfile(
+                requested_hz=requested_hz,
+                effective_hz=requested_hz,
+                getter_cap_hz=None,
+                limiting_getters=(),
+            )
+
+        getter_cap_hz = max(hz for _, hz in getter_caps)
+        limiting_getters = tuple(
+            sorted(
+                getter_name
+                for getter_name, getter_hz in getter_caps
+                if abs(getter_hz - getter_cap_hz) < 1e-9
+            )
+        )
+        return _TemplateRefreshProfile(
+            requested_hz=requested_hz,
+            effective_hz=min(requested_hz, getter_cap_hz),
+            getter_cap_hz=getter_cap_hz,
+            limiting_getters=limiting_getters,
+        )
+
+    def _template_getter_names(self, template: Template) -> tuple[str, ...]:
+        """Return unique getter names referenced by a template."""
+        names = {
+            getter_name
+            for source in self._template_sources(template)
+            for getter_name in [self._getter_name_for_source(source)]
+            if getter_name is not None
+        }
+        return tuple(sorted(names))
+
+    def _apply_refresh_profile(
+        self,
+        panel: _PanelRuntime,
+        template_name: str,
+        profile: _TemplateRefreshProfile,
+        now: float,
+    ) -> float:
+        """Apply refresh profile changes to a panel and log transitions once."""
+        signature = (
+            template_name,
+            profile.requested_hz,
+            profile.effective_hz,
+            profile.getter_cap_hz,
+            profile.limiting_getters,
+        )
+        render_interval = 1.0 / profile.effective_hz
+        if panel.refresh_signature != signature:
+            panel.refresh_signature = signature
+            panel.current_render_interval = render_interval
+            panel.next_render_at = now
+            self._log_refresh_profile(panel.name, template_name, profile)
+        elif panel.current_render_interval <= 0.0:
+            panel.current_render_interval = render_interval
+        return panel.current_render_interval
+
+    def _log_refresh_profile(
+        self,
+        panel_name: str,
+        template_name: str,
+        profile: _TemplateRefreshProfile,
+    ) -> None:
+        """Emit INFO/WARN logs for the current effective panel refresh profile."""
+        cap_desc = "none"
+        if profile.getter_cap_hz is not None:
+            limiting = ", ".join(profile.limiting_getters) or "unknown getter"
+            cap_desc = f"{profile.getter_cap_hz:.3f} Hz via {limiting}"
+
+        _log.info(
+            "Panel '%s' template '%s' refresh requested %.3f Hz | getter cap %s | "
+            "effective %.3f Hz",
+            panel_name,
+            template_name,
+            profile.requested_hz,
+            cap_desc,
+            profile.effective_hz,
+        )
+
+        if profile.getter_cap_hz is None:
+            return
+        if profile.effective_hz + 1e-9 >= profile.requested_hz:
+            return
+
+        limiting = ", ".join(profile.limiting_getters) or "unknown getter"
+        _log.warning(
+            "Panel '%s' template '%s' requested %.3f Hz but is capped to %.3f Hz by %s",
+            panel_name,
+            template_name,
+            profile.requested_hz,
+            profile.effective_hz,
+            limiting,
+        )
 
     def _render_one(
         self,

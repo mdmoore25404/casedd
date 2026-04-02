@@ -15,7 +15,7 @@ from datetime import date, datetime
 import json
 import logging
 from typing import cast
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -79,6 +79,8 @@ class WeatherGetter(BaseGetter):
                 "weather.conditions": "No weather location configured",
                 "weather.alert_count": 0.0,
                 "weather.alert_active": 0,
+                "weather.radar_status": "unconfigured",
+                "weather.radar_error": "No weather location configured",
             }
 
         if self._provider == "open-meteo":
@@ -226,12 +228,17 @@ class WeatherGetter(BaseGetter):
 
         radar_image_url = ""
         radar_url = ""
+        radar_status = "ok"
+        radar_error = ""
         if radar_station:
             radar_url = f"https://radar.weather.gov/station/{radar_station}"
             radar_image_url = (
                 "https://radar.weather.gov/ridge/standard/"
                 f"{radar_station}_loop.gif"
             )
+        else:
+            radar_status = "unavailable"
+            radar_error = "No NWS radar station for the selected location"
 
         return {
             "weather.provider": "nws",
@@ -251,6 +258,8 @@ class WeatherGetter(BaseGetter):
             "weather.radar_station": radar_station,
             "weather.radar_url": radar_url,
             "weather.radar_image_url": radar_image_url,
+            "weather.radar_status": radar_status,
+            "weather.radar_error": radar_error,
         }
 
     def _sample_open_meteo(self, coords: _LatLon) -> dict[str, StoreValue]:
@@ -306,6 +315,8 @@ class WeatherGetter(BaseGetter):
             "weather.radar_station": "",
             "weather.radar_url": "https://open-meteo.com/en/docs",
             "weather.radar_image_url": "",
+            "weather.radar_status": "unsupported",
+            "weather.radar_error": "Open-Meteo does not provide a CASEDD radar image feed",
         }
 
     def _request_json(self, url: str) -> dict[str, object] | None:
@@ -321,14 +332,20 @@ class WeatherGetter(BaseGetter):
         try:
             with urlopen(req, timeout=8) as resp:  # noqa: S310 -- controlled URL
                 raw = resp.read().decode("utf-8")
+        except HTTPError as exc:
+            if exc.code == 429:
+                _log.warning("weather request rate limited (%s): %s", exc.code, url)
+            else:
+                _log.warning("weather request HTTP %s: %s", exc.code, url)
+            return None
         except URLError:
-            _log.debug("weather request failed: %s", url, exc_info=True)
+            _log.warning("weather request failed: %s", url, exc_info=True)
             return None
 
         try:
             payload = json.loads(raw)
         except json.JSONDecodeError:
-            _log.debug("weather JSON decode failed: %s", url, exc_info=True)
+            _log.warning("weather JSON decode failed: %s", url, exc_info=True)
             return None
 
         return payload if isinstance(payload, dict) else None
@@ -347,6 +364,8 @@ class WeatherGetter(BaseGetter):
             "weather.watch_warning": "Unavailable",
             "weather.radar_url": "",
             "weather.radar_image_url": "",
+            "weather.radar_status": "error",
+            "weather.radar_error": message,
         }
 
 

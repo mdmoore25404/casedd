@@ -4,10 +4,12 @@ gem "jekyll", "~> 4.3"
 gem "jekyll-remote-theme"
 gem "jekyll-seo-tag"
 gem "jekyll-include-cache"
+gem "rake", "~> 13.0"
+gem "bigdecimal", "~> 3.1"
 
-# sass-embedded >= 1.65 treats mixed-unit interpolation as an error which
-# breaks just-the-docs v0.10.x. Pin to the last compatible release.
-gem "sass-embedded", "~> 1.63"
+# Newer sass-embedded versions emit noisy @import deprecation warnings from
+# just-the-docs internals; keep docs builds on the last quiet compatible release.
+gem "sass-embedded", "= 1.63.6"
 
 # Windows/JRuby compat stubs (harmless on Linux)
 gem "webrick", "~> 1.8"

@@ -19,7 +19,7 @@ from casedd.data_store import DataStore, StoreValue
 from casedd.getters.base import BaseGetter
 
 _GiB = 1024 ** 3
-_MEGABIT = 1_000_000
+_MEGABYTE = 1_000_000
 
 
 class DiskGetter(BaseGetter):
@@ -85,14 +85,17 @@ class DiskGetter(BaseGetter):
             write_delta = 0
         self._last_time = now
 
-        read_mbps = (read_delta * 8.0) / elapsed / _MEGABIT
-        write_mbps = (write_delta * 8.0) / elapsed / _MEGABIT
+        read_mb_s = read_delta / elapsed / _MEGABYTE
+        write_mb_s = write_delta / elapsed / _MEGABYTE
 
         return {
             "disk.percent": float(du.percent),
             "disk.used_gb": round(du.used / _GiB, 2),
             "disk.total_gb": round(du.total / _GiB, 2),
             "disk.free_gb": round(du.free / _GiB, 2),
-            "disk.read_mbps": round(read_mbps, 3),
-            "disk.write_mbps": round(write_mbps, 3),
+            "disk.read_mb_s": round(read_mb_s, 3),
+            "disk.write_mb_s": round(write_mb_s, 3),
+            # Legacy key names retained for compatibility with older templates.
+            "disk.read_mbps": round(read_mb_s, 3),
+            "disk.write_mbps": round(write_mb_s, 3),
         }

@@ -19,6 +19,7 @@ Example .casedd config:
 from __future__ import annotations
 
 from collections import deque
+from dataclasses import dataclass
 import time
 
 from PIL import Image, ImageDraw, ImageFont
@@ -44,6 +45,14 @@ _SERIES_FALLBACK = (
     (77, 163, 255),
     (203, 141, 255),
 )
+
+
+@dataclass(frozen=True)
+class _LegendEntry:
+    """Legend text and resolved color for one multi-series entry."""
+
+    text: str
+    color: tuple[int, int, int]
 
 
 class HistogramWidget(BaseWidget):
@@ -183,7 +192,8 @@ class HistogramWidget(BaseWidget):
         area_w = inner.w - 4
 
         area_h_total = inner.h - label_h - 4
-        legend = self._multi_legend_text(cfg, current_values)
+        legend_entries = self._multi_legend_entries(cfg, current_values)
+        legend = "  ".join(entry.text for entry in legend_entries)
         legend_font = get_font(max(9, area_h_total // 4))
         legend_bbox = draw.textbbox((0, 0), legend, font=legend_font)
         legend_band_h = min(
@@ -219,11 +229,12 @@ class HistogramWidget(BaseWidget):
                 fill = self._series_color(cfg, series_idx)
                 draw.rectangle([bx, by, bx + sub_w, area_y + area_h], fill=fill)
 
-        draw.text(
-            (area_x + 3, inner.y + label_h + 4),
-            legend,
-            fill=(220, 220, 220),
-            font=legend_font,
+        self._draw_legend_entries(
+            draw,
+            area_x + 3,
+            inner.y + label_h + 4,
+            legend_font,
+            legend_entries,
         )
 
     def _series_buffers(
@@ -367,13 +378,13 @@ class HistogramWidget(BaseWidget):
             return parse_color(cfg.color, fallback=_SERIES_FALLBACK[index % len(_SERIES_FALLBACK)])
         return _SERIES_FALLBACK[index % len(_SERIES_FALLBACK)]
 
-    def _multi_legend_text(
+    def _multi_legend_entries(
         self,
         cfg: WidgetConfig,
         current_values: dict[str, float | None],
-    ) -> str:
-        """Build compact legend text for current multi-series values."""
-        entries: list[str] = []
+    ) -> list[_LegendEntry]:
+        """Build compact legend entries for current multi-series values."""
+        entries: list[_LegendEntry] = []
         for idx, source in enumerate(cfg.sources):
             if idx < len(cfg.series_labels):
                 label = cfg.series_labels[idx]
@@ -386,8 +397,25 @@ class HistogramWidget(BaseWidget):
                 text = f"{label} {val:.{cfg.precision}f}"
                 if cfg.unit:
                     text = f"{text}{cfg.unit}"
-            entries.append(text)
-        return "  ".join(entries)
+            entries.append(_LegendEntry(text=text, color=self._series_color(cfg, idx)))
+        return entries
+
+    def _draw_legend_entries(
+        self,
+        draw: ImageDraw.ImageDraw,
+        x: int,
+        y: int,
+        font: ImageFont.ImageFont | ImageFont.FreeTypeFont,
+        entries: list[_LegendEntry],
+    ) -> None:
+        """Draw multi-series legend entries using their corresponding colors."""
+        cursor_x = x
+        for idx, entry in enumerate(entries):
+            if idx > 0:
+                cursor_x += 12
+            draw.text((cursor_x, y), entry.text, fill=entry.color, font=font)
+            bbox = draw.textbbox((cursor_x, y), entry.text, font=font)
+            cursor_x += int(bbox[2] - bbox[0])
 
     def _draw_current_value(
         self,
