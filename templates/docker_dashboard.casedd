@@ -9,11 +9,10 @@ refresh_rate: 4.0
 
 grid:
   template_areas: |
-    "runtime runtime running"
-    "paused exited exited"
-    "table table table"
-  columns: "1fr 1fr 1fr"
-  rows: "0.22fr 0.22fr 0.56fr"
+    "runtime running paused exited"
+    "table table table table"
+  columns: "1.3fr 0.9fr 0.9fr 0.9fr"
+  rows: "0.28fr 0.72fr"
 
 widgets:
   runtime:
@@ -23,30 +22,14 @@ widgets:
     grid:
       template_areas: |
         "logo"
-        "name"
       columns: "1fr"
-      rows: "0.72fr 0.28fr"
+      rows: "1fr"
     children_named:
       logo:
         type: image
         source: containers.logo_path
         scale: fit
         background: transparent
-      name:
-        type: text
-        source: containers.runtime
-        label: "Runtime"
-        color: "#8ac6ff"
-        font_size: auto
-
-  total:
-    type: value
-    source: containers.count_total
-    label: "Total"
-    color: "#dfe7ef"
-    background: "#0f1a24"
-    font_size: auto
-    padding: 8
 
   running:
     type: value
