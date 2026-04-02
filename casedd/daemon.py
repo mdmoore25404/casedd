@@ -37,6 +37,11 @@ from casedd.config import (
     save_rotation_config_to_yaml,
 )
 from casedd.data_store import DataStore, StoreValue
+from casedd.emergency_exit import (
+    EmergencyExitWatcher,
+    emergency_exit_enabled_from_env,
+    emergency_input_glob_from_env,
+)
 from casedd.getter_health import GetterHealthRegistry
 from casedd.getters.apod import ApodGetter
 from casedd.getters.base import BaseGetter
@@ -170,6 +175,7 @@ class Daemon:
         self._render_loop_last_ms: float = 0.0
         self._render_loop_ema_ms: float = 0.0
         self._render_loop_max_ms: float = 0.0
+        self._emergency_exit_watcher: EmergencyExitWatcher | None = None
 
     def _record_render_timing(self, elapsed_ms: float) -> None:
         """Update rolling render-loop timing statistics."""
@@ -195,6 +201,7 @@ class Daemon:
         self._store.set(_TEST_MODE_STORE_KEY, 1 if self._cfg.test_mode else 0)
         self._load_speedtest_cache()
         self._setup_framebuffer_detection()
+        self._setup_emergency_exit_watcher()
 
         getters = self._create_getters()
         getters_by_name = {type(getter).__name__: getter for getter in getters}
@@ -246,6 +253,8 @@ class Daemon:
         try:
             await self._render_loop(context)
         finally:
+            if self._emergency_exit_watcher is not None:
+                self._emergency_exit_watcher.stop()
             self._save_speedtest_cache()
             _log.info("Shutting down CASEDD daemon…")
             for getter in getters:
@@ -261,6 +270,23 @@ class Daemon:
             await registry.stop()
             await self._blackout_framebuffers(panel_runtimes)
             _log.info("Daemon shutdown complete.")
+
+    def _setup_emergency_exit_watcher(self) -> None:
+        """Enable optional ESC/Q emergency key watcher.
+
+        The watcher listens on Linux input-event devices and requests a normal
+        daemon shutdown when ESC or Q is pressed.
+        """
+        if not emergency_exit_enabled_from_env():
+            _log.info("Emergency key-exit watcher disabled by environment")
+            return
+
+        watcher = EmergencyExitWatcher(
+            input_glob=emergency_input_glob_from_env(),
+            shutdown_event=self._shutdown,
+        )
+        watcher.start()
+        self._emergency_exit_watcher = watcher
 
     def _speedtest_snapshot(self) -> dict[str, StoreValue]:
         """Return only the ``speedtest.*`` namespace from the live store.

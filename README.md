@@ -35,6 +35,7 @@ Interested in commercial use or white-label rights? Feel free to reach out.
 - **Operational health** — `/api/health` reports `ok`, `degraded`, or per-getter `inactive` / `starting` / `ok` / `error` states; `/api/metrics` exports Prometheus-friendly metrics
 - **CLI control surface** — `casedd-ctl` wraps the HTTP API for status, health, templates, metrics, snapshots, data dumps, and reloads
 - **Dev-friendly** — `CASEDD_NO_FB=1` disables framebuffer for dev; browser WebSocket view is the primary dev display
+- **Emergency tty recovery** — pressing ESC or Q on a local keyboard requests a clean daemon shutdown so the base OS regains tty control
 - **Multiple deployment modes** — plain Python, systemd service, Docker Compose
 
 ---
@@ -84,6 +85,18 @@ cp .env.example .env
 ./dev.sh test --fast # pytest without coverage for quicker iteration
 ./dev.sh docs       # generate API docs to docs/api.json (local only)
 ```
+
+### Emergency tty recovery
+
+When CASEDD is running on a local tty, pressing ESC or Q on an attached
+keyboard requests a clean daemon shutdown. This allows quick recovery when
+you need the base OS login prompt immediately.
+
+Optional environment controls:
+
+- `CASEDD_EMERGENCY_EXIT_KEYS=0` disables this watcher.
+- `CASEDD_EMERGENCY_INPUT_GLOB=/dev/input/event*` overrides the input-event
+  device glob (useful for integration tests).
 
 ### Advanced React app (Vite)
 
