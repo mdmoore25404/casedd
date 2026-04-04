@@ -11,10 +11,10 @@
       "synology.surveillance.status.rows": "LoadingDock|started|RECORDING\nFrontGate|started|ONLINE",
       "synology.camera_1.name": "LoadingDock",
       "synology.camera_1.status": "recording",
-      "synology.camera_1.snapshot_url": "assets/slideshow/animals/cat.jpg",
+      "synology.camera_1.snapshot_url": "assets/synology/surveillance_demo/cam1_loading_dock.png",
       "synology.camera_2.name": "FrontGate",
       "synology.camera_2.status": "online",
-      "synology.camera_2.snapshot_url": "assets/slideshow/animals/frog.png"
+      "synology.camera_2.snapshot_url": "assets/synology/surveillance_demo/cam2_corridor.png"
     }
   }
 ]
