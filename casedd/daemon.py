@@ -65,6 +65,7 @@ from casedd.getters.speedtest import SpeedtestGetter
 from casedd.getters.synology import SynologyGetter
 from casedd.getters.sysinfo import SysinfoGetter
 from casedd.getters.system import SystemGetter
+from casedd.getters.truenas import TrueNASGetter
 from casedd.getters.ups import UpsGetter
 from casedd.getters.vms import VmGetter
 from casedd.getters.weather import WeatherGetter
@@ -1373,6 +1374,13 @@ class Daemon:
                 camera_exclude_regex=self._cfg.synology_camera_exclude_regex,
                 camera_exclude_statuses=self._cfg.synology_camera_exclude_statuses,
                 include_dsm_updates=self._cfg.synology_dsm_updates_enabled,
+            ),
+            TrueNASGetter(
+                self._store,
+                host=self._cfg.truenas_host,
+                port=self._cfg.truenas_port,
+                api_key=self._cfg.truenas_api_key,
+                interval=self._cfg.truenas_interval,
             ),
             RadarrGetter(
                 self._store,
