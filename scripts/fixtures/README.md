@@ -22,6 +22,7 @@ two ways:
 | `pihole.json` | `pihole` | `pihole.*` |
 | `servarr_dashboard.json` | `servarr_dashboard` | `radarr.*`, `sonarr.*` |
 | `synology_dashboard.json` | `synology_dashboard` | `synology.*` |
+| `synology_surveillance.json` | `synology_surveillance` | `synology.system.*`, `synology.surveillance.*`, `synology.camera_*.*` |
 | `truenas_dashboard.json` | `truenas_dashboard` | `truenas.*`, supporting `cpu.*`/`memory.*`/`disk.*`/`network.*` |
 | `truenas_vms.json` | `truenas_vms` | `truenas.system.*`, `truenas.vms.*` |
 | `truenas_jails.json` | `truenas_jails` | `truenas.system.*`, `truenas.jails.*` |

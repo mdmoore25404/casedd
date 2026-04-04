@@ -1,0 +1,20 @@
+[
+  {
+    "at_ms": 0,
+    "update": {
+      "synology.auth.ok": 1.0,
+      "synology.system.reachable": 1.0,
+      "synology.system.hostname": "SYNO-CAM-DEMO",
+      "synology.surveillance.available": 1.0,
+      "synology.surveillance.camera_count": 2.0,
+      "synology.surveillance.recording_count": 1.0,
+      "synology.surveillance.status.rows": "LoadingDock|started|RECORDING\nFrontGate|started|ONLINE",
+      "synology.camera_1.name": "LoadingDock",
+      "synology.camera_1.status": "recording",
+      "synology.camera_1.snapshot_url": "assets/slideshow/animals/cat.jpg",
+      "synology.camera_2.name": "FrontGate",
+      "synology.camera_2.status": "online",
+      "synology.camera_2.snapshot_url": "assets/slideshow/animals/frog.png"
+    }
+  }
+]
