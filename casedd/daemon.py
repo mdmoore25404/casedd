@@ -1548,6 +1548,7 @@ class Daemon:
             ("memory.", "MemoryGetter"),
             ("disk.", "DiskGetter"),
             ("net.", "NetworkGetter"),
+            ("truenas.", "TrueNASGetter"),
             ("system.", "SystemGetter"),
             ("fans.", "FanGetter"),
             ("containers.", "ContainersGetter"),

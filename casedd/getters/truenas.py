@@ -31,6 +31,7 @@ import logging
 import os
 import ssl
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from casedd.data_store import DataStore, StoreValue
@@ -152,10 +153,27 @@ class TrueNASGetter(BaseGetter):
             api_key: TrueNAS API key (or CASEDD_TRUENAS_API_KEY env var).
         """
         super().__init__(store, interval)
-        self._host = host or os.environ.get("CASEDD_TRUENAS_HOST", "")
+        raw_host = host or os.environ.get("CASEDD_TRUENAS_HOST", "")
         self._port = port or _as_int(os.environ.get("CASEDD_TRUENAS_PORT"), 80)
         self._api_key = api_key or os.environ.get("CASEDD_TRUENAS_API_KEY", "")
-        self._base_url = f"http://{self._host}:{self._port}/api/v2.0"
+
+        host_value = raw_host.strip()
+        scheme = "https" if self._port == 443 else "http"
+        if "://" in host_value:
+            parsed = urlsplit(host_value)
+            if parsed.scheme in {"http", "https"}:
+                scheme = parsed.scheme
+            host_value = parsed.netloc or parsed.path
+
+        if "/" in host_value:
+            host_value = host_value.rsplit("/", 1)[0]
+        if host_value.count(":") == 1:
+            maybe_host, maybe_port = host_value.rsplit(":", 1)
+            if maybe_port.isdigit():
+                host_value = maybe_host
+
+        self._host = host_value
+        self._base_url = f"{scheme}://{self._host}:{self._port}/api/v2.0"
         self._session_id: str | None = None
 
     async def fetch(self) -> dict[str, StoreValue]:
@@ -224,7 +242,27 @@ class TrueNASGetter(BaseGetter):
             out: Output dict to populate with pool entries.
         """
         pools = self._call("pool")
+        datasets = self._call("pool/dataset")
         pool_list = _as_list(pools)
+        dataset_list = _as_list(datasets)
+
+        dataset_capacity: dict[str, tuple[int, int]] = {}
+        for dataset in dataset_list:
+            dataset_dict = _as_dict(dataset)
+            pool_name = _as_text(dataset_dict.get("pool", ""))
+            dataset_id = _as_text(dataset_dict.get("id", ""))
+            # Root dataset id usually matches the pool name and carries pool totals.
+            if not pool_name or dataset_id != pool_name:
+                continue
+
+            used_dict = _as_dict(dataset_dict.get("used", {}))
+            available_dict = _as_dict(dataset_dict.get("available", {}))
+            used_bytes = _as_int(used_dict.get("parsed", 0))
+            available_bytes = _as_int(available_dict.get("parsed", 0))
+            if used_bytes > 0 or available_bytes > 0:
+                dataset_capacity[pool_name] = (used_bytes, available_bytes)
+
+        pool_rows: list[str] = []
         for idx, pool in enumerate(pool_list[:10], 1):
             pool_dict = _as_dict(pool)
             pool_name = _as_text(pool_dict.get("name", ""))
@@ -233,15 +271,29 @@ class TrueNASGetter(BaseGetter):
             size_bytes = _as_int(pool_stats.get("size", 0))
             allocated_bytes = _as_int(pool_stats.get("allocated", 0))
 
+            if size_bytes <= 0 and pool_name in dataset_capacity:
+                used_bytes, available_bytes = dataset_capacity[pool_name]
+                allocated_bytes = used_bytes
+                size_bytes = used_bytes + available_bytes
+
             out[f"truenas.pool_{idx}.name"] = pool_name
             out[f"truenas.pool_{idx}.status"] = pool_status
+            used_pct: float | None = None
             if size_bytes > 0:
-                out[f"truenas.pool_{idx}.used_percent"] = round(
-                    (allocated_bytes / size_bytes) * 100, 1
-                )
-                out[f"truenas.pool_{idx}.free_tb"] = round(
-                    (size_bytes - allocated_bytes) / (1024**4), 2
-                )
+                used_pct = round((allocated_bytes / size_bytes) * 100, 1)
+                free_tb = round((size_bytes - allocated_bytes) / (1024**4), 2)
+                out[f"truenas.pool_{idx}.used_percent"] = used_pct
+                out[f"truenas.pool_{idx}.free_tb"] = free_tb
+
+            # Add to rows for table display (limit to 3 rows)
+            if idx <= 3:
+                status_icon = "●" if pool_status == "healthy" else "⚠"
+                usage_text = f"{used_pct}%" if used_pct is not None else "--"
+                row = f"{pool_name}|{status_icon}|{usage_text}"
+                pool_rows.append(row)
+
+        if pool_rows:
+            out["truenas.pools.rows"] = "\n".join(pool_rows)
 
     def _sample_disks(self, out: dict[str, StoreValue]) -> None:
         """Sample TrueNAS disk data.

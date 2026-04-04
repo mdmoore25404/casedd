@@ -91,6 +91,11 @@ def test_getter_name_for_source_includes_synology() -> None:
     assert Daemon._getter_name_for_source("synology.system.model") == "SynologyGetter"
 
 
+def test_getter_name_for_source_includes_truenas() -> None:
+    """TrueNAS namespace should resolve to TrueNASGetter."""
+    assert Daemon._getter_name_for_source("truenas.system.hostname") == "TrueNASGetter"
+
+
 def test_getter_name_for_source_includes_servarr_namespaces() -> None:
     """Servarr namespaces should resolve to their concrete getter names."""
     assert Daemon._getter_name_for_source("radarr.queue.total") == "RadarrGetter"
