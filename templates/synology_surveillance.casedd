@@ -11,7 +11,7 @@ grid:
   template_areas: |
     brand title title status
     cam1 cam1 cam2 cam2
-    empty3 empty3 empty4 empty4
+    cam3 cam3 cam4 cam4
   columns: "0.55fr 1.25fr 1.25fr 1.2fr"
   rows: "0.5fr 1.25fr 1.25fr"
 
@@ -91,20 +91,16 @@ widgets:
     scale: fill
     padding: [4, 4]
 
-  empty3:
-    type: text
+  cam3:
+    type: image
     label: Camera 3
-    content: no camera
-    color: "#808b96"
-    background: "#162028"
-    font_size: auto
-    padding: [4, 8]
+    source: synology.camera_3.snapshot_url
+    scale: fill
+    padding: [4, 4]
 
-  empty4:
-    type: text
+  cam4:
+    type: image
     label: Camera 4
-    content: no camera
-    color: "#808b96"
-    background: "#162028"
-    font_size: auto
-    padding: [4, 8]
+    source: synology.camera_4.snapshot_url
+    scale: fill
+    padding: [4, 4]

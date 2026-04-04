@@ -6,15 +6,21 @@
       "synology.system.reachable": 1.0,
       "synology.system.hostname": "SYNO-CAM-DEMO",
       "synology.surveillance.available": 1.0,
-      "synology.surveillance.camera_count": 2.0,
-      "synology.surveillance.recording_count": 1.0,
-      "synology.surveillance.status.rows": "LoadingDock|started|RECORDING\nFrontGate|started|ONLINE",
+      "synology.surveillance.camera_count": 4.0,
+      "synology.surveillance.recording_count": 2.0,
+      "synology.surveillance.status.rows": "LoadingDock|started|RECORDING\nServiceCorridor|started|ONLINE\nPerimeterGate|started|RECORDING\nParkingLot|started|ONLINE",
       "synology.camera_1.name": "LoadingDock",
       "synology.camera_1.status": "recording",
       "synology.camera_1.snapshot_url": "assets/synology/surveillance_demo/cam1_loading_dock.png",
-      "synology.camera_2.name": "FrontGate",
+      "synology.camera_2.name": "ServiceCorridor",
       "synology.camera_2.status": "online",
-      "synology.camera_2.snapshot_url": "assets/synology/surveillance_demo/cam2_corridor.png"
+      "synology.camera_2.snapshot_url": "assets/synology/surveillance_demo/cam2_corridor.png",
+      "synology.camera_3.name": "PerimeterGate",
+      "synology.camera_3.status": "recording",
+      "synology.camera_3.snapshot_url": "assets/synology/surveillance_demo/cam3_perimeter_gate.png",
+      "synology.camera_4.name": "ParkingLot",
+      "synology.camera_4.status": "online",
+      "synology.camera_4.snapshot_url": "assets/synology/surveillance_demo/cam4_parking_lot.png"
     }
   }
 ]
