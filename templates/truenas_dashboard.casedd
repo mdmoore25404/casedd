@@ -23,16 +23,14 @@ widgets:
     padding: [6, 10]
     grid:
       template_areas: |
-        title
+        logo
       columns: "1fr"
       rows: "1fr"
     children_named:
-      title:
-        type: text
-        content: "TrueNAS"
-        color: "#7cb342"
-        font_size: auto
-        max_font_size: 34
+      logo:
+        type: image
+        path: assets/truenas/truenas-logo-full-color-rgb.png
+        scale: fit
 
   host:
     type: value
@@ -83,7 +81,7 @@ widgets:
     grid:
       template_areas: |
         pool_name pool_used pool_free pool_total
-        pool_status pool_status cpu_temp update_status
+        pool_status pool_status cpu_temp cpu_temp
       columns: "1.4fr 0.9fr 0.9fr 0.9fr"
       rows: "1fr 1fr"
     children_named:
@@ -145,14 +143,6 @@ widgets:
           - [80, "#ea6b6b"]
         font_size: auto
         max_font_size: 36
-      update_status:
-        type: value
-        label: Updates
-        source: truenas.system.update_status
-        color: "#e8f2ff"
-        font_size: auto
-        max_font_size: 34
-
   updates:
     type: value
     background: "#162028"
