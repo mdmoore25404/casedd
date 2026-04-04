@@ -121,3 +121,17 @@ def test_getter_name_for_source_includes_vms() -> None:
 def test_getter_name_for_source_includes_containers() -> None:
     """containers namespace should resolve to ContainersGetter."""
     assert Daemon._getter_name_for_source("containers.count_running") == "ContainersGetter"
+
+
+def test_getter_name_for_source_truenas_vms_namespace() -> None:
+    """truenas.vms.* sub-namespace should resolve to TrueNASGetter."""
+    assert Daemon._getter_name_for_source("truenas.vms.rows") == "TrueNASGetter"
+    assert Daemon._getter_name_for_source("truenas.vms.count_running") == "TrueNASGetter"
+    assert Daemon._getter_name_for_source("truenas.vms.count_stopped") == "TrueNASGetter"
+
+
+def test_getter_name_for_source_truenas_jails_namespace() -> None:
+    """truenas.jails.* sub-namespace should resolve to TrueNASGetter."""
+    assert Daemon._getter_name_for_source("truenas.jails.rows") == "TrueNASGetter"
+    assert Daemon._getter_name_for_source("truenas.jails.count_running") == "TrueNASGetter"
+    assert Daemon._getter_name_for_source("truenas.jails.count_stopped") == "TrueNASGetter"

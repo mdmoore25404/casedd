@@ -274,6 +274,107 @@ def test_invokeai_template_structure() -> None:
     assert any(child.label == "Cache %" for child in details_widget.children)
 
 
+def test_synology_surveillance_template_shows_four_cameras() -> None:
+    """synology_surveillance.casedd should wire all four camera image widgets."""
+    real = Path("templates/synology_surveillance.casedd")
+    if not real.exists():
+        pytest.skip("templates/synology_surveillance.casedd not present")
+
+    tmpl = load_template(real)
+
+    for cam_idx in range(1, 5):
+        widget = tmpl.widgets.get(f"cam{cam_idx}")
+        assert widget is not None, f"cam{cam_idx} widget missing"
+        assert widget.type.value == "image"
+        assert widget.source == f"synology.camera_{cam_idx}.snapshot_url"
+
+
+def test_synology_dashboard_template_structure() -> None:
+    """synology_dashboard.casedd should load cleanly with key Synology sources."""
+    real = Path("templates/synology_dashboard.casedd")
+    if not real.exists():
+        pytest.skip("templates/synology_dashboard.casedd not present")
+
+    tmpl = load_template(real)
+    assert tmpl.name == "synology_dashboard"
+
+    disks_widget = tmpl.widgets.get("disks")
+    assert disks_widget is not None
+    assert disks_widget.type.value == "table"
+    assert disks_widget.source == "synology.disks.rows"
+
+    shares_widget = tmpl.widgets.get("shares")
+    assert shares_widget is not None
+    assert shares_widget.type.value == "table"
+    assert shares_widget.source == "synology.shares.rows"
+
+
+def test_truenas_dashboard_template_structure() -> None:
+    """truenas_dashboard.casedd should load cleanly with key TrueNAS sources."""
+    real = Path("templates/truenas_dashboard.casedd")
+    if not real.exists():
+        pytest.skip("templates/truenas_dashboard.casedd not present")
+
+    tmpl = load_template(real)
+    assert tmpl.name == "truenas_dashboard"
+
+    services_widget = tmpl.widgets.get("services")
+    assert services_widget is not None
+    assert services_widget.type.value == "table"
+    assert services_widget.source == "truenas.services.rows"
+
+    disks_widget = tmpl.widgets.get("disks")
+    assert disks_widget is not None
+    assert disks_widget.type.value == "table"
+    assert disks_widget.source == "truenas.disks.rows"
+
+
+def test_truenas_vms_template_structure() -> None:
+    """truenas_vms.casedd should wire truenas.vms.* sources for the table."""
+    real = Path("templates/truenas_vms.casedd")
+    if not real.exists():
+        pytest.skip("templates/truenas_vms.casedd not present")
+
+    tmpl = load_template(real)
+    assert tmpl.name == "truenas_vms"
+
+    table_widget = tmpl.widgets.get("table")
+    assert table_widget is not None
+    assert table_widget.type.value == "table"
+    assert table_widget.source == "truenas.vms.rows"
+
+    running_widget = tmpl.widgets.get("running")
+    assert running_widget is not None
+    assert running_widget.source == "truenas.vms.count_running"
+
+    stopped_widget = tmpl.widgets.get("stopped")
+    assert stopped_widget is not None
+    assert stopped_widget.source == "truenas.vms.count_stopped"
+
+
+def test_truenas_jails_template_structure() -> None:
+    """truenas_jails.casedd should wire truenas.jails.* sources for the table."""
+    real = Path("templates/truenas_jails.casedd")
+    if not real.exists():
+        pytest.skip("templates/truenas_jails.casedd not present")
+
+    tmpl = load_template(real)
+    assert tmpl.name == "truenas_jails"
+
+    table_widget = tmpl.widgets.get("table")
+    assert table_widget is not None
+    assert table_widget.type.value == "table"
+    assert table_widget.source == "truenas.jails.rows"
+
+    running_widget = tmpl.widgets.get("running")
+    assert running_widget is not None
+    assert running_widget.source == "truenas.jails.count_running"
+
+    stopped_widget = tmpl.widgets.get("stopped")
+    assert stopped_widget is not None
+    assert stopped_widget.source == "truenas.jails.count_stopped"
+
+
 # ---------------------------------------------------------------------------
 # File-not-found errors
 # ---------------------------------------------------------------------------
