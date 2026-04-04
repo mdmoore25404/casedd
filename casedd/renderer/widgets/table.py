@@ -290,7 +290,7 @@ class TableWidget(BaseWidget):
             )
             return self._draw_containers_table(img, container_ctx)
 
-        if cfg.source == "synology.status.rows":
+        if cfg.source in {"synology.status.rows", "synology.surveillance.status.rows"}:
             status_ctx = _SynologyStatusRenderContext(
                 draw=context.draw,
                 inner=context.inner,

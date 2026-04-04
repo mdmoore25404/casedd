@@ -11,9 +11,10 @@ grid:
   template_areas: |
     brand host status status
     storage storage cpu_hist ram_hist
-    disks shares disk_io net_hist
+    shares shares disk_io net_hist
+    disks disks disk_io net_hist
   columns: "1fr 1.25fr 1.2fr 1.2fr"
-  rows: "0.48fr 1.02fr 1.5fr"
+  rows: "0.44fr 0.86fr 0.85fr 0.85fr"
 
 widgets:
   brand:
@@ -89,7 +90,7 @@ widgets:
     precision: 2
     unit: MB/s
     min: 0
-    max: 200
+    max: 120
     samples: 120
     window_seconds: 120
     padding: [4, 6]
@@ -109,7 +110,7 @@ widgets:
     precision: 0
     unit: KB/s
     min: 0
-    max: 5000
+    max: 3000
     samples: 120
     window_seconds: 120
     padding: [4, 6]
@@ -187,9 +188,9 @@ widgets:
     source: synology.disks.rows
     color: "#e8f2ff"
     background: "#162028"
-    font_size: 20
+    font_size: 18
     table_fit_text: false
-    max_items: 6
+    max_items: 4
     padding: [8, 10]
 
   shares:
@@ -198,7 +199,7 @@ widgets:
     source: synology.shares.rows
     color: "#e8f2ff"
     background: "#162028"
-    font_size: 20
+    font_size: 18
     table_fit_text: false
-    max_items: 6
+    max_items: 5
     padding: [8, 10]
