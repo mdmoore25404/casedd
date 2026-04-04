@@ -61,6 +61,23 @@ def _route_payload(path: str, query: dict[str, object]) -> dict[str, object]:
                 ]
             },
         },
+        "SYNO.Core.Share.list": {
+            "success": True,
+            "data": {
+                "shares": [
+                    {"name": "plexmedia", "vol_path": "/volume2"},
+                    {"name": "k8s", "vol_path": "/volume2"},
+                ]
+            },
+        },
+        "SYNO.Core.System.Utilization.get": {
+            "success": True,
+            "data": {
+                "cpu": {"user_load": 10, "system_load": 5, "other_load": 2},
+                "memory": {"real_usage": 44},
+                "network": [{"device": "total", "rx": 4096, "tx": 8192}],
+            },
+        },
         "SYNO.Core.Upgrade.Server.check": {
             "success": True,
             "data": {
@@ -107,9 +124,15 @@ async def test_synology_getter_healthy_payload(monkeypatch) -> None:
     assert payload["synology.system.model"] == "DS923+"
     assert payload["synology.dsm.update_available"] == 1.0
     assert payload["synology.dsm.latest_version"] == "DSM 7.2.2"
+    assert payload["synology.performance.cpu_percent"] == 12.0
+    assert payload["synology.performance.ram_percent"] == 44.0
+    assert payload["synology.performance.net_rx_kbps"] == 4.0
+    assert payload["synology.performance.net_tx_kbps"] == 8.0
     assert payload["synology.storage.warning_count"] == 1.0
     assert payload["synology.storage.critical_count"] == 0.0
     assert payload["synology.volume_1.name"] == "volume1"
+    assert "plexmedia|volume2" in str(payload["synology.shares.rows"])
+    assert "DSM Update|exited|AVAILABLE" in str(payload["synology.status.rows"])
     assert payload["synology.surveillance.available"] == 1.0
     assert payload["synology.surveillance.camera_count"] == 2.0
     assert payload["synology.camera_1.name"] == "Driveway"
@@ -232,3 +255,44 @@ async def test_synology_getter_handles_degraded_and_partial_services(monkeypatch
     assert payload["synology.services.smb_state"] == "running"
     assert payload["synology.services.file_station_state"] == "unknown"
     assert payload["synology.services.synology_drive_state"] == "not installed"
+
+
+async def test_synology_getter_prefers_online_cameras_for_snapshots(monkeypatch) -> None:
+    """Camera list should prioritize online/recording rows over offline entries."""
+
+    getter = SynologyGetter(
+        DataStore(),
+        host="http://nas1:5000",
+        username="demo",
+        password="secret",
+        interval=1.0,
+    )
+
+    def _camera_route(path: str, query: dict[str, object]) -> dict[str, object]:
+        if path.endswith("/webapi/auth.cgi"):
+            return {"success": True, "data": {"sid": "sid-abc"}}
+        api = str(query.get("api", ""))
+        method = str(query.get("method", ""))
+        key = f"{api}.{method}"
+        if key == "SYNO.SurveillanceStation.Info.getInfo":
+            return {"success": True, "data": {"version": "9.1"}}
+        if key == "SYNO.SurveillanceStation.Camera.List":
+            return {
+                "success": True,
+                "data": {
+                    "cameras": [
+                        {"id": 1, "name": "Driveway", "status": 1},
+                        {"id": 3, "name": "Old Cam", "status": 7},
+                        {"id": 5, "name": "Garage", "status": 1},
+                    ]
+                },
+            }
+        return {"success": True, "data": {}}
+
+    monkeypatch.setattr(getter, "_request_json", _camera_route)
+    payload = await getter.fetch()
+
+    assert payload["synology.camera_1.name"] == "Driveway"
+    assert payload["synology.camera_2.name"] == "Garage"
+    assert "id=1" in str(payload["synology.camera_1.snapshot_url"])
+    assert "id=5" in str(payload["synology.camera_2.snapshot_url"])

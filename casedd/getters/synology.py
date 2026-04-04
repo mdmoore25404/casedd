@@ -13,6 +13,12 @@ Store keys written include:
     - ``synology.dsm.latest_version``
     - ``synology.storage.warning_count``
     - ``synology.storage.critical_count``
+    - ``synology.disks.rows``
+    - ``synology.shares.rows``
+    - ``synology.performance.cpu_percent``
+    - ``synology.performance.ram_percent``
+    - ``synology.performance.net_rx_kbps``
+    - ``synology.performance.net_tx_kbps``
     - ``synology.volume_<n>.name``
     - ``synology.volume_<n>.used_percent``
     - ``synology.volume_<n>.free_tb``
@@ -23,6 +29,8 @@ Store keys written include:
     - ``synology.services.file_station_state``
     - ``synology.services.synology_drive_state``
     - ``synology.services.surveillance_station_state``
+    - ``synology.services.rows``
+    - ``synology.status.rows``
     - ``synology.surveillance.available``
     - ``synology.surveillance.camera_count``
     - ``synology.camera_<n>.name``
@@ -180,6 +188,44 @@ def _status_level(status_text: str) -> str:
     return "ok"
 
 
+def _icon_for_state(state_text: str) -> str:
+    """Map normalized service-like state text to table icon key."""
+    lowered = state_text.strip().lower()
+    if lowered in {"running", "online", "recording", "latest", "ok", "normal"}:
+        return "started"
+    if lowered in {"stopped", "offline", "error", "failed", "available", "critical"}:
+        return "exited"
+    return "unknown"
+
+
+def _camera_state(status_text: str) -> str:
+    """Normalize camera status values from numeric/string payload forms."""
+    lowered = status_text.strip().lower()
+    if lowered in {"1", "online", "enabled", "true"}:
+        return "online"
+    if lowered in {"2", "recording", "rec", "record", "true_recording"}:
+        return "recording"
+    if lowered in {"0", "7", "offline", "disabled", "false"}:
+        return "offline"
+    return "unknown"
+
+
+def _compact_state(state_text: str) -> str:
+    """Return a compact uppercase state token for dense table rows."""
+    lowered = state_text.strip().lower()
+    if lowered in {"normal", "ok", "latest", "running", "online"}:
+        return "OK"
+    if lowered in {"warning", "degraded"}:
+        return "WARN"
+    if lowered in {"critical", "failed", "error", "offline", "available"}:
+        return "ALERT"
+    if lowered == "not installed":
+        return "N/A"
+    if lowered:
+        return lowered.upper()
+    return "UNK"
+
+
 def _snapshot_host(base_url: str, verify_tls: bool) -> str:
     """Return the host used for camera snapshot URLs.
 
@@ -265,9 +311,11 @@ class SynologyGetter(BaseGetter):
                 "synology.system.reachable": 1.0,
             }
             payload.update(self._sample_system(sid))
+            payload.update(self._sample_utilization(sid))
             payload.update(self._sample_storage(sid))
             payload.update(self._sample_services(sid))
             payload.update(self._sample_users(sid))
+            payload.update(self._sample_shares(sid))
             if self._include_dsm_updates:
                 payload.update(self._sample_dsm_updates(sid))
             else:
@@ -278,6 +326,7 @@ class SynologyGetter(BaseGetter):
             else:
                 payload["synology.surveillance.available"] = 0.0
                 payload["synology.surveillance.camera_count"] = 0.0
+            payload["synology.status.rows"] = self._compose_status_rows(payload)
             return payload
         except _SynologyAuthError:
             return self._auth_placeholder()
@@ -294,10 +343,65 @@ class SynologyGetter(BaseGetter):
             "synology.dsm.latest_version": "",
             "synology.storage.warning_count": 0.0,
             "synology.storage.critical_count": 0.0,
+            "synology.disks.rows": "",
+            "synology.shares.rows": "",
             "synology.users.count": 0.0,
             "synology.users.rows": "",
             "synology.surveillance.available": 0.0,
             "synology.surveillance.camera_count": 0.0,
+            "synology.services.rows": "",
+            "synology.status.rows": "",
+        }
+
+    def _sample_utilization(self, sid: str) -> dict[str, StoreValue]:
+        """Collect CPU/RAM/network utilization metrics from DSM."""
+        data = self._call_first((
+            _ApiCall("SYNO.Core.System.Utilization", "get", 1, {}),
+        ), sid)
+        if not data:
+            return {
+                "synology.performance.cpu_percent": 0.0,
+                "synology.performance.ram_percent": 0.0,
+                "synology.performance.net_rx_kbps": 0.0,
+                "synology.performance.net_tx_kbps": 0.0,
+            }
+
+        cpu_data = _as_dict(data.get("cpu"))
+        memory_data = _as_dict(data.get("memory"))
+        network_rows = _as_list(data.get("network"))
+
+        cpu_percent = _first_float(cpu_data, (("user_load",), ("system_load",), ("1min_load",)))
+        if cpu_percent is None:
+            cpu_percent = 0.0
+        else:
+            other_load = _as_float(cpu_data.get("other_load"))
+            if other_load is not None:
+                cpu_percent += other_load
+
+        ram_percent = _first_float(memory_data, (("real_usage",), ("usage",)))
+        if ram_percent is None:
+            ram_percent = 0.0
+
+        rx_bytes = 0.0
+        tx_bytes = 0.0
+        for row_obj in network_rows:
+            row = _as_dict(row_obj)
+            device_name = _first_text(row, (("device",),)).lower()
+            if device_name and device_name != "total":
+                continue
+            rx_value = _first_float(row, (("rx",), ("rx_byte",), ("rx_bytes",)))
+            tx_value = _first_float(row, (("tx",), ("tx_byte",), ("tx_bytes",)))
+            if rx_value is not None:
+                rx_bytes = rx_value
+            if tx_value is not None:
+                tx_bytes = tx_value
+            break
+
+        return {
+            "synology.performance.cpu_percent": round(max(0.0, cpu_percent), 2),
+            "synology.performance.ram_percent": round(max(0.0, ram_percent), 2),
+            "synology.performance.net_rx_kbps": round(max(0.0, rx_bytes) / 1024.0, 2),
+            "synology.performance.net_tx_kbps": round(max(0.0, tx_bytes) / 1024.0, 2),
         }
 
     def _ensure_sid(self) -> str:
@@ -540,21 +644,14 @@ class SynologyGetter(BaseGetter):
         payload: dict[str, StoreValue] = {
             "synology.storage.warning_count": 0.0,
             "synology.storage.critical_count": 0.0,
+            "synology.disks.rows": "",
         }
 
-        warning_count = 0.0
-        critical_count = 0.0
-        for disk_obj in disks:
-            disk = _as_dict(disk_obj)
-            status = _first_text(disk, (("status",), ("health",), ("state",)))
-            level = _status_level(status)
-            if level == "critical":
-                critical_count += 1.0
-            elif level == "warning":
-                warning_count += 1.0
+        warning_count, critical_count, disk_rows = self._summarize_disks(disks)
 
         payload["synology.storage.warning_count"] = warning_count
         payload["synology.storage.critical_count"] = critical_count
+        payload["synology.disks.rows"] = "\n".join(disk_rows[:10])
 
         filtered_volumes: list[dict[str, object]] = []
         for volume_obj in volumes:
@@ -624,6 +721,58 @@ class SynologyGetter(BaseGetter):
 
         return payload
 
+    def _summarize_disks(self, disks: list[object]) -> tuple[float, float, list[str]]:
+        """Summarize disk health severity counts and compact row text."""
+        warning_count = 0.0
+        critical_count = 0.0
+        disk_rows: list[str] = []
+
+        for disk_obj in disks:
+            disk = _as_dict(disk_obj)
+            name = _first_text(disk, (("display_name",), ("name",), ("id",), ("device",)))
+            status = _first_text(
+                disk,
+                (("status",), ("adv_status",), ("smart_status",), ("health",), ("state",)),
+            )
+            level = _status_level(status)
+            if level == "critical":
+                critical_count += 1.0
+            elif level == "warning":
+                warning_count += 1.0
+
+            smart_state = _first_text(
+                disk,
+                (("smart_status",), ("smart", "status"), ("health",), ("adv_status",)),
+            )
+            smart_text = smart_state if smart_state else "unknown"
+            error_count = self._disk_error_count(disk)
+            temp_text = self._disk_temp_text(disk)
+            disk_name = name if name else "Disk"
+            status_compact = _compact_state(status)
+            smart_compact = _compact_state(smart_text)
+            row = (
+                f"{disk_name}|{status_compact} "
+                f"S:{smart_compact} E:{error_count}{temp_text}"
+            )
+            disk_rows.append(row)
+
+        return warning_count, critical_count, disk_rows
+
+    def _disk_error_count(self, disk: dict[str, object]) -> int:
+        """Return combined bad-sector and UNC error counts for one disk row."""
+        bad_sector = _first_float(disk, (("bad_sector",),))
+        unc_error = _first_float(disk, (("unc",), ("errors",), ("error_count",)))
+        bad_sector_count = int(bad_sector) if bad_sector is not None else 0
+        unc_error_count = int(unc_error) if unc_error is not None else 0
+        return bad_sector_count + unc_error_count
+
+    def _disk_temp_text(self, disk: dict[str, object]) -> str:
+        """Return disk temperature suffix text for table rows."""
+        temp_value = _first_float(disk, (("temp",), ("temperature",)))
+        if temp_value is None:
+            return ""
+        return f" {int(temp_value)}C"
+
     def _sample_services(self, sid: str) -> dict[str, StoreValue]:
         """Collect selected DSM service states."""
         service_data = self._call_first(
@@ -654,6 +803,7 @@ class SynologyGetter(BaseGetter):
             "synology.services.file_station_state": "unknown",
             "synology.services.synology_drive_state": "unknown",
             "synology.services.surveillance_station_state": "unknown",
+            "synology.services.rows": "",
         }
         service_ids = {
             _first_text(
@@ -728,6 +878,21 @@ class SynologyGetter(BaseGetter):
         if defaults["synology.services.smb_state"] == "unknown" and "smbservice" in package_ids:
             defaults["synology.services.smb_state"] = "running"
 
+        service_rows = [
+            "SMB|"
+            f"{_icon_for_state(str(defaults['synology.services.smb_state']))}|"
+            f"{defaults['synology.services.smb_state']}",
+            "File Station|"
+            f"{_icon_for_state(str(defaults['synology.services.file_station_state']))}|"
+            f"{defaults['synology.services.file_station_state']}",
+            "Drive|"
+            f"{_icon_for_state(str(defaults['synology.services.synology_drive_state']))}|"
+            f"{defaults['synology.services.synology_drive_state']}",
+            "Surveillance|"
+            f"{_icon_for_state(str(defaults['synology.services.surveillance_station_state']))}|"
+            f"{defaults['synology.services.surveillance_station_state']}",
+        ]
+        defaults["synology.services.rows"] = "\n".join(service_rows)
         return defaults
 
     def _sample_users(self, sid: str) -> dict[str, StoreValue]:
@@ -781,7 +946,7 @@ class SynologyGetter(BaseGetter):
                     9,
                     {
                         "offset": 0,
-                        "limit": self._surveillance_max_cameras,
+                        "limit": max(self._surveillance_max_cameras * 4, 20),
                     },
                 ),
                 _ApiCall(
@@ -790,7 +955,7 @@ class SynologyGetter(BaseGetter):
                     9,
                     {
                         "offset": 0,
-                        "limit": self._surveillance_max_cameras,
+                        "limit": max(self._surveillance_max_cameras * 4, 20),
                     },
                 ),
             ),
@@ -800,25 +965,37 @@ class SynologyGetter(BaseGetter):
 
         payload: dict[str, StoreValue] = {
             "synology.surveillance.available": 1.0,
-            "synology.surveillance.camera_count": float(len(cameras)),
+            "synology.surveillance.camera_count": 0.0,
             "synology.surveillance.recording_count": 0.0,
+            "synology.status.rows": "",
         }
 
         rows: list[str] = []
+        status_rows: list[str] = []
         recording_count = 0.0
-        for index, camera_obj in enumerate(cameras[: self._surveillance_max_cameras], start=1):
+        selected_cameras: list[dict[str, object]] = []
+        for camera_obj in cameras:
             camera = _as_dict(camera_obj)
+            raw_state = _first_text(
+                camera,
+                (("status",), ("enabled",), ("recording",), ("recordingStatus",), ("camStatus",)),
+            )
+            state = _camera_state(raw_state)
+            if state in {"online", "recording"}:
+                selected_cameras.append(camera)
+        if not selected_cameras:
+            selected_cameras = [_as_dict(item) for item in cameras]
+
+        selected_slice = selected_cameras[: self._surveillance_max_cameras]
+        payload["synology.surveillance.camera_count"] = float(len(selected_slice))
+        for index, camera in enumerate(selected_slice, start=1):
             name = _first_text(camera, (("newName",), ("name",), ("cameraName",), ("id",)))
             camera_id = _first_text(camera, (("id",), ("camera_id",), ("camId",)))
-            status = _first_text(
+            status_raw = _first_text(
                 camera,
-                (("status",), ("enabled",), ("recording",), ("recordingStatus",)),
-            ).lower()
-            normalized_status = "online"
-            if status in {"0", "false", "disabled", "offline"}:
-                normalized_status = "offline"
-            elif status in {"recording", "true", "1"}:
-                normalized_status = "recording"
+                (("status",), ("enabled",), ("recording",), ("recordingStatus",), ("camStatus",)),
+            )
+            normalized_status = _camera_state(status_raw)
             if normalized_status == "recording":
                 recording_count += 1.0
 
@@ -831,10 +1008,68 @@ class SynologyGetter(BaseGetter):
             payload[f"{key_prefix}.status"] = normalized_status
             payload[f"{key_prefix}.snapshot_url"] = snapshot_url
             rows.append(f"{name}|{normalized_status}")
+            label_name = name if name else f"Camera {camera_id or index}"
+            status_rows.append(
+                f"{label_name}|{_icon_for_state(normalized_status)}|{normalized_status}"
+            )
 
         payload["synology.surveillance.recording_count"] = recording_count
         payload["synology.cameras.rows"] = "\n".join(rows)
+        payload["synology.status.rows"] = "\n".join(status_rows)
         return payload
+
+    def _sample_shares(self, sid: str) -> dict[str, StoreValue]:
+        """Collect list of shares and mount volume context."""
+        data = self._call_first(
+            (
+                _ApiCall("SYNO.Core.Share", "list", 1, {"offset": 0, "limit": 200}),
+            ),
+            sid,
+        )
+        shares = _first_list(data, (("shares",), ("data", "shares")))
+
+        rows: list[str] = []
+        for share_obj in shares:
+            share = _as_dict(share_obj)
+            name = _first_text(share, (("name",), ("id",)))
+            volume_path = _first_text(share, (("vol_path",), ("path",), ("location",)))
+            if not name:
+                continue
+            volume_label = volume_path.rsplit("/", maxsplit=1)[-1] if volume_path else "-"
+            rows.append(f"{name}|{volume_label}")
+
+        return {
+            "synology.shares.count": float(len(rows)),
+            "synology.shares.rows": "\n".join(rows[:20]),
+        }
+
+    def _compose_status_rows(self, payload: dict[str, StoreValue]) -> str:
+        """Build unified status table rows for dashboard rendering."""
+        rows: list[str] = []
+
+        update_available_raw = payload.get("synology.dsm.update_available")
+        update_available = _as_float(update_available_raw)
+        update_state = "unknown"
+        if update_available is not None:
+            update_state = "available" if update_available > 0 else "latest"
+        rows.append(f"DSM Update|{_icon_for_state(update_state)}|{update_state.upper()}")
+
+        for service_key, label in (
+            ("synology.services.smb_state", "SMB"),
+            ("synology.services.file_station_state", "File Station"),
+            ("synology.services.synology_drive_state", "Drive"),
+            ("synology.services.surveillance_station_state", "Surveillance"),
+        ):
+            state_text = _as_text(payload.get(service_key)) or "unknown"
+            rows.append(f"{label}|{_icon_for_state(state_text)}|{state_text}")
+
+        camera_count = int(_as_float(payload.get("synology.surveillance.camera_count")) or 0)
+        for index in range(1, camera_count + 1):
+            name = _as_text(payload.get(f"synology.camera_{index}.name")) or f"Camera {index}"
+            state_text = _as_text(payload.get(f"synology.camera_{index}.status")) or "unknown"
+            rows.append(f"{name}|{_icon_for_state(state_text)}|{state_text}")
+
+        return "\n".join(rows)
 
     def _snapshot_url(self, camera_id: str, sid: str) -> str:
         """Construct a one-shot camera snapshot URL for the image widget."""

@@ -94,6 +94,28 @@ class _ContainerRenderContext:
     color: str | None
 
 
+@dataclass(frozen=True)
+class _SynologyStatusRow:
+    """One parsed Synology status row with an icon key."""
+
+    name: str
+    status_icon: str
+    state: str
+
+
+@dataclass(frozen=True)
+class _SynologyStatusRenderContext:
+    """Render context for Synology status icon table mode."""
+
+    draw: ImageDraw.ImageDraw
+    inner: Rect
+    label_h: int
+    source_text: str
+    font_size: int | str
+    max_items: int | None
+    color: str | None
+
+
 _ICON_RETRY_BACKOFF_SEC = 10.0
 _ICON_CACHE: dict[str, Image.Image] = {}
 _ICON_MTIME: dict[str, float] = {}
@@ -143,6 +165,19 @@ class TableWidget(BaseWidget):
                 color=cfg.color,
             )
             if self._draw_containers_table(img, context):
+                return
+
+        if cfg.source == "synology.status.rows":
+            synology_context = _SynologyStatusRenderContext(
+                draw=draw,
+                inner=inner,
+                label_h=label_h,
+                source_text=source_text,
+                font_size=cfg.font_size,
+                max_items=cfg.max_items,
+                color=cfg.color,
+            )
+            if self._draw_synology_status_table(img, synology_context):
                 return
 
         rows = _parse_rows(source_text)
@@ -306,6 +341,63 @@ class TableWidget(BaseWidget):
             y += row_h
         return True
 
+    def _draw_synology_status_table(
+        self,
+        img: Image.Image,
+        context: _SynologyStatusRenderContext,
+    ) -> bool:
+        """Render ``synology.status.rows`` as name + icon + state columns."""
+        rows = _parse_synology_status_rows(context.source_text)
+        if not rows:
+            return False
+
+        if context.max_items is not None and context.max_items > 0:
+            rows = rows[: context.max_items]
+
+        color = parse_color(context.color, fallback=(220, 225, 230))
+        header_color = (160, 170, 182)
+        muted_color = (134, 140, 148)
+        draw = context.draw
+        inner = context.inner
+        y = inner.y + context.label_h + 2
+        avail_w = inner.w - 4
+        x0 = inner.x + 2
+        name_x = x0
+        icon_x = x0 + int(avail_w * 0.64)
+        state_x = x0 + int(avail_w * 0.73)
+
+        resolved_font_size = _to_font_size(context.font_size, inner)
+        header_font = get_font(max(10, int(resolved_font_size * 0.78)))
+        body_font = get_font(resolved_font_size)
+
+        draw.text((name_x, y), "Service", fill=header_color, font=header_font)
+        draw.text((icon_x, y), "", fill=header_color, font=header_font)
+        draw.text((state_x, y), "State", fill=header_color, font=header_font)
+
+        header_bb = draw.textbbox((0, 0), "Ag", font=header_font)
+        row_h = int((draw.textbbox((0, 0), "Ag", font=body_font)[3]) + 2)
+        y += int(header_bb[3] - header_bb[1]) + 5
+        draw.line((x0, y, inner.x + inner.w - 2, y), fill=(56, 64, 74), width=1)
+        y += 4
+
+        icon_size = max(10, row_h - 4)
+        for row in rows:
+            if y + row_h > inner.y + inner.h:
+                break
+
+            name_text = _ellipsize(draw, body_font, row.name, icon_x - name_x - 6, {})
+            draw.text((name_x, y), name_text, fill=color, font=body_font)
+
+            icon = _load_icon(f"assets/icons/status-{row.status_icon}.png")
+            if icon is not None:
+                icon_scaled = icon.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
+                img.paste(icon_scaled, (icon_x, y + 1), icon_scaled)
+
+            state_color = muted_color if row.status_icon == "unknown" else color
+            draw.text((state_x, y), row.state, fill=state_color, font=body_font)
+            y += row_h
+        return True
+
 
 def _layout_from_cache(
     state: dict[str, object],
@@ -395,6 +487,26 @@ def _parse_container_rows(source_text: str) -> list[_ContainerTableRow]:
                 health_icon=parts[2].strip() or "unknown",
                 uptime=parts[3].strip() or "-",
                 image=parts[4].strip() or "—",
+            )
+        )
+    return rows
+
+
+def _parse_synology_status_rows(source_text: str) -> list[_SynologyStatusRow]:
+    """Parse 3-column Synology status rows: ``name|status_icon|state``."""
+    rows: list[_SynologyStatusRow] = []
+    for raw_line in source_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split("|", maxsplit=2)
+        if len(parts) != 3:
+            return []
+        rows.append(
+            _SynologyStatusRow(
+                name=parts[0].strip() or "—",
+                status_icon=parts[1].strip() or "unknown",
+                state=parts[2].strip() or "unknown",
             )
         )
     return rows

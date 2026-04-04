@@ -1,7 +1,7 @@
 # synology_dashboard.casedd — Synology NAS status and camera overview
 
 name: synology_dashboard
-description: Synology DSM status, storage health, services, updates, and camera snapshots.
+description: Synology DSM health dashboard with cameras, disks, shares, and performance metrics.
 aspect_ratio: "5:3"
 layout_mode: fit
 background: "#0e1418"
@@ -9,9 +9,9 @@ refresh_rate: 1.0
 
 grid:
   template_areas: |
-    brand identity identity updates
-    brand storage storage services
-    camera_1 camera_2 users users
+    brand identity identity perf
+    brand storage storage status
+    camera_1 camera_2 disks shares
   columns: "0.9fr 1.2fr 1.2fr 1fr"
   rows: "0.78fr 0.78fr 1.44fr"
 
@@ -28,7 +28,7 @@ widgets:
     children_named:
       logo:
         type: image
-        path: assets/synology/synology-logo.png
+        path: assets/synology/synology-logo-white.png
         scale: fit
         padding: [2, 6]
 
@@ -65,80 +65,67 @@ widgets:
         font_size: auto
         max_font_size: 40
 
-  updates:
+  perf:
     type: panel
     background: "#162028"
     padding: 8
     grid:
       template_areas: |
-        available
-        latest
-        surveillance
-      columns: "1fr"
-      rows: "1fr 1fr 1fr"
+        cpu ram
+        rx tx
+      columns: "1fr 1fr"
+      rows: "1fr 1fr"
     children_named:
-      available:
-        type: boolean
-        label: DSM Update
-        source: synology.dsm.update_available
-        color: "#ffce6e"
-        max_font_size: 34
-      latest:
+      cpu:
         type: value
-        label: Latest
-        source: synology.dsm.latest_version
-        color: "#e8f2ff"
+        label: CPU %
+        source: synology.performance.cpu_percent
+        precision: 1
+        unit: "%"
+        color_stops:
+          - [0, "#7cde9c"]
+          - [70, "#efc058"]
+          - [90, "#ea6b6b"]
         font_size: auto
-        max_font_size: 34
-      surveillance:
+        max_font_size: 30
+      ram:
         type: value
-        label: Cameras
-        source: synology.surveillance.camera_count
+        label: RAM %
+        source: synology.performance.ram_percent
+        precision: 1
+        unit: "%"
+        color_stops:
+          - [0, "#7cde9c"]
+          - [70, "#efc058"]
+          - [90, "#ea6b6b"]
+        font_size: auto
+        max_font_size: 30
+      rx:
+        type: value
+        label: Net RX KB/s
+        source: synology.performance.net_rx_kbps
         precision: 0
-        color: "#a3d3ff"
-        max_font_size: 34
+        color: "#9fd5ff"
+        font_size: auto
+        max_font_size: 30
+      tx:
+        type: value
+        label: Net TX KB/s
+        source: synology.performance.net_tx_kbps
+        precision: 0
+        color: "#9fd5ff"
+        font_size: auto
+        max_font_size: 30
 
-  services:
-    type: panel
+  status:
+    type: table
+    label: Status
+    source: synology.status.rows
+    color: "#e8f2ff"
     background: "#162028"
-    padding: 8
-    grid:
-      template_areas: |
-        smb
-        file_station
-        drive
-        surveillance
-      columns: "1fr"
-      rows: "1fr 1fr 1fr 1fr"
-    children_named:
-      smb:
-        type: value
-        label: SMB
-        source: synology.services.smb_state
-        color: "#9fd5ff"
-        font_size: auto
-        max_font_size: 30
-      file_station:
-        type: value
-        label: File Station
-        source: synology.services.file_station_state
-        color: "#9fd5ff"
-        font_size: auto
-        max_font_size: 30
-      drive:
-        type: value
-        label: Drive
-        source: synology.services.synology_drive_state
-        color: "#9fd5ff"
-        font_size: auto
-        max_font_size: 30
-      surveillance:
-        type: value
-        label: Surveillance
-        source: synology.services.surveillance_station_state
-        color: "#9fd5ff"
-        font_size: auto
-        max_font_size: 30
+    table_fit_text: false
+    max_items: 10
+    padding: [8, 10]
 
   storage:
     type: panel
@@ -197,19 +184,33 @@ widgets:
         color: "#c4d7ef"
         max_font_size: 36
 
-  users:
-    type: text
-    label: Users
-    source: synology.users.rows
+  disks:
+    type: table
+    label: Disks
+    source: synology.disks.rows
     color: "#e8f2ff"
     background: "#162028"
+    font_size: 18
+    table_fit_text: true
+    max_items: 5
+    padding: [8, 10]
+
+  shares:
+    type: table
+    label: Shares
+    source: synology.shares.rows
+    color: "#e8f2ff"
+    background: "#162028"
+    font_size: 18
+    table_fit_text: false
+    max_items: 6
     padding: [8, 10]
 
   camera_1:
     type: image
     label: Camera A
     source: synology.camera_1.snapshot_url
-    path: assets/synology/synology-logo.png
+    path: assets/synology/surveillance-station-logo.png
     scale: fill
     padding: [4, 4]
 
@@ -217,6 +218,6 @@ widgets:
     type: image
     label: Camera B
     source: synology.camera_2.snapshot_url
-    path: assets/synology/synology-logo.png
+    path: assets/synology/surveillance-station-logo.png
     scale: fill
     padding: [4, 4]
