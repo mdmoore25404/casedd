@@ -1374,6 +1374,7 @@ class Daemon:
                 camera_exclude_regex=self._cfg.synology_camera_exclude_regex,
                 camera_exclude_statuses=self._cfg.synology_camera_exclude_statuses,
                 include_dsm_updates=self._cfg.synology_dsm_updates_enabled,
+                strip_domain_hostname=self._cfg.synology_strip_domain_hostname,
             ),
             TrueNASGetter(
                 self._store,
@@ -1381,6 +1382,7 @@ class Daemon:
                 port=self._cfg.truenas_port,
                 api_key=self._cfg.truenas_api_key,
                 interval=self._cfg.truenas_interval,
+                strip_domain_hostname=self._cfg.truenas_strip_domain_hostname,
             ),
             RadarrGetter(
                 self._store,

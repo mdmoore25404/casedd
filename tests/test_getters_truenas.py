@@ -182,3 +182,85 @@ def test_truenas_updates_status_marks_available_when_pending() -> None:
 
     assert out["truenas.system.update_available"] == 1.0
     assert out["truenas.system.update_status"] == "AVAILABLE (1)"
+
+
+def test_truenas_vm_and_jail_rows_are_published() -> None:
+    """VM and jail endpoints should publish count and table rows."""
+    getter = TrueNASGetter(DataStore(), host="nas.local", api_key="key")
+
+    def _fake_call(endpoint: str, method: str = "GET", body: object | None = None) -> object:
+        _ = method
+        _ = body
+        if endpoint == "virt/instance":
+            return [
+                {"name": "vm-a", "status": "RUNNING"},
+                {"name": "vm-b", "status": "STOPPED"},
+            ]
+        if endpoint == "jail":
+            return [
+                {"name": "jail-a", "state": "up"},
+                {"name": "jail-b", "state": "down"},
+            ]
+        return []
+
+    getter._call = _fake_call  # type: ignore[method-assign]
+    out: dict[str, float | int | str] = {}
+    getter._sample_vms(out)
+    getter._sample_jails(out)
+
+    assert out["truenas.vms.count_total"] == 2.0
+    assert out["truenas.vms.count_running"] == 1.0
+    assert out["truenas.vms.count_stopped"] == 1.0
+    assert out["truenas.vms.rows"] == "vm-a|Running\nvm-b|Stopped"
+
+    assert out["truenas.jails.count_total"] == 2.0
+    assert out["truenas.jails.count_running"] == 1.0
+    assert out["truenas.jails.count_stopped"] == 1.0
+    assert out["truenas.jails.rows"] == "jail-a|Running\njail-b|Stopped"
+
+
+def test_truenas_hostname_strips_domain_by_default() -> None:
+    """FQDN hostnames should publish the short hostname by default."""
+    getter = TrueNASGetter(DataStore(), host="nas.local", api_key="key")
+
+    def _fake_call(endpoint: str, method: str = "GET", body: object | None = None) -> object:
+        _ = method
+        _ = body
+        if endpoint == "system/info":
+            return {
+                "hostname": "nas1.example.local",
+                "system": "TRUENAS",
+                "version": "1.0",
+                "uptime": 1,
+            }
+        return []
+
+    getter._call = _fake_call  # type: ignore[method-assign]
+    out = getter._sample()
+    assert out["truenas.system.hostname"] == "nas1"
+
+
+def test_truenas_hostname_keeps_domain_when_disabled() -> None:
+    """Domain stripping should be optional for environments needing FQDN."""
+    getter = TrueNASGetter(
+        DataStore(),
+        host="nas.local",
+        api_key="key",
+        strip_domain_hostname=False,
+    )
+
+    def _fake_call(endpoint: str, method: str = "GET", body: object | None = None) -> object:
+        _ = method
+        _ = body
+        if endpoint == "system/info":
+            return {
+                "hostname": "nas1.example.local",
+                "system": "TRUENAS",
+                "version": "1.0",
+                "uptime": 1,
+            }
+        return []
+
+    getter._call = _fake_call  # type: ignore[method-assign]
+    out = getter._sample()
+    assert out["truenas.system.hostname"] == "nas1.example.local"

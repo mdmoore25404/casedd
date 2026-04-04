@@ -23,6 +23,8 @@ two ways:
 | `servarr_dashboard.json` | `servarr_dashboard` | `radarr.*`, `sonarr.*` |
 | `synology_dashboard.json` | `synology_dashboard` | `synology.*` |
 | `truenas_dashboard.json` | `truenas_dashboard` | `truenas.*`, supporting `cpu.*`/`memory.*`/`disk.*`/`network.*` |
+| `truenas_vms.json` | `truenas_vms` | `truenas.system.*`, `truenas.vms.*` |
+| `truenas_jails.json` | `truenas_jails` | `truenas.system.*`, `truenas.jails.*` |
 
 ## Replay format
 

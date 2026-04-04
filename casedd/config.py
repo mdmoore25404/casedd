@@ -490,12 +490,14 @@ class Config:
     synology_camera_exclude_regex: str | None = Field(default=None)
     synology_camera_exclude_statuses: str = Field(default="7")
     synology_dsm_updates_enabled: bool = Field(default=True)
+    synology_strip_domain_hostname: bool = Field(default=True)
     truenas_host: str = Field(default="")
     truenas_port: int = Field(default=80, ge=1, le=65535)
     truenas_api_key: str | None = Field(default=None, repr=False)
     truenas_interval: float = Field(default=10.0)
     truenas_timeout: float = Field(default=5.0)
     truenas_verify_tls: bool = Field(default=True)
+    truenas_strip_domain_hostname: bool = Field(default=True)
     plex_base_url: str = Field(default="http://localhost:32400")
     plex_token: str | None = Field(default=None, repr=False)
     plex_client_identifier: str = Field(default="casedd")
@@ -1502,6 +1504,30 @@ def load_config() -> Config:
         or "7",
         synology_dsm_updates_enabled=str(
             _get("CASEDD_SYNOLOGY_DSM_UPDATES_ENABLED", "synology_dsm_updates_enabled", "1")
+        )
+        not in {"0", "false", "False", ""},
+        synology_strip_domain_hostname=str(
+            _get(
+                "CASEDD_SYNOLOGY_STRIP_DOMAIN_HOSTNAME",
+                "synology_strip_domain_hostname",
+                "1",
+            )
+        )
+        not in {"0", "false", "False", ""},
+        truenas_host=str(_get("CASEDD_TRUENAS_HOST", "truenas_host", "")).strip(),
+        truenas_port=int(str(_get("CASEDD_TRUENAS_PORT", "truenas_port", 80))),
+        truenas_api_key=str(_get("CASEDD_TRUENAS_API_KEY", "truenas_api_key", "")).strip()
+        or None,
+        truenas_interval=float(str(_get("CASEDD_TRUENAS_INTERVAL", "truenas_interval", 10.0))),
+        truenas_timeout=float(str(_get("CASEDD_TRUENAS_TIMEOUT", "truenas_timeout", 5.0))),
+        truenas_verify_tls=str(_get("CASEDD_TRUENAS_VERIFY_TLS", "truenas_verify_tls", "1"))
+        not in {"0", "false", "False", ""},
+        truenas_strip_domain_hostname=str(
+            _get(
+                "CASEDD_TRUENAS_STRIP_DOMAIN_HOSTNAME",
+                "truenas_strip_domain_hostname",
+                "1",
+            )
         )
         not in {"0", "false", "False", ""},
         plex_base_url=str(_get("CASEDD_PLEX_BASE_URL", "plex_base_url", "http://localhost:32400")),

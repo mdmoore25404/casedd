@@ -125,6 +125,16 @@ def _as_float(value: object) -> float | None:
     return None
 
 
+def _strip_domain(hostname: str, enabled: bool) -> str:
+    """Return short hostname when enabled and value looks like FQDN."""
+    text = hostname.strip()
+    if not enabled or not text:
+        return text
+    if "." not in text:
+        return text
+    return text.split(".", maxsplit=1)[0]
+
+
 def _nested_value(payload: dict[str, object], path: tuple[str, ...]) -> object | None:
     """Read a nested payload value by key path."""
     cursor: object = payload
@@ -357,6 +367,7 @@ class SynologyGetter(BaseGetter):
         camera_exclude_regex: str | None = None,
         camera_exclude_statuses: str | None = "7",
         include_dsm_updates: bool = True,
+        strip_domain_hostname: bool = True,
     ) -> None:
         """Initialize Synology getter settings."""
         super().__init__(store, interval)
@@ -372,6 +383,7 @@ class SynologyGetter(BaseGetter):
         self._camera_snapshot_width = max(0, camera_snapshot_width)
         self._camera_snapshot_height = max(0, camera_snapshot_height)
         self._include_dsm_updates = include_dsm_updates
+        self._strip_domain_hostname = strip_domain_hostname
         self._volume_filter = _compile_regex(volume_exclude_regex, "volume_exclude")
         self._user_filter = _compile_regex(user_exclude_regex, "user_exclude")
         self._camera_include_filter = _compile_regex(camera_include_regex, "camera_include")
@@ -862,7 +874,7 @@ class SynologyGetter(BaseGetter):
         )
 
         return {
-            "synology.system.hostname": hostname,
+            "synology.system.hostname": _strip_domain(hostname, self._strip_domain_hostname),
             "synology.system.model": model,
             "synology.system.version": version,
             "synology.performance.cpu_temp_c": _first_float(

@@ -506,3 +506,58 @@ async def test_synology_getter_backup_uses_version_list_last_result(monkeypatch)
     assert payload["synology.backup.configured"] == 1.0
     assert payload["synology.backup.success"] == 1.0
     assert "nas1 backup|started|SUCCESS" in str(payload["synology.backup.rows"])
+
+
+def test_synology_sample_system_strips_domain_by_default(monkeypatch) -> None:
+    """FQDN hostnames should publish short-name form by default."""
+    getter = SynologyGetter(
+        DataStore(),
+        host="http://nas1:5000",
+        username="demo",
+        password="secret",
+        interval=1.0,
+    )
+
+    def _fake_call_first(calls, sid):
+        _ = sid
+        api = calls[0].api
+        if api == "SYNO.Core.System":
+            return {"hostname": "nas-alpha.example.local", "sys_temp": 43}
+        if api == "SYNO.DSM.Info":
+            return {"model": "DS923+", "version_string": "DSM 7.2.1"}
+        if api == "SYNO.Core.Network":
+            return {"server_name": "nas-alpha.example.local"}
+        return {}
+
+    monkeypatch.setattr(getter, "_call_first", _fake_call_first)
+    payload = getter._sample_system("sid-abc")
+
+    assert payload["synology.system.hostname"] == "nas-alpha"
+
+
+def test_synology_sample_system_keeps_domain_when_disabled(monkeypatch) -> None:
+    """Domain stripping can be disabled for FQDN-dependent environments."""
+    getter = SynologyGetter(
+        DataStore(),
+        host="http://nas1:5000",
+        username="demo",
+        password="secret",
+        interval=1.0,
+        strip_domain_hostname=False,
+    )
+
+    def _fake_call_first(calls, sid):
+        _ = sid
+        api = calls[0].api
+        if api == "SYNO.Core.System":
+            return {"hostname": "nas-alpha.example.local", "sys_temp": 43}
+        if api == "SYNO.DSM.Info":
+            return {"model": "DS923+", "version_string": "DSM 7.2.1"}
+        if api == "SYNO.Core.Network":
+            return {"server_name": "nas-alpha.example.local"}
+        return {}
+
+    monkeypatch.setattr(getter, "_call_first", _fake_call_first)
+    payload = getter._sample_system("sid-abc")
+
+    assert payload["synology.system.hostname"] == "nas-alpha.example.local"

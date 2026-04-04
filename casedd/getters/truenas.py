@@ -25,6 +25,14 @@ Store keys written include:
     - ``truenas.users.count``
     - ``truenas.disks.rows``
     - ``truenas.services.rows``
+    - ``truenas.vms.count_total``
+    - ``truenas.vms.count_running``
+    - ``truenas.vms.count_stopped``
+    - ``truenas.vms.rows``
+    - ``truenas.jails.count_total``
+    - ``truenas.jails.count_running``
+    - ``truenas.jails.count_stopped``
+    - ``truenas.jails.rows``
 """
 
 from __future__ import annotations
@@ -76,6 +84,16 @@ def _as_text(value: object) -> str:
     if isinstance(value, str):
         return value
     return ""
+
+
+def _strip_domain(hostname: str, enabled: bool) -> str:
+    """Return short hostname when enabled and value looks like FQDN."""
+    text = hostname.strip()
+    if not enabled or not text:
+        return text
+    if "." not in text:
+        return text
+    return text.split(".", maxsplit=1)[0]
 
 
 def _as_float(value: object, default: float = 0.0) -> float:
@@ -157,13 +175,14 @@ class TrueNASGetter(BaseGetter):
         api_key: TrueNAS API key (env: CASEDD_TRUENAS_API_KEY).
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913 -- explicit config mapping is preferable
         self,
         store: DataStore,
         interval: float = 10.0,
         host: str | None = None,
         port: int | None = None,
         api_key: str | None = None,
+        strip_domain_hostname: bool = True,
     ) -> None:
         """Initialise the TrueNAS getter.
 
@@ -197,6 +216,7 @@ class TrueNASGetter(BaseGetter):
         self._host = host_value
         self._base_url = f"{scheme}://{self._host}:{self._port}/api/v2.0"
         self._session_id: str | None = None
+        self._strip_domain_hostname = strip_domain_hostname
 
     async def fetch(self) -> dict[str, StoreValue]:
         """Sample TrueNAS system state.
@@ -233,8 +253,10 @@ class TrueNASGetter(BaseGetter):
             if system_info:
                 out["truenas.auth.ok"] = 1.0
                 out["truenas.system.reachable"] = 1.0
-                out["truenas.system.hostname"] = _as_text(
-                    _as_dict(system_info).get("hostname", "")
+                hostname = _as_text(_as_dict(system_info).get("hostname", ""))
+                out["truenas.system.hostname"] = _strip_domain(
+                    hostname,
+                    self._strip_domain_hostname,
                 )
                 out["truenas.system.model"] = _as_text(
                     _as_dict(system_info).get("system", "")
@@ -251,6 +273,8 @@ class TrueNASGetter(BaseGetter):
             self._sample_disks(out)
             self._sample_users(out)
             self._sample_services(out)
+            self._sample_vms(out)
+            self._sample_jails(out)
             self._sample_updates(out)
             self._sample_reporting(out)
 
@@ -479,6 +503,67 @@ class TrueNASGetter(BaseGetter):
 
         out["truenas.system.update_available"] = 1.0 if is_available else 0.0
         out["truenas.system.update_status"] = status_text
+
+    def _sample_vms(self, out: dict[str, StoreValue]) -> None:
+        """Sample TrueNAS virtual machine state (SCALE virt instances)."""
+        vm_rows_raw = _as_list(self._call("virt/instance"))
+        vm_rows: list[str] = []
+        running = 0
+        stopped = 0
+
+        for vm_obj in vm_rows_raw:
+            vm = _as_dict(vm_obj)
+            name = _as_text(vm.get("name", "")) or _as_text(vm.get("id", ""))
+            status_text = _as_text(vm.get("status", "")) or _as_text(vm.get("state", ""))
+            state_upper = status_text.strip().upper()
+            if state_upper in {"RUNNING", "ACTIVE", "UP", "STARTED"}:
+                running += 1
+                label = "Running"
+            else:
+                stopped += 1
+                label = "Stopped"
+            if name:
+                vm_rows.append(f"{name}|{label}")
+
+        out["truenas.vms.count_total"] = float(len(vm_rows))
+        out["truenas.vms.count_running"] = float(running)
+        out["truenas.vms.count_stopped"] = float(stopped)
+        out["truenas.vms.rows"] = "\n".join(vm_rows[:20])
+
+    def _sample_jails(self, out: dict[str, StoreValue]) -> None:
+        """Sample TrueNAS jail state (CORE jail API)."""
+        jail_rows_raw = _as_list(self._call("jail"))
+        jail_rows: list[str] = []
+        running = 0
+        stopped = 0
+
+        for jail_obj in jail_rows_raw:
+            jail = _as_dict(jail_obj)
+            name = (
+                _as_text(jail.get("name", ""))
+                or _as_text(jail.get("host_hostuuid", ""))
+                or _as_text(jail.get("host_hostname", ""))
+            )
+            state_text = (
+                _as_text(jail.get("state", ""))
+                or _as_text(jail.get("status", ""))
+                or _as_text(jail.get("running", ""))
+            )
+            state_upper = state_text.strip().upper()
+            is_running = state_upper in {"UP", "RUNNING", "ON", "TRUE", "1"}
+            if is_running:
+                running += 1
+                label = "Running"
+            else:
+                stopped += 1
+                label = "Stopped"
+            if name:
+                jail_rows.append(f"{name}|{label}")
+
+        out["truenas.jails.count_total"] = float(len(jail_rows))
+        out["truenas.jails.count_running"] = float(running)
+        out["truenas.jails.count_stopped"] = float(stopped)
+        out["truenas.jails.rows"] = "\n".join(jail_rows[:20])
 
     def _sample_reporting(self, out: dict[str, StoreValue]) -> None:
         """Sample reporting graphs used for temperature telemetry."""

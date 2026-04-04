@@ -244,6 +244,8 @@ def test_synology_env_settings_parse(monkeypatch: object, tmp_path: Path) -> Non
         monkeypatch_obj.setenv("CASEDD_SYNOLOGY_CAMERA_EXCLUDE_REGEX", "(Old)")
         monkeypatch_obj.setenv("CASEDD_SYNOLOGY_CAMERA_EXCLUDE_STATUSES", "7,offline")
         monkeypatch_obj.setenv("CASEDD_SYNOLOGY_DSM_UPDATES_ENABLED", "1")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_STRIP_DOMAIN_HOSTNAME", "0")
+        monkeypatch_obj.setenv("CASEDD_TRUENAS_STRIP_DOMAIN_HOSTNAME", "0")
 
         cfg = load_config()
 
@@ -265,6 +267,8 @@ def test_synology_env_settings_parse(monkeypatch: object, tmp_path: Path) -> Non
         assert cfg.synology_camera_exclude_regex == "(Old)"
         assert cfg.synology_camera_exclude_statuses == "7,offline"
         assert cfg.synology_dsm_updates_enabled is True
+        assert cfg.synology_strip_domain_hostname is False
+        assert cfg.truenas_strip_domain_hostname is False
 
 
 def test_invokeai_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
