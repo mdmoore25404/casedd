@@ -105,6 +105,7 @@ def test_truenas_services_rows_encode_levels_for_coloring() -> None:
                 {"service": "ssh", "state": "RUNNING", "enable": True},
                 {"service": "ftp", "state": "STOPPED", "enable": False},
                 {"service": "iscsitarget", "state": "STOPPED", "enable": True},
+                {"service": "nfs", "state": "RUNNING", "enable": False},
             ]
         return []
 
@@ -113,14 +114,14 @@ def test_truenas_services_rows_encode_levels_for_coloring() -> None:
     getter._sample_services(out)
 
     assert out["truenas.services.rows"] == (
-        "ssh|OK|▶ RUN\n"
-        "ftp|UNK|■ STOP\n"
-        "iscsitarget|ALERT|■ DOWN"
+        "ssh|OK|RUN AUTO\n"
+        "iscsitarget|ALERT|DOWN AUTO\n"
+        "nfs|OK|RUN MANUAL"
     )
 
 
-def test_truenas_disks_rows_include_smart_pool_and_temp_detail() -> None:
-    """Disk rows should expose SMART state, pool membership, and temperature detail."""
+def test_truenas_disks_rows_include_temperature_detail() -> None:
+    """Disk rows should expose temperature detail used for temp-scale coloring."""
     getter = TrueNASGetter(DataStore(), host="nas.local", api_key="key")
 
     def _fake_call(endpoint: str, method: str = "GET", body: object | None = None) -> object:
@@ -159,4 +160,25 @@ def test_truenas_disks_rows_include_smart_pool_and_temp_detail() -> None:
     assert out["truenas.disk_1.name"] == "ada0"
     assert out["truenas.disk_1.size_tb"] == 2.0
     assert out["truenas.disk_1.temp_c"] == 35.0
-    assert out["truenas.disks.rows"] == "ada0|OK|S:OK P:tank T:35.0C"
+    assert out["truenas.disks.rows"] == "ada0|OK|35.0C"
+
+
+def test_truenas_updates_status_marks_available_when_pending() -> None:
+    """Update state should report AVAILABLE when pending updates exist."""
+    getter = TrueNASGetter(DataStore(), host="nas.local", api_key="key")
+
+    def _fake_call(endpoint: str, method: str = "GET", body: object | None = None) -> object:
+        _ = method
+        _ = body
+        if endpoint == "update/get_pending":
+            return [{"name": "TrueNAS-24.10"}]
+        if endpoint == "update/check_available":
+            return {"status": "AVAILABLE"}
+        return []
+
+    getter._call = _fake_call  # type: ignore[method-assign]
+    out: dict[str, float | int | str] = {}
+    getter._sample_updates(out)
+
+    assert out["truenas.system.update_available"] == 1.0
+    assert out["truenas.system.update_status"] == "AVAILABLE (1)"

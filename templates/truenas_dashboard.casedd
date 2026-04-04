@@ -9,7 +9,7 @@ refresh_rate: 1.0
 
 grid:
   template_areas: |
-    brand host status status
+    brand host updates updates
     storage storage cpu_hist ram_hist
     services services disk_io net_hist
     disks disks disk_io net_hist
@@ -83,7 +83,7 @@ widgets:
     grid:
       template_areas: |
         pool_name pool_used pool_free pool_total
-        pool_status pool_status cpu_temp auth
+        pool_status pool_status cpu_temp update_status
       columns: "1.4fr 0.9fr 0.9fr 0.9fr"
       rows: "1fr 1fr"
     children_named:
@@ -126,7 +126,7 @@ widgets:
         type: value
         label: Pool Status
         source: truenas.pool_1.status
-        color: "#9ec6ff"
+        color: "#e8f2ff"
         font_size: auto
         max_font_size: 36
       cpu_temp:
@@ -135,25 +135,31 @@ widgets:
         source: truenas.performance.cpu_temp_c
         precision: 1
         unit: "C"
-        color: "#efc058"
+        color: "#7cde9c"
+        min: 20
+        max: 85
+        color_stops:
+          - [20, "#7cde9c"]
+          - [55, "#7cde9c"]
+          - [65, "#efc058"]
+          - [80, "#ea6b6b"]
         font_size: auto
         max_font_size: 36
-      auth:
+      update_status:
         type: value
-        label: API
-        source: truenas.auth.ok
-        precision: 0
-        color: "#7cb342"
+        label: Updates
+        source: truenas.system.update_status
+        color: "#e8f2ff"
         font_size: auto
         max_font_size: 34
 
-  status:
+  updates:
     type: value
     background: "#162028"
     padding: [8, 10]
-    label: API
-    source: truenas.auth.ok
-    color: "#7cb342"
+    label: Updates
+    source: truenas.system.update_status
+    color: "#e8f2ff"
     font_size: auto
     max_font_size: 36
 
@@ -165,9 +171,9 @@ widgets:
     source: truenas.services.rows
     color: "#e8f2ff"
     table_fit_text: false
-    max_items: 10
+    max_items: 18
     font_size: auto
-    max_font_size: 20
+    max_font_size: 16
 
   disks:
     type: table

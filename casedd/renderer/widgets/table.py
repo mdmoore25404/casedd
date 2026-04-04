@@ -191,6 +191,38 @@ _STATUS_ICON_BASE = "assets/icons/status"
 _HEALTH_ICON_BASE = "assets/icons/health"
 
 
+def _temp_color(temp_text: str, default_color: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Return a color for Celsius temperature text such as ``34.5C``."""
+    raw = temp_text.strip().upper()
+    if not raw or raw == "-":
+        return (134, 140, 148)
+    if raw.endswith("C"):
+        raw = raw[:-1]
+    try:
+        temp_c = float(raw)
+    except ValueError:
+        return default_color
+    if temp_c < 45:
+        return (124, 222, 156)
+    if temp_c < 55:
+        return (239, 192, 88)
+    return (234, 107, 107)
+
+
+def _looks_like_temp_text(value: str) -> bool:
+    """Return True when a detail cell looks like a Celsius temperature."""
+    raw = value.strip().upper()
+    if raw == "-":
+        return True
+    if raw.endswith("C"):
+        raw = raw[:-1]
+    try:
+        float(raw)
+    except ValueError:
+        return False
+    return True
+
+
 class TableWidget(BaseWidget):
     """Render a compact two-column table with dynamic font scaling."""
 
@@ -619,9 +651,12 @@ class TableWidget(BaseWidget):
         header_font = get_font(max(10, int(resolved_font_size * 0.78)))
         body_font = get_font(resolved_font_size)
 
+        is_temp_table = rows and all(_looks_like_temp_text(row.detail) for row in rows)
+        detail_header = "Temp" if is_temp_table else "Detail"
+
         draw.text((name_x, y), "Disk", fill=header_color, font=header_font)
         draw.text((level_x, y), "State", fill=header_color, font=header_font)
-        draw.text((detail_x, y), "Detail", fill=header_color, font=header_font)
+        draw.text((detail_x, y), detail_header, fill=header_color, font=header_font)
 
         header_bb = draw.textbbox((0, 0), "Ag", font=header_font)
         row_h = int((draw.textbbox((0, 0), "Ag", font=body_font)[3]) + 2)
@@ -652,7 +687,8 @@ class TableWidget(BaseWidget):
                 inner.x + inner.w - detail_x - 4,
                 {},
             )
-            draw.text((detail_x, y), detail_text, fill=color, font=body_font)
+            detail_color = _temp_color(row.detail, color)
+            draw.text((detail_x, y), detail_text, fill=detail_color, font=body_font)
             y += row_h
         return True
 

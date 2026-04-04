@@ -10,6 +10,8 @@ Store keys written include:
     - ``truenas.system.model``
     - ``truenas.system.version``
     - ``truenas.system.uptime``
+    - ``truenas.system.update_available``
+    - ``truenas.system.update_status``
     - ``truenas.performance.cpu_temp_c``
     - ``truenas.pool_<n>.name``
     - ``truenas.pool_<n>.status``
@@ -249,6 +251,7 @@ class TrueNASGetter(BaseGetter):
             self._sample_disks(out)
             self._sample_users(out)
             self._sample_services(out)
+            self._sample_updates(out)
             self._sample_reporting(out)
 
         except Exception as exc:
@@ -341,7 +344,6 @@ class TrueNASGetter(BaseGetter):
             disk_dict = _as_dict(disk)
             disk_name = _as_text(disk_dict.get("name", ""))
             disk_status = _as_text(disk_dict.get("status", "unknown"))
-            disk_pool = _as_text(disk_dict.get("pool", ""))
             size_bytes = _as_int(disk_dict.get("size", 0))
             reported_temp = _as_optional_float(disk_dict.get("temperature"))
             sampled_temp = disk_temp_map.get(f"disktemp:{disk_name}")
@@ -368,8 +370,7 @@ class TrueNASGetter(BaseGetter):
             temp_text = "-"
             if temp_c is not None and temp_c >= 0:
                 temp_text = f"{round(temp_c, 1):.1f}C"
-            pool_text = disk_pool if disk_pool else "-"
-            detail = f"S:{smart_state} P:{pool_text} T:{temp_text}"
+            detail = temp_text
             row = f"{disk_name}|{level}|{detail}"
             disk_rows.append(row)
 
@@ -429,7 +430,7 @@ class TrueNASGetter(BaseGetter):
         services = self._call("service")
         service_list = _as_list(services)
         service_rows: list[str] = []
-        for service in service_list[:10]:
+        for service in service_list:
             service_dict = _as_dict(service)
             service_name = _as_text(service_dict.get("service", ""))
             service_state = _as_text(service_dict.get("state", "unknown"))
@@ -438,19 +439,46 @@ class TrueNASGetter(BaseGetter):
             if service_name:
                 normalized = service_state.upper()
                 is_running = normalized == "RUNNING"
+                if not (is_running or is_enabled):
+                    continue
                 level = "OK"
-                state_text = "▶ RUN"
+                state_text = "RUN"
                 if not is_running:
                     if is_enabled:
                         level = "ALERT"
-                        state_text = "■ DOWN"
+                        state_text = "DOWN"
                     else:
                         level = "UNK"
-                        state_text = "■ STOP"
-                row = f"{service_name}|{level}|{state_text}"
+                        state_text = "STOP"
+                auto_text = "AUTO" if is_enabled else "MANUAL"
+                row = f"{service_name}|{level}|{state_text} {auto_text}"
                 service_rows.append(row)
         if service_rows:
-            out["truenas.services.rows"] = "\n".join(service_rows[:10])
+            out["truenas.services.rows"] = "\n".join(service_rows[:50])
+
+    def _sample_updates(self, out: dict[str, StoreValue]) -> None:
+        """Sample TrueNAS update availability state."""
+        available_payload = self._call("update/check_available")
+        pending_payload = self._call("update/get_pending")
+
+        status_text = "UP-TO-DATE"
+        is_available = False
+        pending_items = _as_list(pending_payload)
+
+        if pending_items:
+            is_available = True
+            status_text = f"AVAILABLE ({len(pending_items)})"
+        else:
+            available_map = _as_dict(available_payload)
+            status_raw = _as_text(available_map.get("status", "")).strip().upper()
+            if status_raw in {"AVAILABLE", "PENDING", "REBOOT_REQUIRED"}:
+                is_available = True
+                status_text = status_raw.replace("_", " ")
+            elif status_raw:
+                status_text = status_raw.replace("_", " ")
+
+        out["truenas.system.update_available"] = 1.0 if is_available else 0.0
+        out["truenas.system.update_status"] = status_text
 
     def _sample_reporting(self, out: dict[str, StoreValue]) -> None:
         """Sample reporting graphs used for temperature telemetry."""
