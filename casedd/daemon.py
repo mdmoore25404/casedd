@@ -62,6 +62,7 @@ from casedd.getters.pihole import PiHoleGetter
 from casedd.getters.plex import PlexGetter
 from casedd.getters.servarr import RadarrGetter, ServarrAggregateGetter, SonarrGetter
 from casedd.getters.speedtest import SpeedtestGetter
+from casedd.getters.synology import SynologyGetter
 from casedd.getters.sysinfo import SysinfoGetter
 from casedd.getters.system import SystemGetter
 from casedd.getters.ups import UpsGetter
@@ -1352,6 +1353,24 @@ class Daemon:
                 timeout=self._cfg.pihole_timeout,
                 verify_tls=self._cfg.pihole_verify_tls,
             ),
+            SynologyGetter(
+                self._store,
+                host=self._cfg.synology_host,
+                username=self._cfg.synology_username,
+                password=self._cfg.synology_password,
+                sid=self._cfg.synology_sid,
+                interval=self._cfg.synology_interval,
+                timeout=self._cfg.synology_timeout,
+                verify_tls=self._cfg.synology_verify_tls,
+                volume_exclude_regex=self._cfg.synology_volume_exclude_regex,
+                user_exclude_regex=self._cfg.synology_user_exclude_regex,
+                include_surveillance=self._cfg.synology_surveillance_enabled,
+                surveillance_max_cameras=self._cfg.synology_surveillance_max_cameras,
+                include_camera_snapshots=self._cfg.synology_camera_snapshot_enabled,
+                camera_snapshot_width=self._cfg.synology_camera_snapshot_width,
+                camera_snapshot_height=self._cfg.synology_camera_snapshot_height,
+                include_dsm_updates=self._cfg.synology_dsm_updates_enabled,
+            ),
             RadarrGetter(
                 self._store,
                 base_url=self._cfg.radarr_base_url,
@@ -1527,6 +1546,7 @@ class Daemon:
             ("ups.", "UpsGetter"),
             ("vms.", "VmGetter"),
             ("pihole.", "PiHoleGetter"),
+            ("synology.", "SynologyGetter"),
             ("radarr.", "RadarrGetter"),
             ("sonarr.", "SonarrGetter"),
             ("servarr.", "ServarrAggregateGetter"),

@@ -86,6 +86,11 @@ def test_getter_name_for_source_includes_pihole() -> None:
     assert Daemon._getter_name_for_source("pihole.queries.total") == "PiHoleGetter"
 
 
+def test_getter_name_for_source_includes_synology() -> None:
+    """Synology namespace should resolve to SynologyGetter."""
+    assert Daemon._getter_name_for_source("synology.system.model") == "SynologyGetter"
+
+
 def test_getter_name_for_source_includes_servarr_namespaces() -> None:
     """Servarr namespaces should resolve to their concrete getter names."""
     assert Daemon._getter_name_for_source("radarr.queue.total") == "RadarrGetter"

@@ -472,6 +472,21 @@ class Config:
     pihole_timeout: float = Field(default=4.0)
     pihole_verify_tls: bool = Field(default=True)
     pihole_interval: float = Field(default=5.0)
+    synology_host: str = Field(default="")
+    synology_username: str | None = Field(default=None)
+    synology_password: str | None = Field(default=None, repr=False)
+    synology_sid: str | None = Field(default=None, repr=False)
+    synology_interval: float = Field(default=20.0)
+    synology_timeout: float = Field(default=5.0)
+    synology_verify_tls: bool = Field(default=True)
+    synology_volume_exclude_regex: str | None = Field(default=None)
+    synology_user_exclude_regex: str | None = Field(default=None)
+    synology_surveillance_enabled: bool = Field(default=True)
+    synology_surveillance_max_cameras: int = Field(default=4, ge=0, le=16)
+    synology_camera_snapshot_enabled: bool = Field(default=True)
+    synology_camera_snapshot_width: int = Field(default=640, ge=0, le=4096)
+    synology_camera_snapshot_height: int = Field(default=360, ge=0, le=4096)
+    synology_dsm_updates_enabled: bool = Field(default=True)
     plex_base_url: str = Field(default="http://localhost:32400")
     plex_token: str | None = Field(default=None, repr=False)
     plex_client_identifier: str = Field(default="casedd")
@@ -887,6 +902,24 @@ class Config:
         """Ensure Pi-hole polling interval is positive and practical."""
         if not (1.0 <= v <= 3600.0):
             msg = f"pihole_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("synology_interval")
+    @classmethod
+    def _validate_synology_interval(cls, v: float) -> float:
+        """Ensure Synology polling interval is positive and practical."""
+        if not (1.0 <= v <= 3600.0):
+            msg = f"synology_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("synology_timeout")
+    @classmethod
+    def _validate_synology_timeout(cls, v: float) -> float:
+        """Ensure Synology timeout is positive and practical."""
+        if not (0.5 <= v <= 120.0):
+            msg = f"synology_timeout must be between 0.5 and 120 seconds, got {v}"
             raise ValueError(msg)
         return v
 
@@ -1369,6 +1402,75 @@ def load_config() -> Config:
         pihole_verify_tls=str(_get("CASEDD_PIHOLE_VERIFY_TLS", "pihole_verify_tls", "1"))
         not in {"0", "false", "False", ""},
         pihole_interval=float(str(_get("CASEDD_PIHOLE_INTERVAL", "pihole_interval", 5.0))),
+        synology_host=str(_get("CASEDD_SYNOLOGY_HOST", "synology_host", "")).strip(),
+        synology_username=str(_get("CASEDD_SYNOLOGY_USERNAME", "synology_username", "")).strip()
+        or None,
+        synology_password=str(_get("CASEDD_SYNOLOGY_PASSWORD", "synology_password", "")).strip()
+        or None,
+        synology_sid=str(_get("CASEDD_SYNOLOGY_SID", "synology_sid", "")).strip() or None,
+        synology_interval=float(str(_get("CASEDD_SYNOLOGY_INTERVAL", "synology_interval", 20.0))),
+        synology_timeout=float(str(_get("CASEDD_SYNOLOGY_TIMEOUT", "synology_timeout", 5.0))),
+        synology_verify_tls=str(_get("CASEDD_SYNOLOGY_VERIFY_TLS", "synology_verify_tls", "1"))
+        not in {"0", "false", "False", ""},
+        synology_volume_exclude_regex=str(
+            _get(
+                "CASEDD_SYNOLOGY_VOLUME_EXCLUDE_REGEX",
+                "synology_volume_exclude_regex",
+                "",
+            )
+        ).strip()
+        or None,
+        synology_user_exclude_regex=str(
+            _get(
+                "CASEDD_SYNOLOGY_USER_EXCLUDE_REGEX",
+                "synology_user_exclude_regex",
+                "",
+            )
+        ).strip()
+        or None,
+        synology_surveillance_enabled=str(
+            _get("CASEDD_SYNOLOGY_SURVEILLANCE_ENABLED", "synology_surveillance_enabled", "1")
+        )
+        not in {"0", "false", "False", ""},
+        synology_surveillance_max_cameras=int(
+            str(
+                _get(
+                    "CASEDD_SYNOLOGY_SURVEILLANCE_MAX_CAMERAS",
+                    "synology_surveillance_max_cameras",
+                    4,
+                )
+            )
+        ),
+        synology_camera_snapshot_enabled=str(
+            _get(
+                "CASEDD_SYNOLOGY_CAMERA_SNAPSHOT_ENABLED",
+                "synology_camera_snapshot_enabled",
+                "1",
+            )
+        )
+        not in {"0", "false", "False", ""},
+        synology_camera_snapshot_width=int(
+            str(
+                _get(
+                    "CASEDD_SYNOLOGY_CAMERA_SNAPSHOT_WIDTH",
+                    "synology_camera_snapshot_width",
+                    640,
+                )
+            )
+        ),
+        synology_camera_snapshot_height=int(
+            str(
+                _get(
+                    "CASEDD_SYNOLOGY_CAMERA_SNAPSHOT_HEIGHT",
+                    "synology_camera_snapshot_height",
+                    360,
+                )
+            )
+        ),
+        synology_dsm_updates_enabled=str(
+            _get("CASEDD_SYNOLOGY_DSM_UPDATES_ENABLED", "synology_dsm_updates_enabled", "1")
+        )
+        not in {"0", "false", "False", ""},
         plex_base_url=str(_get("CASEDD_PLEX_BASE_URL", "plex_base_url", "http://localhost:32400")),
         plex_token=str(_get("CASEDD_PLEX_TOKEN", "plex_token", "")).strip() or None,
         plex_client_identifier=str(

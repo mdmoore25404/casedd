@@ -222,6 +222,45 @@ def test_pihole_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
         assert cfg.pihole_interval == 15.0
 
 
+def test_synology_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
+        """Synology env vars should map into typed config fields."""
+        monkeypatch_obj = monkeypatch
+        monkeypatch_obj.setenv("CASEDD_CONFIG", str(tmp_path / "missing.yaml"))
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_HOST", "https://nas.local:5001")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_USERNAME", "admin")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_PASSWORD", "secret")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_SID", "sid-abc")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_INTERVAL", "30")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_TIMEOUT", "9")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_VERIFY_TLS", "0")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_VOLUME_EXCLUDE_REGEX", "(backup)")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_USER_EXCLUDE_REGEX", "(guest)")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_SURVEILLANCE_ENABLED", "1")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_SURVEILLANCE_MAX_CAMERAS", "3")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_CAMERA_SNAPSHOT_ENABLED", "1")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_CAMERA_SNAPSHOT_WIDTH", "800")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_CAMERA_SNAPSHOT_HEIGHT", "450")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_DSM_UPDATES_ENABLED", "1")
+
+        cfg = load_config()
+
+        assert cfg.synology_host == "https://nas.local:5001"
+        assert cfg.synology_username == "admin"
+        assert cfg.synology_password == "secret"
+        assert cfg.synology_sid == "sid-abc"
+        assert cfg.synology_interval == 30.0
+        assert cfg.synology_timeout == 9.0
+        assert cfg.synology_verify_tls is False
+        assert cfg.synology_volume_exclude_regex == "(backup)"
+        assert cfg.synology_user_exclude_regex == "(guest)"
+        assert cfg.synology_surveillance_enabled is True
+        assert cfg.synology_surveillance_max_cameras == 3
+        assert cfg.synology_camera_snapshot_enabled is True
+        assert cfg.synology_camera_snapshot_width == 800
+        assert cfg.synology_camera_snapshot_height == 450
+        assert cfg.synology_dsm_updates_enabled is True
+
+
 def test_invokeai_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
         """InvokeAI env vars should map into typed config fields."""
         monkeypatch_obj = monkeypatch

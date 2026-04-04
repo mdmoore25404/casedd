@@ -4,6 +4,7 @@
 *nzbget*.png
 *pihole*.png
 *servarr*.png
+*synology*.png
 
 # Allow sanitized demo snapshots to be committed.
 !*_demo*.png

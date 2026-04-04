@@ -1,0 +1,171 @@
+# synology_dashboard.casedd — Synology NAS status and camera overview
+
+name: synology_dashboard
+description: Synology DSM status, storage health, services, updates, and camera snapshots.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0e1418"
+refresh_rate: 1.0
+
+grid:
+  template_areas: |
+    identity      identity      updates      services
+    storage_pool  storage_pool  users        users
+    camera_1      camera_1      camera_2     camera_2
+  columns: 1.3fr 1.3fr 1fr 1fr
+  rows: 0.85fr 0.95fr 1.2fr
+
+widgets:
+  identity:
+    type: panel
+    background: "#162028"
+    padding: 8
+    grid:
+      template_areas: |
+        "model version host"
+      columns: "1fr 1fr 1fr"
+      rows: "1fr"
+    children_named:
+      model:
+        type: value
+        label: Model
+        source: synology.system.model
+        color: "#d4e7ff"
+        font_size: auto
+      version:
+        type: value
+        label: DSM Version
+        source: synology.system.version
+        color: "#8ed9ff"
+        font_size: auto
+      host:
+        type: value
+        label: Hostname
+        source: synology.system.hostname
+        color: "#9fe6c3"
+        font_size: auto
+
+  updates:
+    type: panel
+    background: "#162028"
+    padding: 8
+    grid:
+      template_areas: |
+        "available latest"
+      columns: "1fr 1fr"
+      rows: "1fr"
+    children_named:
+      available:
+        type: boolean
+        label: DSM Update
+        source: synology.dsm.update_available
+        color: "#ffce6e"
+      latest:
+        type: value
+        label: Latest
+        source: synology.dsm.latest_version
+        color: "#e8f2ff"
+        font_size: auto
+
+  services:
+    type: panel
+    background: "#162028"
+    padding: 8
+    grid:
+      template_areas: |
+        "smb"
+        "file_station"
+        "drive"
+        "surveillance"
+      columns: "1fr"
+      rows: "1fr 1fr 1fr 1fr"
+    children_named:
+      smb:
+        type: value
+        label: SMB
+        source: synology.services.smb_state
+        color: "#9fd5ff"
+        font_size: auto
+      file_station:
+        type: value
+        label: File Station
+        source: synology.services.file_station_state
+        color: "#9fd5ff"
+        font_size: auto
+      drive:
+        type: value
+        label: Drive
+        source: synology.services.synology_drive_state
+        color: "#9fd5ff"
+        font_size: auto
+      surveillance:
+        type: value
+        label: Surveillance
+        source: synology.services.surveillance_station_state
+        color: "#9fd5ff"
+        font_size: auto
+
+  storage_pool:
+    type: panel
+    background: "#162028"
+    padding: 8
+    grid:
+      template_areas: |
+        "vol_name vol_name vol_pct warn crit"
+      columns: "1.5fr 1.5fr 1fr 1fr 1fr"
+      rows: "1fr"
+    children_named:
+      vol_name:
+        type: value
+        label: Volume 1
+        source: synology.volume_1.name
+        color: "#e8f2ff"
+        font_size: auto
+      vol_pct:
+        type: value
+        label: Used %
+        source: synology.volume_1.used_percent
+        precision: 1
+        unit: "%"
+        color_stops:
+          - [0, "#78dd9c"]
+          - [70, "#efc058"]
+          - [90, "#ea6b6b"]
+      warn:
+        type: value
+        label: Warn
+        source: synology.storage.warning_count
+        precision: 0
+        color: "#efc058"
+      crit:
+        type: value
+        label: Critical
+        source: synology.storage.critical_count
+        precision: 0
+        color: "#ea6b6b"
+
+  users:
+    type: table
+    label: Users (filtered)
+    source: synology.users.rows
+    color: "#e8f2ff"
+    background: "#162028"
+    table_fit_text: true
+    max_items: 8
+    padding: [6, 10]
+
+  camera_1:
+    type: image
+    label: Camera 1
+    source: synology.camera_1.snapshot_url
+    path: assets/casedd-logo.png
+    scale: fill
+    padding: [4, 6]
+
+  camera_2:
+    type: image
+    label: Camera 2
+    source: synology.camera_2.snapshot_url
+    path: assets/casedd-logo.png
+    scale: fill
+    padding: [4, 6]

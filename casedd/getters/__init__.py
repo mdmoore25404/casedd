@@ -21,6 +21,7 @@ Available getters:
     - :mod:`casedd.getters.plex` — Plex server/session/library telemetry
     - :mod:`casedd.getters.servarr` — Radarr/Sonarr queue/health/disk telemetry
     - :mod:`casedd.getters.speedtest` — Ookla speed test sampling
+    - :mod:`casedd.getters.synology` — Synology DSM/storage/surveillance telemetry
     - :mod:`casedd.getters.system` — Hostname, uptime, load average
     - :mod:`casedd.getters.ups` — UPS metrics via apcaccess/upsc/custom command
     - :mod:`casedd.getters.vms` — KVM/libvirt VM telemetry via ``virsh``

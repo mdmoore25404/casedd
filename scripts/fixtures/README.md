@@ -21,6 +21,7 @@ two ways:
 | `nzbget_dashboard.json` | `nzbget_dashboard` | `nzbget.*` |
 | `pihole.json` | `pihole` | `pihole.*` |
 | `servarr_dashboard.json` | `servarr_dashboard` | `radarr.*`, `sonarr.*` |
+| `synology_dashboard.json` | `synology_dashboard` | `synology.*` |
 
 ## Replay format
 
