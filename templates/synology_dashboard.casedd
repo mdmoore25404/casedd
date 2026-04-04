@@ -131,9 +131,9 @@ widgets:
     padding: [8, 10]
     grid:
       template_areas: |
-        vol_name vol_used vol_free vol_total
-        warn crit pool backup
-      columns: "1.5fr 0.9fr 0.9fr 0.9fr"
+        vol_name vol_used vol_free vol_total vol_total
+        warn crit pool cpu_temp backup
+      columns: "1.35fr 0.85fr 0.85fr 0.85fr 1fr"
       rows: "1fr 1fr"
     children_named:
       vol_name:
@@ -188,6 +188,14 @@ widgets:
         source: synology.storagepool_1.status
         color: "#c4d7ef"
         max_font_size: 36
+      cpu_temp:
+        type: value
+        label: CPU C
+        source: synology.performance.cpu_temp_c
+        precision: 0
+        unit: C
+        color: "#efc058"
+        max_font_size: 34
       backup:
         type: value
         label: Backup

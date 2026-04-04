@@ -10,15 +10,18 @@ Store keys written include:
     - ``truenas.system.model``
     - ``truenas.system.version``
     - ``truenas.system.uptime``
+    - ``truenas.performance.cpu_temp_c``
     - ``truenas.pool_<n>.name``
     - ``truenas.pool_<n>.status``
     - ``truenas.pool_<n>.used_percent``
     - ``truenas.pool_<n>.free_tb``
+    - ``truenas.pool_<n>.total_tb``
     - ``truenas.disk_<n>.name``
     - ``truenas.disk_<n>.status``
     - ``truenas.disk_<n>.size_tb``
     - ``truenas.disk_<n>.temp_c``
     - ``truenas.users.count``
+    - ``truenas.disks.rows``
     - ``truenas.services.rows``
 """
 
@@ -83,6 +86,23 @@ def _as_float(value: object, default: float = 0.0) -> float:
         except ValueError:
             return default
     return default
+
+
+def _as_optional_float(value: object) -> float | None:
+    """Coerce a scalar value to float, returning None when unavailable."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return None
+        try:
+            return float(raw)
+        except ValueError:
+            return None
+    return None
 
 
 def _as_int(value: object, default: int = 0) -> int:
@@ -229,6 +249,7 @@ class TrueNASGetter(BaseGetter):
             self._sample_disks(out)
             self._sample_users(out)
             self._sample_services(out)
+            self._sample_reporting(out)
 
         except Exception as exc:
             _log.warning("TrueNAS sample error: %s", exc)
@@ -282,12 +303,14 @@ class TrueNASGetter(BaseGetter):
             if size_bytes > 0:
                 used_pct = round((allocated_bytes / size_bytes) * 100, 1)
                 free_tb = round((size_bytes - allocated_bytes) / (1024**4), 2)
+                total_tb = round(size_bytes / (1024**4), 2)
                 out[f"truenas.pool_{idx}.used_percent"] = used_pct
                 out[f"truenas.pool_{idx}.free_tb"] = free_tb
+                out[f"truenas.pool_{idx}.total_tb"] = total_tb
 
             # Add to rows for table display (limit to 3 rows)
             if idx <= 3:
-                status_icon = "●" if pool_status == "healthy" else "▼"
+                status_icon = "●" if pool_status.strip().lower() == "healthy" else "▼"
                 usage_text = f"{used_pct}%" if used_pct is not None else "--"
                 row = f"{pool_name}|{status_icon}|{usage_text}"
                 pool_rows.append(row)
@@ -302,13 +325,27 @@ class TrueNASGetter(BaseGetter):
             out: Output dict to populate with disk entries.
         """
         disks = self._call("disk")
+        smart_results = self._call("smart/test/results")
         disk_list = _as_list(disks)
+        smart_map = self._build_smart_status_map(_as_list(smart_results))
+
+        disk_temp_graphs: list[dict[str, object]] = [
+            {"name": "disktemp", "identifier": _as_text(_as_dict(disk).get("name", ""))}
+            for disk in disk_list
+            if _as_text(_as_dict(disk).get("name", ""))
+        ]
+        disk_temp_map = self._reporting_latest_values(disk_temp_graphs)
+
+        disk_rows: list[str] = []
         for idx, disk in enumerate(disk_list[:20], 1):
             disk_dict = _as_dict(disk)
             disk_name = _as_text(disk_dict.get("name", ""))
             disk_status = _as_text(disk_dict.get("status", "unknown"))
+            disk_pool = _as_text(disk_dict.get("pool", ""))
             size_bytes = _as_int(disk_dict.get("size", 0))
-            temp_c = _as_float(disk_dict.get("temperature", -1.0))
+            reported_temp = _as_optional_float(disk_dict.get("temperature"))
+            sampled_temp = disk_temp_map.get(f"disktemp:{disk_name}")
+            temp_c = sampled_temp if sampled_temp is not None else reported_temp
 
             out[f"truenas.disk_{idx}.name"] = disk_name
             out[f"truenas.disk_{idx}.status"] = disk_status
@@ -316,8 +353,60 @@ class TrueNASGetter(BaseGetter):
                 out[f"truenas.disk_{idx}.size_tb"] = round(
                     size_bytes / (1024**4), 2
                 )
-            if temp_c >= 0:
+            if temp_c is not None and temp_c >= 0:
                 out[f"truenas.disk_{idx}.temp_c"] = round(temp_c, 1)
+
+            smart_state = smart_map.get(disk_name, "UNK")
+            level = "OK"
+            if smart_state in {"FAIL", "ALERT"}:
+                level = "ALERT"
+            elif smart_state in {"WARN", "RUNNING"}:
+                level = "WARN"
+            elif smart_state == "UNK":
+                level = "UNK"
+
+            temp_text = "-"
+            if temp_c is not None and temp_c >= 0:
+                temp_text = f"{round(temp_c, 1):.1f}C"
+            pool_text = disk_pool if disk_pool else "-"
+            detail = f"S:{smart_state} P:{pool_text} T:{temp_text}"
+            row = f"{disk_name}|{level}|{detail}"
+            disk_rows.append(row)
+
+        if disk_rows:
+            out["truenas.disks.rows"] = "\n".join(disk_rows[:10])
+
+    def _build_smart_status_map(self, smart_rows: list[object]) -> dict[str, str]:
+        """Build disk-name to SMART state mapping from smart/test/results payload."""
+        out: dict[str, str] = {}
+        for row_obj in smart_rows:
+            row = _as_dict(row_obj)
+            disk_name = _as_text(row.get("disk", ""))
+            if not disk_name:
+                continue
+
+            current_test = _as_dict(row.get("current_test", {}))
+            current_state = _as_text(current_test.get("status", ""))
+            if current_state and current_state.upper() not in {"SUCCESS", "NONE"}:
+                out[disk_name] = "RUNNING"
+                continue
+
+            tests = _as_list(row.get("tests", []))
+            statuses = [
+                _as_text(_as_dict(test_obj).get("status", "")).upper()
+                for test_obj in tests
+                if _as_text(_as_dict(test_obj).get("status", ""))
+            ]
+            if not statuses:
+                out[disk_name] = "UNK"
+                continue
+            if any(status in {"FAILED", "FAIL", "ERROR", "ABORTED"} for status in statuses):
+                out[disk_name] = "FAIL"
+            elif any(status not in {"SUCCESS", "COMPLETED", "FINISHED"} for status in statuses):
+                out[disk_name] = "WARN"
+            else:
+                out[disk_name] = "OK"
+        return out
 
     def _sample_users(self, out: dict[str, StoreValue]) -> None:
         """Sample TrueNAS user count.
@@ -344,21 +433,76 @@ class TrueNASGetter(BaseGetter):
             service_dict = _as_dict(service)
             service_name = _as_text(service_dict.get("service", ""))
             service_state = _as_text(service_dict.get("state", "unknown"))
+            enabled_raw = service_dict.get("enable", False)
+            is_enabled = bool(enabled_raw) if isinstance(enabled_raw, (bool, int)) else False
             if service_name:
-                is_running = service_state.upper() == "RUNNING"
-                state_icon = "▶" if is_running else "■"
-                state_text = "RUN" if is_running else "STOP"
-                row = f"{service_name}|{state_icon}|{state_text}"
+                normalized = service_state.upper()
+                is_running = normalized == "RUNNING"
+                level = "OK"
+                state_text = "▶ RUN"
+                if not is_running:
+                    if is_enabled:
+                        level = "ALERT"
+                        state_text = "■ DOWN"
+                    else:
+                        level = "UNK"
+                        state_text = "■ STOP"
+                row = f"{service_name}|{level}|{state_text}"
                 service_rows.append(row)
         if service_rows:
             out["truenas.services.rows"] = "\n".join(service_rows[:10])
 
-    def _call(self, endpoint: str, method: str = "GET") -> object:
+    def _sample_reporting(self, out: dict[str, StoreValue]) -> None:
+        """Sample reporting graphs used for temperature telemetry."""
+        graphs: list[dict[str, object]] = [{"name": "cputemp"}]
+        values = self._reporting_latest_values(graphs)
+        cpu_temp = values.get("cputemp")
+        if cpu_temp is not None:
+            out["truenas.performance.cpu_temp_c"] = round(cpu_temp, 1)
+
+    def _reporting_latest_values(self, graphs: list[dict[str, object]]) -> dict[str, float]:
+        """Fetch latest numeric value for each requested reporting graph."""
+        if not graphs:
+            return {}
+        payload = {
+            "graphs": graphs,
+            "reporting_query": {"unit": "HOUR"},
+        }
+        response = self._call("reporting/get_data", method="POST", body=payload)
+        rows = _as_list(response)
+        out: dict[str, float] = {}
+        for row_obj in rows:
+            row = _as_dict(row_obj)
+            name = _as_text(row.get("name", ""))
+            identifier = _as_text(row.get("identifier", ""))
+            key = f"{name}:{identifier}" if identifier else name
+            latest = self._latest_graph_value(row)
+            if latest is not None:
+                out[key] = latest
+        return out
+
+    def _latest_graph_value(self, graph: dict[str, object]) -> float | None:
+        """Return latest non-null reading from one reporting graph payload."""
+        data = _as_list(graph.get("data", []))
+        latest_values: list[float] = []
+        for series_obj in data:
+            series = _as_list(series_obj)
+            for point in reversed(series):
+                parsed = _as_optional_float(point)
+                if parsed is not None:
+                    latest_values.append(parsed)
+                    break
+        if not latest_values:
+            return None
+        return max(latest_values)
+
+    def _call(self, endpoint: str, method: str = "GET", body: object | None = None) -> object:
         """Make a single TrueNAS API call.
 
         Args:
             endpoint: API endpoint path (e.g. "system/info").
             method: HTTP method (default: "GET").
+            body: Optional JSON payload for POST-like calls.
 
         Returns:
             Parsed JSON response, or empty dict on error.
@@ -372,7 +516,10 @@ class TrueNASGetter(BaseGetter):
             "Content-Type": "application/json",
             "User-Agent": "CASEDD/0.2",
         }
-        req = Request(url, headers=headers, method=method)  # noqa: S310
+        request_body: bytes | None = None
+        if body is not None:
+            request_body = json.dumps(body).encode("utf-8")
+        req = Request(url, data=request_body, headers=headers, method=method)  # noqa: S310
         ssl_context = _remote_ssl_context()
 
         try:

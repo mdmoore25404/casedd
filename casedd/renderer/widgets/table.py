@@ -161,6 +161,19 @@ class _SynologyShareRenderContext:
 
 
 @dataclass(frozen=True)
+class _TrueNASServiceRenderContext:
+    """Render context for TrueNAS service status table mode."""
+
+    draw: ImageDraw.ImageDraw
+    inner: Rect
+    label_h: int
+    source_text: str
+    font_size: int | str
+    max_items: int | None
+    color: str | None
+
+
+@dataclass(frozen=True)
 class _SpecialSourceContext:
     """Shared inputs for rendering special source-specific table layouts."""
 
@@ -300,6 +313,7 @@ class TableWidget(BaseWidget):
         context: _SpecialSourceContext,
     ) -> bool:
         """Render special table layouts for known structured row payloads."""
+        rendered = False
         if cfg.source == "containers.rows":
             container_ctx = _ContainerRenderContext(
                 draw=context.draw,
@@ -310,9 +324,9 @@ class TableWidget(BaseWidget):
                 max_items=cfg.max_items,
                 color=cfg.color,
             )
-            return self._draw_containers_table(img, container_ctx)
+            rendered = self._draw_containers_table(img, container_ctx)
 
-        if cfg.source in {"synology.status.rows", "synology.surveillance.status.rows"}:
+        elif cfg.source in {"synology.status.rows", "synology.surveillance.status.rows"}:
             status_ctx = _SynologyStatusRenderContext(
                 draw=context.draw,
                 inner=context.inner,
@@ -322,9 +336,9 @@ class TableWidget(BaseWidget):
                 max_items=cfg.max_items,
                 color=cfg.color,
             )
-            return self._draw_synology_status_table(img, status_ctx)
+            rendered = self._draw_synology_status_table(img, status_ctx)
 
-        if cfg.source == "synology.disks.rows":
+        elif cfg.source in {"synology.disks.rows", "truenas.disks.rows"}:
             disk_ctx = _SynologyDiskRenderContext(
                 draw=context.draw,
                 inner=context.inner,
@@ -334,9 +348,21 @@ class TableWidget(BaseWidget):
                 max_items=cfg.max_items,
                 color=cfg.color,
             )
-            return self._draw_synology_disks_table(disk_ctx)
+            rendered = self._draw_synology_disks_table(disk_ctx)
 
-        if cfg.source == "synology.shares.rows":
+        elif cfg.source == "truenas.services.rows":
+            service_ctx = _TrueNASServiceRenderContext(
+                draw=context.draw,
+                inner=context.inner,
+                label_h=context.label_h,
+                source_text=context.source_text,
+                font_size=cfg.font_size,
+                max_items=cfg.max_items,
+                color=cfg.color,
+            )
+            rendered = self._draw_truenas_services_table(service_ctx)
+
+        elif cfg.source == "synology.shares.rows":
             share_ctx = _SynologyShareRenderContext(
                 draw=context.draw,
                 inner=context.inner,
@@ -346,8 +372,8 @@ class TableWidget(BaseWidget):
                 max_items=cfg.max_items,
                 color=cfg.color,
             )
-            return self._draw_synology_shares_table(share_ctx)
-        return False
+            rendered = self._draw_synology_shares_table(share_ctx)
+        return rendered
 
     def _draw_containers_table(
         self,
@@ -431,6 +457,76 @@ class TableWidget(BaseWidget):
                 fill=color,
                 font=body_font,
             )
+            y += row_h
+        return True
+
+    def _draw_truenas_services_table(
+        self,
+        context: _TrueNASServiceRenderContext,
+    ) -> bool:
+        """Render ``truenas.services.rows`` with per-state color coding."""
+        rows = _parse_synology_disks_rows(context.source_text)
+        if not rows:
+            return False
+
+        if context.max_items is not None and context.max_items > 0:
+            rows = rows[: context.max_items]
+
+        draw = context.draw
+        inner = context.inner
+        y = inner.y + context.label_h + 2
+        avail_w = inner.w - 4
+        x0 = inner.x + 2
+        name_x = x0
+        level_x = x0 + int(avail_w * 0.52)
+        detail_x = x0 + int(avail_w * 0.68)
+
+        color = parse_color(context.color, fallback=(220, 225, 230))
+        header_color = (160, 170, 182)
+        ok_color = (124, 222, 156)
+        warn_color = (239, 192, 88)
+        alert_color = (234, 107, 107)
+        muted_color = (134, 140, 148)
+
+        resolved_font_size = _to_font_size(context.font_size, inner)
+        header_font = get_font(max(10, int(resolved_font_size * 0.78)))
+        body_font = get_font(resolved_font_size)
+
+        draw.text((name_x, y), "Service", fill=header_color, font=header_font)
+        draw.text((level_x, y), "State", fill=header_color, font=header_font)
+        draw.text((detail_x, y), "Info", fill=header_color, font=header_font)
+
+        header_bb = draw.textbbox((0, 0), "Ag", font=header_font)
+        row_h = int((draw.textbbox((0, 0), "Ag", font=body_font)[3]) + 2)
+        y += int(header_bb[3] - header_bb[1]) + 5
+        draw.line((x0, y, inner.x + inner.w - 2, y), fill=(56, 64, 74), width=1)
+        y += 4
+
+        for row in rows:
+            if y + row_h > inner.y + inner.h:
+                break
+
+            service_name = _ellipsize(draw, body_font, row.name, level_x - name_x - 6, {})
+            draw.text((name_x, y), service_name, fill=color, font=body_font)
+
+            level_color = muted_color
+            if row.level == "OK":
+                level_color = ok_color
+            elif row.level == "WARN":
+                level_color = warn_color
+            elif row.level in {"ALERT", "CRIT", "FAIL"}:
+                level_color = alert_color
+            draw.text((level_x, y), row.level, fill=level_color, font=body_font)
+
+            detail_color = level_color if row.level != "UNK" else muted_color
+            detail_text = _ellipsize(
+                draw,
+                body_font,
+                row.detail,
+                inner.x + inner.w - detail_x - 4,
+                {},
+            )
+            draw.text((detail_x, y), detail_text, fill=detail_color, font=body_font)
             y += row_h
         return True
 

@@ -21,6 +21,7 @@ def _route_payload(path: str, query: dict[str, object]) -> dict[str, object]:
                 "hostname": "nas-alpha",
                 "model": "DS923+",
                 "version_string": "DSM 7.2.1",
+                "sys_temp": 43,
             },
         },
         "SYNO.Storage.CGI.Storage.load_info": {
@@ -147,6 +148,7 @@ async def test_synology_getter_healthy_payload(monkeypatch) -> None:
     assert payload["synology.dsm.update_available"] == 1.0
     assert payload["synology.dsm.latest_version"] == "DSM 7.2.2"
     assert payload["synology.performance.cpu_percent"] == 12.0
+    assert payload["synology.performance.cpu_temp_c"] == 43.0
     assert payload["synology.performance.ram_percent"] == 44.0
     assert payload["synology.performance.net_rx_kbps"] == 4.0
     assert payload["synology.performance.net_tx_kbps"] == 8.0

@@ -11,8 +11,8 @@ grid:
   template_areas: |
     brand host status status
     storage storage cpu_hist ram_hist
-    pools pools disk_io net_hist
     services services disk_io net_hist
+    disks disks disk_io net_hist
   columns: "1fr 1.25fr 1.2fr 1.2fr"
   rows: "0.44fr 0.86fr 0.85fr 0.85fr"
 
@@ -31,7 +31,8 @@ widgets:
         type: text
         content: "TrueNAS"
         color: "#7cb342"
-        font_size: 20
+        font_size: auto
+        max_font_size: 34
 
   host:
     type: value
@@ -48,16 +49,32 @@ widgets:
     label: CPU %
     source: cpu.percent
     precision: 1
-    background: "#162028"
-    padding: [6, 8]
+    unit: "%"
+    min: 0
+    max: 100
+    samples: 120
+    window_seconds: 120
+    padding: [4, 6]
+    color_stops:
+      - [0, "#7cde9c"]
+      - [70, "#efc058"]
+      - [90, "#ea6b6b"]
 
   ram_hist:
     type: sparkline
     label: RAM %
     source: memory.percent
     precision: 1
-    background: "#162028"
-    padding: [6, 8]
+    unit: "%"
+    min: 0
+    max: 100
+    samples: 120
+    window_seconds: 120
+    padding: [4, 6]
+    color_stops:
+      - [0, "#7cde9c"]
+      - [70, "#efc058"]
+      - [90, "#ea6b6b"]
 
   storage:
     type: panel
@@ -65,103 +82,141 @@ widgets:
     padding: [8, 10]
     grid:
       template_areas: |
-        label label label
-        pool_name_hdr used_hdr free_hdr
-        pool1_name pool1_used pool1_free
-        status_hdr pool1_status pool1_status
-      columns: "1.65fr 1fr 1fr"
-      rows: "0.62fr 0.55fr 0.95fr 0.88fr"
+        pool_name pool_used pool_free pool_total
+        pool_status pool_status cpu_temp auth
+      columns: "1.4fr 0.9fr 0.9fr 0.9fr"
+      rows: "1fr 1fr"
     children_named:
-      label:
-        type: text
-        content: "Storage"
-        color: "#768d9f"
-        font_size: 16
-
-      pool_name_hdr:
-        type: text
-        content: "Pool"
-        color: "#7aa7c2"
-        font_size: 12
-
-      used_hdr:
-        type: text
-        content: "Used %"
-        color: "#7aa7c2"
-        font_size: 12
-
-      free_hdr:
-        type: text
-        content: "Free TB"
-        color: "#7aa7c2"
-        font_size: 12
-
-      pool1_name:
-        type: text
+      pool_name:
+        type: value
+        label: Pool
         source: truenas.pool_1.name
-        color: "#fff"
-        font_size: 23
-
-      pool1_used:
-        type: text
+        color: "#e8f2ff"
+        font_size: auto
+        max_font_size: 44
+      pool_used:
+        type: value
+        label: Used %
         source: truenas.pool_1.used_percent
-        color: "#ff6b35"
-        font_size: 25
-
-      status_hdr:
-        type: text
-        content: "Status"
-        color: "#7aa7c2"
-        font_size: 12
-
-      pool1_status:
-        type: text
-        source: truenas.pool_1.status
-        color: "#9fe6c3"
-        font_size: 23
-
-      pool1_free:
-        type: text
+        precision: 1
+        unit: "%"
+        font_size: auto
+        max_font_size: 48
+        color_stops:
+          - [0, "#78dd9c"]
+          - [70, "#efc058"]
+          - [90, "#ea6b6b"]
+      pool_free:
+        type: value
+        label: Free TB
         source: truenas.pool_1.free_tb
-        color: "#e8f0f5"
-        font_size: 25
+        precision: 2
+        color: "#8fd8b2"
+        font_size: auto
+        max_font_size: 42
+      pool_total:
+        type: value
+        label: Total TB
+        source: truenas.pool_1.total_tb
+        precision: 2
+        color: "#c4d7ef"
+        font_size: auto
+        max_font_size: 38
+      pool_status:
+        type: value
+        label: Pool Status
+        source: truenas.pool_1.status
+        color: "#9ec6ff"
+        font_size: auto
+        max_font_size: 36
+      cpu_temp:
+        type: value
+        label: CPU C
+        source: truenas.performance.cpu_temp_c
+        precision: 1
+        unit: "C"
+        color: "#efc058"
+        font_size: auto
+        max_font_size: 36
+      auth:
+        type: value
+        label: API
+        source: truenas.auth.ok
+        precision: 0
+        color: "#7cb342"
+        font_size: auto
+        max_font_size: 34
 
   status:
     type: value
     background: "#162028"
     padding: [8, 10]
-    label:  Status
+    label: API
     source: truenas.auth.ok
     color: "#7cb342"
     font_size: auto
-    max_font_size: 30
-
-  pools:
-    type: table
-    background: "#162028"
-    padding: [8, 10]
-    source: truenas.pools.rows
-    font_size: 18
+    max_font_size: 36
 
   services:
     type: table
+    label: Services
     background: "#162028"
     padding: [8, 10]
     source: truenas.services.rows
-    font_size: 18
+    color: "#e8f2ff"
+    table_fit_text: false
+    max_items: 10
+    font_size: auto
+    max_font_size: 20
+
+  disks:
+    type: table
+    label: Disks
+    background: "#162028"
+    padding: [8, 10]
+    source: truenas.disks.rows
+    color: "#e8f2ff"
+    table_fit_text: false
+    max_items: 5
+    font_size: auto
+    max_font_size: 20
 
   disk_io:
     type: sparkline
-    label: Disk I/O
-    source: disk.read_mb_s
-    precision: 1
-    background: "#162028"
-    padding: [6, 8]
+    label: Disk I/O (MB/s)
+    sources:
+      - disk.read_mb_s
+      - disk.write_mb_s
+    series_labels:
+      - Read
+      - Write
+    series_colors:
+      - "#8ed9ff"
+      - "#ffb75c"
+    precision: 2
+    unit: MB/s
+    min: 0
+    max: 120
+    samples: 120
+    window_seconds: 120
+    padding: [4, 6]
 
   net_hist:
     type: sparkline
-    label: Net RX Mbps
-    source: network.bytes_recv_rate
-    precision: 1
-    background: "#162028"
-    padding: [6, 8]
+    label: Net RX/TX (KB/s)
+    sources:
+      - net.bytes_recv_rate
+      - net.bytes_sent_rate
+    series_labels:
+      - RX
+      - TX
+    series_colors:
+      - "#7acbff"
+      - "#b5f27a"
+    precision: 0
+    unit: KB/s
+    min: 0
+    max: 3000
+    samples: 120
+    window_seconds: 120
+    padding: [4, 6]

@@ -16,6 +16,7 @@ Store keys written include:
     - ``synology.disks.rows``
     - ``synology.shares.rows``
     - ``synology.performance.cpu_percent``
+    - ``synology.performance.cpu_temp_c``
     - ``synology.performance.ram_percent``
     - ``synology.performance.net_rx_kbps``
     - ``synology.performance.net_tx_kbps``
@@ -434,6 +435,7 @@ class SynologyGetter(BaseGetter):
             "synology.shares.rows": "",
             "synology.performance.disk_read_mb_s": 0.0,
             "synology.performance.disk_write_mb_s": 0.0,
+            "synology.performance.cpu_temp_c": 0.0,
             "synology.users.count": 0.0,
             "synology.users.rows": "",
             "synology.surveillance.available": 0.0,
@@ -863,6 +865,19 @@ class SynologyGetter(BaseGetter):
             "synology.system.hostname": hostname,
             "synology.system.model": model,
             "synology.system.version": version,
+            "synology.performance.cpu_temp_c": _first_float(
+                system_data,
+                (
+                    ("sys_temp",),
+                    ("temperature",),
+                    ("temp",),
+                    ("cpu_temperature",),
+                    ("cpu_temp",),
+                    ("sysinfo", "sys_temp"),
+                    ("system", "sys_temp"),
+                ),
+            )
+            or 0.0,
         }
 
     def _sample_dsm_updates(self, sid: str) -> dict[str, StoreValue]:

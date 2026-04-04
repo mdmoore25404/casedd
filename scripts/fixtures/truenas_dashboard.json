@@ -9,12 +9,17 @@
       "truenas.pool_1.status": "HEALTHY",
       "truenas.pool_1.used_percent": 62.4,
       "truenas.pool_1.free_tb": 3.18,
+      "truenas.pool_1.total_tb": 8.45,
+      "truenas.performance.cpu_temp_c": 47.0,
       "truenas.pools.rows": "tank|●|62.4%",
-      "truenas.services.rows": "cifs|▶|RUN\nnfs|▶|RUN\nssh|▶|RUN\nftp|■|STOP\niscsitarget|■|STOP",
+      "truenas.services.rows": "cifs|OK|▶ RUN\nnfs|OK|▶ RUN\nssh|OK|▶ RUN\nftp|UNK|■ STOP\niscsitarget|ALERT|■ DOWN",
+      "truenas.disks.rows": "ada0|OK|S:OK P:tank T:38.0C\nada1|WARN|S:WARN P:tank T:41.0C\nnvd0|ALERT|S:FAIL P:tank T:52.0C",
       "cpu.percent": 23.8,
       "memory.percent": 44.7,
       "disk.read_mb_s": 12.6,
-      "network.bytes_recv_rate": 118445323.0
+      "disk.write_mb_s": 6.1,
+      "net.bytes_recv_rate": 1184.0,
+      "net.bytes_sent_rate": 642.0
     }
   }
 ]
