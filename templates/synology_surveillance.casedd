@@ -11,7 +11,7 @@ grid:
   template_areas: |
     brand title title status
     cam1 cam1 cam2 cam2
-    cam3 cam3 cam4 cam4
+    empty3 empty3 empty4 empty4
   columns: "0.9fr 1.1fr 1.1fr 1fr"
   rows: "0.56fr 1.22fr 1.22fr"
 
@@ -77,7 +77,7 @@ widgets:
   status:
     type: table
     label: Services + Cameras
-    source: synology.status.rows
+    source: synology.surveillance.status.rows
     color: "#e8f2ff"
     background: "#162028"
     table_fit_text: false
@@ -88,7 +88,6 @@ widgets:
     type: image
     label: Camera 1
     source: synology.camera_1.snapshot_url
-    path: assets/synology/surveillance-station-logo.png
     scale: fill
     padding: [4, 4]
 
@@ -96,22 +95,23 @@ widgets:
     type: image
     label: Camera 2
     source: synology.camera_2.snapshot_url
-    path: assets/synology/surveillance-station-logo.png
     scale: fill
     padding: [4, 4]
 
-  cam3:
-    type: image
+  empty3:
+    type: text
     label: Camera 3
-    source: synology.camera_3.snapshot_url
-    path: assets/synology/surveillance-station-logo.png
-    scale: fill
-    padding: [4, 4]
+    content: no camera
+    color: "#808b96"
+    background: "#162028"
+    font_size: auto
+    padding: [4, 8]
 
-  cam4:
-    type: image
+  empty4:
+    type: text
     label: Camera 4
-    source: synology.camera_4.snapshot_url
-    path: assets/synology/surveillance-station-logo.png
-    scale: fill
-    padding: [4, 4]
+    content: no camera
+    color: "#808b96"
+    background: "#162028"
+    font_size: auto
+    padding: [4, 8]

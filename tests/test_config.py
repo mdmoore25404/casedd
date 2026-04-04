@@ -240,6 +240,9 @@ def test_synology_env_settings_parse(monkeypatch: object, tmp_path: Path) -> Non
         monkeypatch_obj.setenv("CASEDD_SYNOLOGY_CAMERA_SNAPSHOT_ENABLED", "1")
         monkeypatch_obj.setenv("CASEDD_SYNOLOGY_CAMERA_SNAPSHOT_WIDTH", "800")
         monkeypatch_obj.setenv("CASEDD_SYNOLOGY_CAMERA_SNAPSHOT_HEIGHT", "450")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_CAMERA_INCLUDE_REGEX", "(Front|Drive)")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_CAMERA_EXCLUDE_REGEX", "(Old)")
+        monkeypatch_obj.setenv("CASEDD_SYNOLOGY_CAMERA_EXCLUDE_STATUSES", "7,offline")
         monkeypatch_obj.setenv("CASEDD_SYNOLOGY_DSM_UPDATES_ENABLED", "1")
 
         cfg = load_config()
@@ -258,6 +261,9 @@ def test_synology_env_settings_parse(monkeypatch: object, tmp_path: Path) -> Non
         assert cfg.synology_camera_snapshot_enabled is True
         assert cfg.synology_camera_snapshot_width == 800
         assert cfg.synology_camera_snapshot_height == 450
+        assert cfg.synology_camera_include_regex == "(Front|Drive)"
+        assert cfg.synology_camera_exclude_regex == "(Old)"
+        assert cfg.synology_camera_exclude_statuses == "7,offline"
         assert cfg.synology_dsm_updates_enabled is True
 
 

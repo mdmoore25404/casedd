@@ -41,9 +41,10 @@ import time
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from casedd.data_store import DataStore, StoreValue
+from casedd.renderer.fonts import get_font
 from casedd.renderer.widgets.base import BaseWidget, fill_background
 from casedd.template.grid import Rect
 from casedd.template.models import ImageTier, ScaleMode, WidgetConfig
@@ -317,6 +318,7 @@ class ImageWidget(BaseWidget):
 
         source = _load_image_with_fallback(active_path, cfg.path)
         if source is None:
+            self._draw_no_camera_placeholder(img, rect, cfg)
             return
 
         cache_key = (active_path, rect.w, rect.h, cfg.scale.value)
@@ -336,3 +338,22 @@ class ImageWidget(BaseWidget):
             return
 
         img.paste(scaled, (rect.x, rect.y), scaled)
+
+    def _draw_no_camera_placeholder(
+        self,
+        img: Image.Image,
+        rect: Rect,
+        cfg: WidgetConfig,
+    ) -> None:
+        """Draw muted placeholder text for empty Synology camera slots."""
+        if cfg.source is None or not cfg.source.startswith("synology.camera_"):
+            return
+        draw = ImageDraw.Draw(img)
+        text = "no camera"
+        font = get_font(max(12, min(rect.h // 8, rect.w // 12)))
+        bb = draw.textbbox((0, 0), text, font=font)
+        text_w = int(bb[2] - bb[0])
+        text_h = int(bb[3] - bb[1])
+        draw_x = rect.x + max(0, (rect.w - text_w) // 2)
+        draw_y = rect.y + max(0, (rect.h - text_h) // 2) - int(bb[1])
+        draw.text((draw_x, draw_y), text, fill=(120, 130, 140), font=font)

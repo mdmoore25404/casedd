@@ -76,6 +76,11 @@ def _route_payload(path: str, query: dict[str, object]) -> dict[str, object]:
                 "cpu": {"user_load": 10, "system_load": 5, "other_load": 2},
                 "memory": {"real_usage": 44},
                 "network": [{"device": "total", "rx": 4096, "tx": 8192}],
+                "disk": {
+                    "disk": [
+                        {"read_byte": 1048576, "write_byte": 2097152},
+                    ]
+                },
             },
         },
         "SYNO.Core.Upgrade.Server.check": {
@@ -128,11 +133,16 @@ async def test_synology_getter_healthy_payload(monkeypatch) -> None:
     assert payload["synology.performance.ram_percent"] == 44.0
     assert payload["synology.performance.net_rx_kbps"] == 4.0
     assert payload["synology.performance.net_tx_kbps"] == 8.0
+    assert payload["synology.performance.disk_read_mb_s"] == 1.0
+    assert payload["synology.performance.disk_write_mb_s"] == 2.0
     assert payload["synology.storage.warning_count"] == 1.0
     assert payload["synology.storage.critical_count"] == 0.0
     assert payload["synology.volume_1.name"] == "volume1"
+    assert "Disk|WARN|" in str(payload["synology.disks.rows"])
     assert "plexmedia|volume2" in str(payload["synology.shares.rows"])
     assert "DSM Update|exited|AVAILABLE" in str(payload["synology.status.rows"])
+    assert "Driveway" not in str(payload["synology.status.rows"])
+    assert "Driveway" in str(payload["synology.surveillance.status.rows"])
     assert payload["synology.surveillance.available"] == 1.0
     assert payload["synology.surveillance.camera_count"] == 2.0
     assert payload["synology.camera_1.name"] == "Driveway"
@@ -265,6 +275,7 @@ async def test_synology_getter_prefers_online_cameras_for_snapshots(monkeypatch)
         host="http://nas1:5000",
         username="demo",
         password="secret",
+        camera_include_regex=r"(Drive|Garage)",
         interval=1.0,
     )
 
@@ -296,3 +307,4 @@ async def test_synology_getter_prefers_online_cameras_for_snapshots(monkeypatch)
     assert payload["synology.camera_2.name"] == "Garage"
     assert "id=1" in str(payload["synology.camera_1.snapshot_url"])
     assert "id=5" in str(payload["synology.camera_2.snapshot_url"])
+    assert "Old Cam" not in str(payload["synology.surveillance.status.rows"])

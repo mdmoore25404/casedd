@@ -19,6 +19,8 @@ Store keys written include:
     - ``synology.performance.ram_percent``
     - ``synology.performance.net_rx_kbps``
     - ``synology.performance.net_tx_kbps``
+    - ``synology.performance.disk_read_mb_s``
+    - ``synology.performance.disk_write_mb_s``
     - ``synology.volume_<n>.name``
     - ``synology.volume_<n>.used_percent``
     - ``synology.volume_<n>.free_tb``
@@ -178,6 +180,13 @@ def _compile_regex(pattern: str | None, label: str) -> re.Pattern[str] | None:
         return None
 
 
+def _parse_status_set(raw: str | None) -> set[str]:
+    """Parse comma-delimited camera status tokens to a normalized set."""
+    if raw is None:
+        return set()
+    return {item.strip().lower() for item in raw.split(",") if item.strip()}
+
+
 def _status_level(status_text: str) -> str:
     """Normalize storage status text into a small severity set."""
     normalized = status_text.strip().lower()
@@ -255,6 +264,9 @@ class SynologyGetter(BaseGetter):
         include_camera_snapshots: Publish camera snapshot URLs when true.
         camera_snapshot_width: Optional snapshot width hint.
         camera_snapshot_height: Optional snapshot height hint.
+        camera_include_regex: Optional regex to include camera names/ids.
+        camera_exclude_regex: Optional regex to exclude camera names/ids.
+        camera_exclude_statuses: Comma-delimited raw/normalized statuses to skip.
         include_dsm_updates: Poll DSM update status when true.
     """
 
@@ -275,6 +287,9 @@ class SynologyGetter(BaseGetter):
         include_camera_snapshots: bool = True,
         camera_snapshot_width: int = 640,
         camera_snapshot_height: int = 360,
+        camera_include_regex: str | None = None,
+        camera_exclude_regex: str | None = None,
+        camera_exclude_statuses: str | None = "7",
         include_dsm_updates: bool = True,
     ) -> None:
         """Initialize Synology getter settings."""
@@ -293,6 +308,9 @@ class SynologyGetter(BaseGetter):
         self._include_dsm_updates = include_dsm_updates
         self._volume_filter = _compile_regex(volume_exclude_regex, "volume_exclude")
         self._user_filter = _compile_regex(user_exclude_regex, "user_exclude")
+        self._camera_include_filter = _compile_regex(camera_include_regex, "camera_include")
+        self._camera_exclude_filter = _compile_regex(camera_exclude_regex, "camera_exclude")
+        self._camera_exclude_statuses = _parse_status_set(camera_exclude_statuses)
         self._ssl_context: ssl.SSLContext | None = None
         if self._host.startswith("https://") and not verify_tls:
             self._ssl_context = ssl._create_unverified_context()  # noqa: S323
@@ -327,6 +345,9 @@ class SynologyGetter(BaseGetter):
                 payload["synology.surveillance.available"] = 0.0
                 payload["synology.surveillance.camera_count"] = 0.0
             payload["synology.status.rows"] = self._compose_status_rows(payload)
+            payload["synology.surveillance.status.rows"] = self._compose_surveillance_status_rows(
+                payload
+            )
             return payload
         except _SynologyAuthError:
             return self._auth_placeholder()
@@ -345,12 +366,15 @@ class SynologyGetter(BaseGetter):
             "synology.storage.critical_count": 0.0,
             "synology.disks.rows": "",
             "synology.shares.rows": "",
+            "synology.performance.disk_read_mb_s": 0.0,
+            "synology.performance.disk_write_mb_s": 0.0,
             "synology.users.count": 0.0,
             "synology.users.rows": "",
             "synology.surveillance.available": 0.0,
             "synology.surveillance.camera_count": 0.0,
             "synology.services.rows": "",
             "synology.status.rows": "",
+            "synology.surveillance.status.rows": "",
         }
 
     def _sample_utilization(self, sid: str) -> dict[str, StoreValue]:
@@ -364,11 +388,15 @@ class SynologyGetter(BaseGetter):
                 "synology.performance.ram_percent": 0.0,
                 "synology.performance.net_rx_kbps": 0.0,
                 "synology.performance.net_tx_kbps": 0.0,
+                "synology.performance.disk_read_mb_s": 0.0,
+                "synology.performance.disk_write_mb_s": 0.0,
             }
 
         cpu_data = _as_dict(data.get("cpu"))
         memory_data = _as_dict(data.get("memory"))
         network_rows = _as_list(data.get("network"))
+        disk_block = _as_dict(data.get("disk"))
+        disk_rows = _as_list(disk_block.get("disk"))
 
         cpu_percent = _first_float(cpu_data, (("user_load",), ("system_load",), ("1min_load",)))
         if cpu_percent is None:
@@ -397,11 +425,30 @@ class SynologyGetter(BaseGetter):
                 tx_bytes = tx_value
             break
 
+        disk_read_bytes = 0.0
+        disk_write_bytes = 0.0
+        for disk_obj in disk_rows:
+            disk_row = _as_dict(disk_obj)
+            read_value = _first_float(disk_row, (("read_byte",), ("read_bytes",), ("read",)))
+            write_value = _first_float(
+                disk_row,
+                (("write_byte",), ("write_bytes",), ("write",)),
+            )
+            if read_value is not None:
+                disk_read_bytes += read_value
+            if write_value is not None:
+                disk_write_bytes += write_value
+
         return {
             "synology.performance.cpu_percent": round(max(0.0, cpu_percent), 2),
             "synology.performance.ram_percent": round(max(0.0, ram_percent), 2),
             "synology.performance.net_rx_kbps": round(max(0.0, rx_bytes) / 1024.0, 2),
             "synology.performance.net_tx_kbps": round(max(0.0, tx_bytes) / 1024.0, 2),
+            "synology.performance.disk_read_mb_s": round(max(0.0, disk_read_bytes) / 1048576.0, 3),
+            "synology.performance.disk_write_mb_s": round(
+                max(0.0, disk_write_bytes) / 1048576.0,
+                3,
+            ),
         }
 
     def _ensure_sid(self) -> str:
@@ -750,10 +797,7 @@ class SynologyGetter(BaseGetter):
             disk_name = name if name else "Disk"
             status_compact = _compact_state(status)
             smart_compact = _compact_state(smart_text)
-            row = (
-                f"{disk_name}|{status_compact} "
-                f"S:{smart_compact} E:{error_count}{temp_text}"
-            )
+            row = f"{disk_name}|{status_compact}|S:{smart_compact} E:{error_count}{temp_text}"
             disk_rows.append(row)
 
         return warning_count, critical_count, disk_rows
@@ -974,17 +1018,36 @@ class SynologyGetter(BaseGetter):
         status_rows: list[str] = []
         recording_count = 0.0
         selected_cameras: list[dict[str, object]] = []
+        eligible_cameras: list[dict[str, object]] = []
         for camera_obj in cameras:
             camera = _as_dict(camera_obj)
+            camera_name = _first_text(
+                camera,
+                (("newName",), ("name",), ("cameraName",), ("id",)),
+            )
             raw_state = _first_text(
                 camera,
                 (("status",), ("enabled",), ("recording",), ("recordingStatus",), ("camStatus",)),
             )
             state = _camera_state(raw_state)
+            if self._camera_exclude_statuses and (
+                raw_state.strip().lower() in self._camera_exclude_statuses
+                or state in self._camera_exclude_statuses
+            ):
+                continue
+            if self._camera_include_filter is not None and not self._camera_include_filter.search(
+                camera_name
+            ):
+                continue
+            if self._camera_exclude_filter is not None and self._camera_exclude_filter.search(
+                camera_name
+            ):
+                continue
+            eligible_cameras.append(camera)
             if state in {"online", "recording"}:
                 selected_cameras.append(camera)
         if not selected_cameras:
-            selected_cameras = [_as_dict(item) for item in cameras]
+            selected_cameras = eligible_cameras
 
         selected_slice = selected_cameras[: self._surveillance_max_cameras]
         payload["synology.surveillance.camera_count"] = float(len(selected_slice))
@@ -1012,6 +1075,11 @@ class SynologyGetter(BaseGetter):
             status_rows.append(
                 f"{label_name}|{_icon_for_state(normalized_status)}|{normalized_status}"
             )
+
+        for index in range(len(selected_slice) + 1, self._surveillance_max_cameras + 1):
+            payload[f"synology.camera_{index}.name"] = "no camera"
+            payload[f"synology.camera_{index}.status"] = "absent"
+            payload[f"synology.camera_{index}.snapshot_url"] = ""
 
         payload["synology.surveillance.recording_count"] = recording_count
         payload["synology.cameras.rows"] = "\n".join(rows)
@@ -1044,7 +1112,7 @@ class SynologyGetter(BaseGetter):
         }
 
     def _compose_status_rows(self, payload: dict[str, StoreValue]) -> str:
-        """Build unified status table rows for dashboard rendering."""
+        """Build dashboard status rows (DSM update + core services)."""
         rows: list[str] = []
 
         update_available_raw = payload.get("synology.dsm.update_available")
@@ -1062,6 +1130,14 @@ class SynologyGetter(BaseGetter):
         ):
             state_text = _as_text(payload.get(service_key)) or "unknown"
             rows.append(f"{label}|{_icon_for_state(state_text)}|{state_text}")
+
+        return "\n".join(rows)
+
+    def _compose_surveillance_status_rows(self, payload: dict[str, StoreValue]) -> str:
+        """Build surveillance status rows including camera states."""
+        rows: list[str] = []
+
+        rows.extend(self._compose_status_rows(payload).splitlines())
 
         camera_count = int(_as_float(payload.get("synology.surveillance.camera_count")) or 0)
         for index in range(1, camera_count + 1):

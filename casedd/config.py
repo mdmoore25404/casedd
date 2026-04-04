@@ -486,6 +486,9 @@ class Config:
     synology_camera_snapshot_enabled: bool = Field(default=True)
     synology_camera_snapshot_width: int = Field(default=640, ge=0, le=4096)
     synology_camera_snapshot_height: int = Field(default=360, ge=0, le=4096)
+    synology_camera_include_regex: str | None = Field(default=None)
+    synology_camera_exclude_regex: str | None = Field(default=None)
+    synology_camera_exclude_statuses: str = Field(default="7")
     synology_dsm_updates_enabled: bool = Field(default=True)
     plex_base_url: str = Field(default="http://localhost:32400")
     plex_token: str | None = Field(default=None, repr=False)
@@ -1467,6 +1470,30 @@ def load_config() -> Config:
                 )
             )
         ),
+        synology_camera_include_regex=str(
+            _get(
+                "CASEDD_SYNOLOGY_CAMERA_INCLUDE_REGEX",
+                "synology_camera_include_regex",
+                "",
+            )
+        ).strip()
+        or None,
+        synology_camera_exclude_regex=str(
+            _get(
+                "CASEDD_SYNOLOGY_CAMERA_EXCLUDE_REGEX",
+                "synology_camera_exclude_regex",
+                "",
+            )
+        ).strip()
+        or None,
+        synology_camera_exclude_statuses=str(
+            _get(
+                "CASEDD_SYNOLOGY_CAMERA_EXCLUDE_STATUSES",
+                "synology_camera_exclude_statuses",
+                "7",
+            )
+        ).strip()
+        or "7",
         synology_dsm_updates_enabled=str(
             _get("CASEDD_SYNOLOGY_DSM_UPDATES_ENABLED", "synology_dsm_updates_enabled", "1")
         )

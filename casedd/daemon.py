@@ -1369,6 +1369,9 @@ class Daemon:
                 include_camera_snapshots=self._cfg.synology_camera_snapshot_enabled,
                 camera_snapshot_width=self._cfg.synology_camera_snapshot_width,
                 camera_snapshot_height=self._cfg.synology_camera_snapshot_height,
+                camera_include_regex=self._cfg.synology_camera_include_regex,
+                camera_exclude_regex=self._cfg.synology_camera_exclude_regex,
+                camera_exclude_statuses=self._cfg.synology_camera_exclude_statuses,
                 include_dsm_updates=self._cfg.synology_dsm_updates_enabled,
             ),
             RadarrGetter(
