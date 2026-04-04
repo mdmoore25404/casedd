@@ -9,22 +9,39 @@ refresh_rate: 1.0
 
 grid:
   template_areas: |
-    identity      identity      updates      services
-    storage_pool  storage_pool  users        users
-    camera_1      camera_1      camera_2     camera_2
-  columns: 1.3fr 1.3fr 1fr 1fr
-  rows: 0.85fr 0.95fr 1.2fr
+    brand identity identity updates
+    brand storage storage services
+    camera_1 camera_2 users users
+  columns: "0.9fr 1.2fr 1.2fr 1fr"
+  rows: "0.78fr 0.78fr 1.44fr"
 
 widgets:
-  identity:
+  brand:
     type: panel
     background: "#162028"
     padding: 8
     grid:
       template_areas: |
-        "model version host"
-      columns: "1fr 1fr 1fr"
+        logo
+      columns: "1fr"
       rows: "1fr"
+    children_named:
+      logo:
+        type: image
+        path: assets/synology/synology-logo.png
+        scale: fit
+        padding: [2, 6]
+
+  identity:
+    type: panel
+    background: "#162028"
+    padding: [8, 10]
+    grid:
+      template_areas: |
+        model host
+        version version
+      columns: "1fr 1fr"
+      rows: "1fr 1fr"
     children_named:
       model:
         type: value
@@ -32,18 +49,21 @@ widgets:
         source: synology.system.model
         color: "#d4e7ff"
         font_size: auto
+        max_font_size: 48
       version:
         type: value
         label: DSM Version
         source: synology.system.version
         color: "#8ed9ff"
         font_size: auto
+        max_font_size: 42
       host:
         type: value
         label: Hostname
         source: synology.system.hostname
         color: "#9fe6c3"
         font_size: auto
+        max_font_size: 40
 
   updates:
     type: panel
@@ -51,21 +71,32 @@ widgets:
     padding: 8
     grid:
       template_areas: |
-        "available latest"
-      columns: "1fr 1fr"
-      rows: "1fr"
+        available
+        latest
+        surveillance
+      columns: "1fr"
+      rows: "1fr 1fr 1fr"
     children_named:
       available:
         type: boolean
         label: DSM Update
         source: synology.dsm.update_available
         color: "#ffce6e"
+        max_font_size: 34
       latest:
         type: value
         label: Latest
         source: synology.dsm.latest_version
         color: "#e8f2ff"
         font_size: auto
+        max_font_size: 34
+      surveillance:
+        type: value
+        label: Cameras
+        source: synology.surveillance.camera_count
+        precision: 0
+        color: "#a3d3ff"
+        max_font_size: 34
 
   services:
     type: panel
@@ -73,10 +104,10 @@ widgets:
     padding: 8
     grid:
       template_areas: |
-        "smb"
-        "file_station"
-        "drive"
-        "surveillance"
+        smb
+        file_station
+        drive
+        surveillance
       columns: "1fr"
       rows: "1fr 1fr 1fr 1fr"
     children_named:
@@ -86,86 +117,106 @@ widgets:
         source: synology.services.smb_state
         color: "#9fd5ff"
         font_size: auto
+        max_font_size: 30
       file_station:
         type: value
         label: File Station
         source: synology.services.file_station_state
         color: "#9fd5ff"
         font_size: auto
+        max_font_size: 30
       drive:
         type: value
         label: Drive
         source: synology.services.synology_drive_state
         color: "#9fd5ff"
         font_size: auto
+        max_font_size: 30
       surveillance:
         type: value
         label: Surveillance
         source: synology.services.surveillance_station_state
         color: "#9fd5ff"
         font_size: auto
+        max_font_size: 30
 
-  storage_pool:
+  storage:
     type: panel
     background: "#162028"
-    padding: 8
+    padding: [8, 10]
     grid:
       template_areas: |
-        "vol_name vol_name vol_pct warn crit"
-      columns: "1.5fr 1.5fr 1fr 1fr 1fr"
-      rows: "1fr"
+        vol_name vol_used vol_free
+        warn crit pool
+      columns: "1.7fr 1fr 1fr"
+      rows: "1fr 1fr"
     children_named:
       vol_name:
         type: value
-        label: Volume 1
+        label: Volume
         source: synology.volume_1.name
         color: "#e8f2ff"
         font_size: auto
-      vol_pct:
+        max_font_size: 46
+      vol_used:
         type: value
         label: Used %
         source: synology.volume_1.used_percent
         precision: 1
         unit: "%"
+        max_font_size: 52
         color_stops:
           - [0, "#78dd9c"]
           - [70, "#efc058"]
           - [90, "#ea6b6b"]
+      vol_free:
+        type: value
+        label: Free TB
+        source: synology.volume_1.free_tb
+        precision: 2
+        color: "#8fd8b2"
+        max_font_size: 44
       warn:
         type: value
         label: Warn
         source: synology.storage.warning_count
         precision: 0
         color: "#efc058"
+        max_font_size: 56
       crit:
         type: value
         label: Critical
         source: synology.storage.critical_count
         precision: 0
         color: "#ea6b6b"
+        max_font_size: 56
+      pool:
+        type: value
+        label: Pool
+        source: synology.storagepool_1.status
+        color: "#c4d7ef"
+        max_font_size: 36
 
   users:
-    type: table
-    label: Users (filtered)
+    type: text
+    label: Users
     source: synology.users.rows
     color: "#e8f2ff"
     background: "#162028"
-    table_fit_text: true
-    max_items: 8
-    padding: [6, 10]
+    padding: [8, 10]
 
   camera_1:
     type: image
-    label: Camera 1
+    label: Camera A
     source: synology.camera_1.snapshot_url
-    path: assets/casedd-logo.png
+    path: assets/synology/synology-logo.png
     scale: fill
-    padding: [4, 6]
+    padding: [4, 4]
 
   camera_2:
     type: image
-    label: Camera 2
+    label: Camera B
     source: synology.camera_2.snapshot_url
-    path: assets/casedd-logo.png
+    path: assets/synology/synology-logo.png
     scale: fill
-    padding: [4, 6]
+    padding: [4, 4]

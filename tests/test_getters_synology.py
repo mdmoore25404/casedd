@@ -231,4 +231,4 @@ async def test_synology_getter_handles_degraded_and_partial_services(monkeypatch
     assert payload["synology.storage.warning_count"] == 1.0
     assert payload["synology.services.smb_state"] == "running"
     assert payload["synology.services.file_station_state"] == "unknown"
-    assert payload["synology.services.synology_drive_state"] == "unknown"
+    assert payload["synology.services.synology_drive_state"] == "not installed"

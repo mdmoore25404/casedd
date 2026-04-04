@@ -34,7 +34,9 @@ from __future__ import annotations
 
 from io import BytesIO
 import logging
+import os
 from pathlib import Path
+import ssl
 import time
 from urllib.error import URLError
 from urllib.request import Request, urlopen
@@ -55,6 +57,21 @@ _image_mtime_cache: dict[str, float] = {}
 # Source retry cache for failed image loads (disk missing / remote errors).
 _image_retry_after: dict[str, float] = {}
 _IMAGE_RETRY_BACKOFF_SEC = 5.0
+
+
+def _remote_ssl_context(url: str) -> ssl.SSLContext | None:
+    """Return an optional SSL context for remote image fetches.
+
+    Synology camera snapshots are fetched by the generic image widget. When
+    ``CASEDD_SYNOLOGY_VERIFY_TLS=0`` we honor that setting here to avoid
+    certificate trust failures for NAS self-signed certs.
+    """
+    synology_verify_tls = os.environ.get("CASEDD_SYNOLOGY_VERIFY_TLS", "1")
+    if synology_verify_tls in {"0", "false", "False", ""} and (
+        "SYNO.SurveillanceStation.Camera" in url or "SurveillanceStation.Camera" in url
+    ):
+        return ssl._create_unverified_context()  # noqa: S323
+    return None
 
 # Comparison dispatch table keyed by operator token.
 _OPS: dict[str, object] = {
@@ -178,8 +195,9 @@ def _load_local_image(source_ref: str) -> Image.Image | None:
 def _load_remote_image(url: str) -> Image.Image | None:
     """Fetch and cache an image from a remote HTTP(S) URL."""
     req = Request(url, headers={"User-Agent": "CASEDD/0.2"}, method="GET")  # noqa: S310
+    ssl_context = _remote_ssl_context(url)
     try:
-        with urlopen(req, timeout=5) as resp:  # noqa: S310
+        with urlopen(req, timeout=5, context=ssl_context) as resp:  # noqa: S310
             raw = resp.read()
     except URLError as exc:
         _log.warning("Image widget: failed to fetch '%s': %s", url, exc)
@@ -193,6 +211,16 @@ def _load_remote_image(url: str) -> Image.Image | None:
 
     _image_cache[url] = loaded
     return loaded
+
+
+def _load_image_with_fallback(active_path: str, fallback_path: str | None) -> Image.Image | None:
+    """Load dynamic image first, then optional static fallback path."""
+    source = _load_image(active_path)
+    if source is not None:
+        return source
+    if fallback_path is None or fallback_path == active_path:
+        return None
+    return _load_image(fallback_path)
 
 
 def _scale_image(source: Image.Image, w: int, h: int, mode: ScaleMode) -> Image.Image:
@@ -287,7 +315,7 @@ class ImageWidget(BaseWidget):
             _log.warning("Image widget has no 'path' or populated 'source' configured.")
             return
 
-        source = _load_image(active_path)
+        source = _load_image_with_fallback(active_path, cfg.path)
         if source is None:
             return
 

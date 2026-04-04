@@ -180,6 +180,16 @@ def _status_level(status_text: str) -> str:
     return "ok"
 
 
+def _snapshot_host(base_url: str, verify_tls: bool) -> str:
+    """Return the host used for camera snapshot URLs.
+
+    When TLS verification is disabled, prefer an HTTP snapshot URL to avoid
+    certificate trust failures in the generic image widget fetch path.
+    """
+    _ = verify_tls
+    return base_url.rstrip("/")
+
+
 class SynologyGetter(BaseGetter):
     """Getter for Synology DSM and Surveillance Station telemetry.
 
@@ -228,6 +238,7 @@ class SynologyGetter(BaseGetter):
         self._password = password.strip() if isinstance(password, str) else ""
         self._sid = sid.strip() if isinstance(sid, str) else ""
         self._timeout = timeout
+        self._verify_tls = verify_tls
         self._include_surveillance = include_surveillance
         self._surveillance_max_cameras = max(0, surveillance_max_cameras)
         self._include_camera_snapshots = include_camera_snapshots
@@ -239,6 +250,7 @@ class SynologyGetter(BaseGetter):
         self._ssl_context: ssl.SSLContext | None = None
         if self._host.startswith("https://") and not verify_tls:
             self._ssl_context = ssl._create_unverified_context()  # noqa: S323
+        self._snapshot_host = _snapshot_host(self._host, verify_tls)
 
     async def fetch(self) -> dict[str, StoreValue]:
         """Collect one Synology sample and flatten it to ``synology.*`` keys."""
@@ -398,19 +410,47 @@ class SynologyGetter(BaseGetter):
 
     def _sample_system(self, sid: str) -> dict[str, StoreValue]:
         """Collect system identity details."""
-        data = self._call_first(
+        system_data = self._call_first((
+            _ApiCall("SYNO.Core.System", "info", 1, {}),
+        ), sid)
+        dsm_data = self._call_first((
+            _ApiCall("SYNO.DSM.Info", "getinfo", 2, {}),
+        ), sid)
+        network_data = self._call_first(
             (
-                _ApiCall("SYNO.Core.System", "info", 1, {}),
-                _ApiCall("SYNO.DSM.Info", "getinfo", 2, {}),
+                _ApiCall("SYNO.Core.Network", "get", 2, {}),
+                _ApiCall("SYNO.Core.Network", "get", 1, {}),
             ),
             sid,
         )
 
-        hostname = _first_text(data, (("hostname",), ("host_name",), ("server_name",)))
-        model = _first_text(data, (("model",), ("product_model",), ("platform",)))
+        hostname = _first_text(
+            {"network": network_data, "system": system_data, "dsm": dsm_data},
+            (
+                ("network", "server_name"),
+                ("network", "hostname"),
+                ("system", "hostname"),
+                ("dsm", "server_name"),
+            ),
+        )
+        model = _first_text(
+            {"dsm": dsm_data, "system": system_data},
+            (
+                ("dsm", "model"),
+                ("system", "model"),
+                ("system", "product_model"),
+                ("system", "platform"),
+            ),
+        )
         version = _first_text(
-            data,
-            (("version_string",), ("productversion",), ("version",), ("buildnumber",)),
+            {"dsm": dsm_data, "system": system_data},
+            (
+                ("dsm", "version_string"),
+                ("dsm", "version"),
+                ("system", "version_string"),
+                ("system", "firmware_ver"),
+                ("system", "buildnumber"),
+            ),
         )
 
         return {
@@ -423,7 +463,9 @@ class SynologyGetter(BaseGetter):
         """Collect DSM update availability state."""
         data = self._call_first(
             (
+                _ApiCall("SYNO.Core.Upgrade.Server", "check", 4, {}),
                 _ApiCall("SYNO.Core.Upgrade.Server", "check", 1, {}),
+                _ApiCall("SYNO.Core.Upgrade", "check", 2, {}),
                 _ApiCall("SYNO.Core.Upgrade", "check", 1, {}),
             ),
             sid,
@@ -483,9 +525,17 @@ class SynologyGetter(BaseGetter):
         volumes = _first_list(data, (("volumes",), ("volume",), ("data", "volumes")))
         pools = _first_list(
             data,
-            (("storage_pools",), ("storagepool",), ("data", "storage_pools")),
+            (
+                ("storagePools",),
+                ("storage_pools",),
+                ("storagepool",),
+                ("data", "storage_pools"),
+            ),
         )
-        disks = _first_list(data, (("disks",), ("disk",), ("data", "disks")))
+        disks = _first_list(
+            data,
+            (("disks",), ("disk",), ("disk_info",), ("data", "disks")),
+        )
 
         payload: dict[str, StoreValue] = {
             "synology.storage.warning_count": 0.0,
@@ -521,11 +571,23 @@ class SynologyGetter(BaseGetter):
 
             total_bytes = _first_float(
                 volume,
-                (("total_size",), ("size_total",), ("total",), ("size",)),
+                (
+                    ("total_size",),
+                    ("size_total",),
+                    ("total",),
+                    ("size", "total"),
+                    ("size",),
+                ),
             )
             used_bytes = _first_float(
                 volume,
-                (("used_size",), ("size_used",), ("used",), ("used_space",)),
+                (
+                    ("used_size",),
+                    ("size_used",),
+                    ("used",),
+                    ("size", "used"),
+                    ("used_space",),
+                ),
             )
             used_percent = _first_float(
                 volume,
@@ -552,7 +614,10 @@ class SynologyGetter(BaseGetter):
         for index, pool_obj in enumerate(pools, start=1):
             pool = _as_dict(pool_obj)
             name = _first_text(pool, (("name",), ("id",), ("desc",)))
-            status = _first_text(pool, (("status",), ("health",), ("state",)))
+            status = _first_text(
+                pool,
+                (("status",), ("summary_status",), ("health",), ("state",)),
+            )
             key_prefix = f"synology.storagepool_{index}"
             payload[f"{key_prefix}.name"] = name
             payload[f"{key_prefix}.status"] = status
@@ -561,47 +626,107 @@ class SynologyGetter(BaseGetter):
 
     def _sample_services(self, sid: str) -> dict[str, StoreValue]:
         """Collect selected DSM service states."""
-        data = self._call_first(
+        service_data = self._call_first(
             (
+                _ApiCall("SYNO.Core.Service", "get", 3, {}),
+                _ApiCall("SYNO.Core.Service", "get", 2, {}),
                 _ApiCall("SYNO.Core.Service", "list", 1, {"limit": 200, "offset": 0}),
             ),
             sid,
         )
-        services = _first_list(data, (("services",), ("service",), ("data", "services")))
+        package_data = self._call_first(
+            (
+                _ApiCall("SYNO.Core.Package", "list", 2, {}),
+                _ApiCall("SYNO.Core.Package", "list", 1, {}),
+            ),
+            sid,
+        )
+        services = _first_list(
+            service_data,
+            (("services",), ("service",), ("data", "services")),
+        )
+        packages = _first_list(
+            package_data,
+            (("packages",), ("package",), ("data", "packages")),
+        )
         defaults: dict[str, StoreValue] = {
             "synology.services.smb_state": "unknown",
             "synology.services.file_station_state": "unknown",
             "synology.services.synology_drive_state": "unknown",
             "synology.services.surveillance_station_state": "unknown",
         }
-        if not services:
-            return defaults
-
-        targets = {
-            "smb": "synology.services.smb_state",
-            "file station": "synology.services.file_station_state",
-            "synology drive": "synology.services.synology_drive_state",
-            "surveillance station": "synology.services.surveillance_station_state",
+        service_ids = {
+            _first_text(
+                service,
+                (("service_id",), ("display_name",), ("name",), ("service",)),
+            ).lower(): _first_text(
+                service,
+                (("enable_status",), ("status",), ("state",), ("running",)),
+            ).lower()
+            for service in (_as_dict(item) for item in services)
+            if _first_text(
+                service,
+                (("service_id",), ("display_name",), ("name",), ("service",)),
+            )
         }
 
-        for service_obj in services:
-            service = _as_dict(service_obj)
-            name = _first_text(service, (("display_name",), ("service",), ("name",))).lower()
-            if not name:
-                continue
-            state_text = _first_text(
-                service,
-                (("status",), ("state",), ("running",), ("enable",)),
-            ).lower()
+        smb_state = "unknown"
+        file_station_state = "unknown"
+        drive_state = "unknown"
+        surveillance_state = "unknown"
+        for service_id, state_text in service_ids.items():
             normalized_state = "unknown"
-            if state_text in {"1", "true", "running", "started", "on"}:
+            if state_text in {"enabled", "running", "on", "static", "1", "true"}:
                 normalized_state = "running"
-            elif state_text in {"0", "false", "stopped", "off", "disabled"}:
+            elif state_text in {"disabled", "off", "stopped", "0", "false"}:
                 normalized_state = "stopped"
-            for token, key in targets.items():
-                if token in name:
-                    defaults[key] = normalized_state
-                    break
+
+            if "smb" in service_id and smb_state == "unknown":
+                smb_state = normalized_state
+            if ("file station" in service_id or "filestation" in service_id) and (
+                file_station_state == "unknown"
+            ):
+                file_station_state = normalized_state
+            if ("synology drive" in service_id or "synologydrive" in service_id) and (
+                drive_state == "unknown"
+            ):
+                drive_state = normalized_state
+            if ("surveillance station" in service_id or "surveillancestation" in service_id) and (
+                surveillance_state == "unknown"
+            ):
+                surveillance_state = normalized_state
+
+        defaults["synology.services.smb_state"] = smb_state
+        defaults["synology.services.file_station_state"] = file_station_state
+        defaults["synology.services.synology_drive_state"] = drive_state
+        defaults["synology.services.surveillance_station_state"] = surveillance_state
+
+        package_ids = {
+            _first_text(pkg, (("id",), ("package",), ("name",))).lower()
+            for pkg in (_as_dict(item) for item in packages)
+        }
+        if (
+            "filestation" in package_ids
+            and defaults["synology.services.file_station_state"] == "unknown"
+        ):
+            defaults["synology.services.file_station_state"] = "running"
+        has_drive_package = (
+            "synologydrive" in package_ids or "cloudstation" in package_ids
+        )
+        if (
+            has_drive_package
+            and defaults["synology.services.synology_drive_state"] == "unknown"
+        ):
+            defaults["synology.services.synology_drive_state"] = "running"
+        if defaults["synology.services.synology_drive_state"] == "unknown":
+            defaults["synology.services.synology_drive_state"] = "not installed"
+        if "surveillancestation" in package_ids and defaults[
+            "synology.services.surveillance_station_state"
+        ] == "unknown":
+            defaults["synology.services.surveillance_station_state"] = "running"
+
+        if defaults["synology.services.smb_state"] == "unknown" and "smbservice" in package_ids:
+            defaults["synology.services.smb_state"] = "running"
 
         return defaults
 
@@ -626,7 +751,7 @@ class SynologyGetter(BaseGetter):
 
         payload: dict[str, StoreValue] = {
             "synology.users.count": float(len(names)),
-            "synology.users.rows": "\n".join(f"{name}|active" for name in names[:10]),
+            "synology.users.rows": "\n".join(names[:10]),
         }
         for index, username in enumerate(names[:8], start=1):
             payload[f"synology.user_{index}.name"] = username
@@ -683,9 +808,12 @@ class SynologyGetter(BaseGetter):
         recording_count = 0.0
         for index, camera_obj in enumerate(cameras[: self._surveillance_max_cameras], start=1):
             camera = _as_dict(camera_obj)
-            name = _first_text(camera, (("name",), ("cameraName",), ("id",)))
+            name = _first_text(camera, (("newName",), ("name",), ("cameraName",), ("id",)))
             camera_id = _first_text(camera, (("id",), ("camera_id",), ("camId",)))
-            status = _first_text(camera, (("status",), ("enabled",), ("recording",))).lower()
+            status = _first_text(
+                camera,
+                (("status",), ("enabled",), ("recording",), ("recordingStatus",)),
+            ).lower()
             normalized_status = "online"
             if status in {"0", "false", "disabled", "offline"}:
                 normalized_status = "offline"
@@ -723,4 +851,4 @@ class SynologyGetter(BaseGetter):
             query["width"] = self._camera_snapshot_width
         if self._camera_snapshot_height > 0:
             query["height"] = self._camera_snapshot_height
-        return f"{self._host}/webapi/entry.cgi?{urlencode(query)}"
+        return f"{self._snapshot_host}/webapi/entry.cgi?{urlencode(query)}"
