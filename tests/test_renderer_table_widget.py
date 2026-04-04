@@ -201,3 +201,19 @@ def test_table_widget_routes_surveillance_status_to_icon_mode(
     widget.draw(img, Rect(x=0, y=0, w=640, h=240), cfg, store, {})
 
     assert called == ["ok"]
+
+
+def test_table_widget_renders_synology_shares_multicolumn_mode() -> None:
+    """Synology shares source should render in explicit share/vol/flags mode."""
+    img = Image.new("RGB", (900, 280), (0, 0, 0))
+    store = DataStore()
+    store.set(
+        "synology.shares.rows",
+        "plexmedia|volume2|rw rb\narchives|volume1|ro enc q:2.00TB",
+    )
+
+    widget = TableWidget()
+    cfg = WidgetConfig(type=WidgetType.TABLE, source="synology.shares.rows", font_size="auto")
+    widget.draw(img, Rect(x=0, y=0, w=900, h=280), cfg, store, {})
+
+    assert img.getbbox() is not None

@@ -131,9 +131,9 @@ widgets:
     padding: [8, 10]
     grid:
       template_areas: |
-        vol_name vol_used vol_free
-        warn crit pool
-      columns: "1.7fr 1fr 1fr"
+        vol_name vol_used vol_free vol_total
+        warn crit pool backup
+      columns: "1.5fr 0.9fr 0.9fr 0.9fr"
       rows: "1fr 1fr"
     children_named:
       vol_name:
@@ -161,6 +161,13 @@ widgets:
         precision: 2
         color: "#8fd8b2"
         max_font_size: 44
+      vol_total:
+        type: value
+        label: Total TB
+        source: synology.volume_1.total_tb
+        precision: 2
+        color: "#c4d7ef"
+        max_font_size: 40
       warn:
         type: value
         label: Warn
@@ -181,6 +188,12 @@ widgets:
         source: synology.storagepool_1.status
         color: "#c4d7ef"
         max_font_size: 36
+      backup:
+        type: value
+        label: Backup
+        source: synology.services.hyper_backup_state
+        color: "#9ec6ff"
+        max_font_size: 32
 
   disks:
     type: table
@@ -199,7 +212,7 @@ widgets:
     source: synology.shares.rows
     color: "#e8f2ff"
     background: "#162028"
-    font_size: 18
+    font_size: 16
     table_fit_text: false
     max_items: 5
     padding: [8, 10]

@@ -139,6 +139,28 @@ class _SynologyDiskRenderContext:
 
 
 @dataclass(frozen=True)
+class _SynologyShareRow:
+    """One parsed Synology share row with optional metadata flags."""
+
+    name: str
+    volume: str
+    flags: str
+
+
+@dataclass(frozen=True)
+class _SynologyShareRenderContext:
+    """Render context for Synology shares table mode."""
+
+    draw: ImageDraw.ImageDraw
+    inner: Rect
+    label_h: int
+    source_text: str
+    font_size: int | str
+    max_items: int | None
+    color: str | None
+
+
+@dataclass(frozen=True)
 class _SpecialSourceContext:
     """Shared inputs for rendering special source-specific table layouts."""
 
@@ -313,6 +335,18 @@ class TableWidget(BaseWidget):
                 color=cfg.color,
             )
             return self._draw_synology_disks_table(disk_ctx)
+
+        if cfg.source == "synology.shares.rows":
+            share_ctx = _SynologyShareRenderContext(
+                draw=context.draw,
+                inner=context.inner,
+                label_h=context.label_h,
+                source_text=context.source_text,
+                font_size=cfg.font_size,
+                max_items=cfg.max_items,
+                color=cfg.color,
+            )
+            return self._draw_synology_shares_table(share_ctx)
         return False
 
     def _draw_containers_table(
@@ -526,6 +560,65 @@ class TableWidget(BaseWidget):
             y += row_h
         return True
 
+    def _draw_synology_shares_table(
+        self,
+        context: _SynologyShareRenderContext,
+    ) -> bool:
+        """Render ``synology.shares.rows`` with share, volume, and flags columns."""
+        rows = _parse_synology_shares_rows(context.source_text)
+        if not rows:
+            return False
+
+        if context.max_items is not None and context.max_items > 0:
+            rows = rows[: context.max_items]
+
+        draw = context.draw
+        inner = context.inner
+        y = inner.y + context.label_h + 2
+        avail_w = inner.w - 4
+        x0 = inner.x + 2
+        share_x = x0
+        volume_x = x0 + int(avail_w * 0.50)
+        flags_x = x0 + int(avail_w * 0.72)
+
+        color = parse_color(context.color, fallback=(220, 225, 230))
+        header_color = (160, 170, 182)
+
+        resolved_font_size = _to_font_size(context.font_size, inner)
+        header_font = get_font(max(10, int(resolved_font_size * 0.78)))
+        body_font = get_font(resolved_font_size)
+
+        draw.text((share_x, y), "Share", fill=header_color, font=header_font)
+        draw.text((volume_x, y), "Vol", fill=header_color, font=header_font)
+        draw.text((flags_x, y), "Flags", fill=header_color, font=header_font)
+
+        header_bb = draw.textbbox((0, 0), "Ag", font=header_font)
+        row_h = int((draw.textbbox((0, 0), "Ag", font=body_font)[3]) + 2)
+        y += int(header_bb[3] - header_bb[1]) + 5
+        draw.line((x0, y, inner.x + inner.w - 2, y), fill=(56, 64, 74), width=1)
+        y += 4
+
+        for row in rows:
+            if y + row_h > inner.y + inner.h:
+                break
+
+            share_text = _ellipsize(draw, body_font, row.name, volume_x - share_x - 6, {})
+            draw.text((share_x, y), share_text, fill=color, font=body_font)
+
+            volume_text = _ellipsize(draw, body_font, row.volume, flags_x - volume_x - 6, {})
+            draw.text((volume_x, y), volume_text, fill=color, font=body_font)
+
+            flags_text = _ellipsize(
+                draw,
+                body_font,
+                row.flags,
+                inner.x + inner.w - flags_x - 4,
+                {},
+            )
+            draw.text((flags_x, y), flags_text, fill=color, font=body_font)
+            y += row_h
+        return True
+
 
 def _layout_from_cache(
     state: dict[str, object],
@@ -655,6 +748,26 @@ def _parse_synology_disks_rows(source_text: str) -> list[_SynologyDiskRow]:
                 name=parts[0].strip() or "—",
                 level=parts[1].strip().upper() or "UNK",
                 detail=parts[2].strip() or "-",
+            )
+        )
+    return rows
+
+
+def _parse_synology_shares_rows(source_text: str) -> list[_SynologyShareRow]:
+    """Parse 3-column Synology share rows: ``share|volume|flags``."""
+    rows: list[_SynologyShareRow] = []
+    for raw_line in source_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split("|", maxsplit=2)
+        if len(parts) != 3:
+            return []
+        rows.append(
+            _SynologyShareRow(
+                name=parts[0].strip() or "—",
+                volume=parts[1].strip() or "-",
+                flags=parts[2].strip() or "-",
             )
         )
     return rows

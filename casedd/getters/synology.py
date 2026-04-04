@@ -200,10 +200,36 @@ def _status_level(status_text: str) -> str:
 def _icon_for_state(state_text: str) -> str:
     """Map normalized service-like state text to table icon key."""
     lowered = state_text.strip().lower()
-    if lowered in {"running", "online", "recording", "latest", "ok", "normal"}:
+    if lowered in {
+        "running",
+        "online",
+        "recording",
+        "latest",
+        "ok",
+        "normal",
+        "enabled",
+    }:
         return "started"
-    if lowered in {"stopped", "offline", "error", "failed", "available", "critical"}:
+    if lowered in {
+        "stopped",
+        "offline",
+        "error",
+        "failed",
+        "available",
+        "critical",
+        "disabled",
+    }:
         return "exited"
+    return "unknown"
+
+
+def _normalize_state_text(state_text: str) -> str:
+    """Normalize service/package status text to compact operational states."""
+    lowered = state_text.strip().lower()
+    if lowered in {"enabled", "running", "on", "static", "1", "true", "normal"}:
+        return "running"
+    if lowered in {"disabled", "off", "stopped", "0", "false", "error", "failed"}:
+        return "stopped"
     return "unknown"
 
 
@@ -375,6 +401,8 @@ class SynologyGetter(BaseGetter):
             "synology.services.rows": "",
             "synology.status.rows": "",
             "synology.surveillance.status.rows": "",
+            "synology.services.hyper_backup_state": "unknown",
+            "synology.services.active_backup_state": "unknown",
         }
 
     def _sample_utilization(self, sid: str) -> dict[str, StoreValue]:
@@ -827,13 +855,10 @@ class SynologyGetter(BaseGetter):
             ),
             sid,
         )
-        package_data = self._call_first(
-            (
-                _ApiCall("SYNO.Core.Package", "list", 2, {}),
-                _ApiCall("SYNO.Core.Package", "list", 1, {}),
-            ),
-            sid,
-        )
+        package_data = self._call_first((
+            _ApiCall("SYNO.Core.Package", "list", 2, {}),
+            _ApiCall("SYNO.Core.Package", "list", 1, {}),
+        ), sid)
         services = _first_list(
             service_data,
             (("services",), ("service",), ("data", "services")),
@@ -847,6 +872,8 @@ class SynologyGetter(BaseGetter):
             "synology.services.file_station_state": "unknown",
             "synology.services.synology_drive_state": "unknown",
             "synology.services.surveillance_station_state": "unknown",
+            "synology.services.hyper_backup_state": "unknown",
+            "synology.services.active_backup_state": "unknown",
             "synology.services.rows": "",
         }
         service_ids = {
@@ -869,11 +896,7 @@ class SynologyGetter(BaseGetter):
         drive_state = "unknown"
         surveillance_state = "unknown"
         for service_id, state_text in service_ids.items():
-            normalized_state = "unknown"
-            if state_text in {"enabled", "running", "on", "static", "1", "true"}:
-                normalized_state = "running"
-            elif state_text in {"disabled", "off", "stopped", "0", "false"}:
-                normalized_state = "stopped"
+            normalized_state = _normalize_state_text(state_text)
 
             if "smb" in service_id and smb_state == "unknown":
                 smb_state = normalized_state
@@ -895,32 +918,13 @@ class SynologyGetter(BaseGetter):
         defaults["synology.services.synology_drive_state"] = drive_state
         defaults["synology.services.surveillance_station_state"] = surveillance_state
 
+        package_rows = [_as_dict(item) for item in packages]
         package_ids = {
             _first_text(pkg, (("id",), ("package",), ("name",))).lower()
-            for pkg in (_as_dict(item) for item in packages)
+            for pkg in package_rows
         }
-        if (
-            "filestation" in package_ids
-            and defaults["synology.services.file_station_state"] == "unknown"
-        ):
-            defaults["synology.services.file_station_state"] = "running"
-        has_drive_package = (
-            "synologydrive" in package_ids or "cloudstation" in package_ids
-        )
-        if (
-            has_drive_package
-            and defaults["synology.services.synology_drive_state"] == "unknown"
-        ):
-            defaults["synology.services.synology_drive_state"] = "running"
-        if defaults["synology.services.synology_drive_state"] == "unknown":
-            defaults["synology.services.synology_drive_state"] = "not installed"
-        if "surveillancestation" in package_ids and defaults[
-            "synology.services.surveillance_station_state"
-        ] == "unknown":
-            defaults["synology.services.surveillance_station_state"] = "running"
-
-        if defaults["synology.services.smb_state"] == "unknown" and "smbservice" in package_ids:
-            defaults["synology.services.smb_state"] = "running"
+        self._apply_package_service_defaults(defaults, package_ids)
+        self._apply_backup_package_states(defaults, package_rows, package_ids)
 
         service_rows = [
             "SMB|"
@@ -938,6 +942,69 @@ class SynologyGetter(BaseGetter):
         ]
         defaults["synology.services.rows"] = "\n".join(service_rows)
         return defaults
+
+    def _apply_package_service_defaults(
+        self,
+        defaults: dict[str, StoreValue],
+        package_ids: set[str],
+    ) -> None:
+        """Apply package-presence fallbacks for core service state keys."""
+        if (
+            "filestation" in package_ids
+            and defaults["synology.services.file_station_state"] == "unknown"
+        ):
+            defaults["synology.services.file_station_state"] = "running"
+
+        has_drive_package = "synologydrive" in package_ids or "cloudstation" in package_ids
+        if (
+            has_drive_package
+            and defaults["synology.services.synology_drive_state"] == "unknown"
+        ):
+            defaults["synology.services.synology_drive_state"] = "running"
+        if defaults["synology.services.synology_drive_state"] == "unknown":
+            defaults["synology.services.synology_drive_state"] = "not installed"
+
+        if (
+            "surveillancestation" in package_ids
+            and defaults["synology.services.surveillance_station_state"] == "unknown"
+        ):
+            defaults["synology.services.surveillance_station_state"] = "running"
+
+        if "smbservice" in package_ids and defaults["synology.services.smb_state"] == "unknown":
+            defaults["synology.services.smb_state"] = "running"
+
+    def _apply_backup_package_states(
+        self,
+        defaults: dict[str, StoreValue],
+        package_rows: list[dict[str, object]],
+        package_ids: set[str],
+    ) -> None:
+        """Apply backup package operational states from package inventory."""
+        for package in package_rows:
+            package_id = _first_text(package, (("id",), ("package",), ("name",))).lower()
+            package_state_raw = _first_text(
+                package,
+                (("status",), ("state",), ("running",), ("status_display",)),
+            )
+            package_state = _normalize_state_text(package_state_raw)
+
+            if "hyperbackup" in package_id:
+                defaults["synology.services.hyper_backup_state"] = package_state
+            if "activebackup" in package_id:
+                defaults["synology.services.active_backup_state"] = package_state
+
+        if (
+            "hyperbackup" in package_ids
+            and defaults["synology.services.hyper_backup_state"] == "unknown"
+        ):
+            defaults["synology.services.hyper_backup_state"] = "installed"
+
+        has_active_backup = any("activebackup" in package_id for package_id in package_ids)
+        if (
+            has_active_backup
+            and defaults["synology.services.active_backup_state"] == "unknown"
+        ):
+            defaults["synology.services.active_backup_state"] = "installed"
 
     def _sample_users(self, sid: str) -> dict[str, StoreValue]:
         """Collect DSM user list with optional regex exclusions."""
@@ -1017,6 +1084,35 @@ class SynologyGetter(BaseGetter):
         rows: list[str] = []
         status_rows: list[str] = []
         recording_count = 0.0
+        selected_cameras = self._select_surveillance_cameras(cameras)
+
+        selected_slice = selected_cameras[: self._surveillance_max_cameras]
+        payload["synology.surveillance.camera_count"] = float(len(selected_slice))
+        for index, camera in enumerate(selected_slice, start=1):
+            row_payload, table_row, status_row, is_recording = self._camera_row_payload(
+                camera,
+                index,
+                sid,
+            )
+            payload.update(row_payload)
+            rows.append(table_row)
+            status_rows.append(status_row)
+            if is_recording:
+                recording_count += 1.0
+
+        for index in range(len(selected_slice) + 1, self._surveillance_max_cameras + 1):
+            payload[f"synology.camera_{index}.name"] = "no camera"
+            payload[f"synology.camera_{index}.status"] = "absent"
+            payload[f"synology.camera_{index}.snapshot_url"] = ""
+            payload[f"synology.camera_{index}.captured_at"] = ""
+
+        payload["synology.surveillance.recording_count"] = recording_count
+        payload["synology.cameras.rows"] = "\n".join(rows)
+        payload["synology.status.rows"] = "\n".join(status_rows)
+        return payload
+
+    def _select_surveillance_cameras(self, cameras: list[object]) -> list[dict[str, object]]:
+        """Filter and prioritize surveillance cameras for rendering."""
         selected_cameras: list[dict[str, object]] = []
         eligible_cameras: list[dict[str, object]] = []
         for camera_obj in cameras:
@@ -1046,45 +1142,41 @@ class SynologyGetter(BaseGetter):
             eligible_cameras.append(camera)
             if state in {"online", "recording"}:
                 selected_cameras.append(camera)
-        if not selected_cameras:
-            selected_cameras = eligible_cameras
+        if selected_cameras:
+            return selected_cameras
+        return eligible_cameras
 
-        selected_slice = selected_cameras[: self._surveillance_max_cameras]
-        payload["synology.surveillance.camera_count"] = float(len(selected_slice))
-        for index, camera in enumerate(selected_slice, start=1):
-            name = _first_text(camera, (("newName",), ("name",), ("cameraName",), ("id",)))
-            camera_id = _first_text(camera, (("id",), ("camera_id",), ("camId",)))
-            status_raw = _first_text(
-                camera,
-                (("status",), ("enabled",), ("recording",), ("recordingStatus",), ("camStatus",)),
-            )
-            normalized_status = _camera_state(status_raw)
-            if normalized_status == "recording":
-                recording_count += 1.0
+    def _camera_row_payload(
+        self,
+        camera: dict[str, object],
+        index: int,
+        sid: str,
+    ) -> tuple[dict[str, StoreValue], str, str, bool]:
+        """Build per-camera payload row values and table status row."""
+        name = _first_text(camera, (("newName",), ("name",), ("cameraName",), ("id",)))
+        camera_id = _first_text(camera, (("id",), ("camera_id",), ("camId",)))
+        status_raw = _first_text(
+            camera,
+            (("status",), ("enabled",), ("recording",), ("recordingStatus",), ("camStatus",)),
+        )
+        normalized_status = _camera_state(status_raw)
+        snapshot_url = ""
+        captured_at = ""
+        if self._include_camera_snapshots and camera_id:
+            snapshot_url = self._snapshot_url(camera_id, sid)
+            captured_at = time.strftime("%H:%M:%S", time.localtime())
 
-            snapshot_url = ""
-            if self._include_camera_snapshots and camera_id:
-                snapshot_url = self._snapshot_url(camera_id, sid)
-
-            key_prefix = f"synology.camera_{index}"
-            payload[f"{key_prefix}.name"] = name
-            payload[f"{key_prefix}.status"] = normalized_status
-            payload[f"{key_prefix}.snapshot_url"] = snapshot_url
-            rows.append(f"{name}|{normalized_status}")
-            label_name = name if name else f"Camera {camera_id or index}"
-            status_rows.append(
-                f"{label_name}|{_icon_for_state(normalized_status)}|{normalized_status}"
-            )
-
-        for index in range(len(selected_slice) + 1, self._surveillance_max_cameras + 1):
-            payload[f"synology.camera_{index}.name"] = "no camera"
-            payload[f"synology.camera_{index}.status"] = "absent"
-            payload[f"synology.camera_{index}.snapshot_url"] = ""
-
-        payload["synology.surveillance.recording_count"] = recording_count
-        payload["synology.cameras.rows"] = "\n".join(rows)
-        payload["synology.status.rows"] = "\n".join(status_rows)
-        return payload
+        key_prefix = f"synology.camera_{index}"
+        row_payload: dict[str, StoreValue] = {
+            f"{key_prefix}.name": name,
+            f"{key_prefix}.status": normalized_status,
+            f"{key_prefix}.snapshot_url": snapshot_url,
+            f"{key_prefix}.captured_at": captured_at,
+        }
+        table_row = f"{name}|{normalized_status}"
+        label_name = name if name else f"Camera {camera_id or index}"
+        status_row = f"{label_name}|{_icon_for_state(normalized_status)}|{normalized_status}"
+        return row_payload, table_row, status_row, normalized_status == "recording"
 
     def _sample_shares(self, sid: str) -> dict[str, StoreValue]:
         """Collect list of shares and mount volume context."""
@@ -1104,7 +1196,31 @@ class SynologyGetter(BaseGetter):
             if not name:
                 continue
             volume_label = volume_path.rsplit("/", maxsplit=1)[-1] if volume_path else "-"
-            rows.append(f"{name}|{volume_label}")
+            flags: list[str] = []
+            readonly = _first_float(
+                share,
+                (("is_readonly",), ("read_only",), ("readonly",)),
+            )
+            encrypted = _first_float(
+                share,
+                (("is_encrypted",), ("encrypted",), ("encrypt",)),
+            )
+            recycle_bin = _first_float(
+                share,
+                (("enable_recycle_bin",), ("recycle_bin",), ("is_recycle_bin",)),
+            )
+            quota_bytes = _first_float(share, (("quota",), ("quota_bytes",)))
+
+            flags.append("ro" if (readonly is not None and readonly > 0) else "rw")
+            if encrypted is not None and encrypted > 0:
+                flags.append("enc")
+            if recycle_bin is not None and recycle_bin > 0:
+                flags.append("rb")
+            if quota_bytes is not None and quota_bytes > 0:
+                quota_tb = _bytes_to_gb(quota_bytes) / 1024.0
+                flags.append(f"q:{quota_tb:.2f}TB")
+
+            rows.append(f"{name}|{volume_label}|{' '.join(flags)}")
 
         return {
             "synology.shares.count": float(len(rows)),
@@ -1127,6 +1243,8 @@ class SynologyGetter(BaseGetter):
             ("synology.services.file_station_state", "File Station"),
             ("synology.services.synology_drive_state", "Drive"),
             ("synology.services.surveillance_station_state", "Surveillance"),
+            ("synology.services.hyper_backup_state", "Hyper Backup"),
+            ("synology.services.active_backup_state", "Active Backup"),
         ):
             state_text = _as_text(payload.get(service_key)) or "unknown"
             rows.append(f"{label}|{_icon_for_state(state_text)}|{state_text}")
@@ -1136,8 +1254,19 @@ class SynologyGetter(BaseGetter):
     def _compose_surveillance_status_rows(self, payload: dict[str, StoreValue]) -> str:
         """Build surveillance status rows including camera states."""
         rows: list[str] = []
+        update_available_raw = payload.get("synology.dsm.update_available")
+        update_available = _as_float(update_available_raw)
+        update_state = "unknown"
+        if update_available is not None:
+            update_state = "available" if update_available > 0 else "latest"
+        rows.append(f"DSM Update|{_icon_for_state(update_state)}|{update_state.upper()}")
 
-        rows.extend(self._compose_status_rows(payload).splitlines())
+        surveillance_state = _as_text(payload.get("synology.services.surveillance_station_state"))
+        rows.append(
+            "Surveillance|"
+            f"{_icon_for_state(surveillance_state or 'unknown')}|"
+            f"{surveillance_state or 'unknown'}"
+        )
 
         camera_count = int(_as_float(payload.get("synology.surveillance.camera_count")) or 0)
         for index in range(1, camera_count + 1):
