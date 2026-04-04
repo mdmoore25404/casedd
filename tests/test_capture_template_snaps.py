@@ -73,6 +73,25 @@ def test_write_manifest_respects_custom_snapshot_gitignore_rules(tmp_path: Path)
     assert entries["apod"] == "images/template_snaps/apod_demo.png"
 
 
+def test_write_manifest_excludes_truenas_default_snapshot_but_keeps_demo(tmp_path: Path) -> None:
+    """Truenas standard snapshots should be excluded while _demo snapshots stay includable."""
+    (tmp_path / ".gitignore").write_text(
+        "*truenas*.png\n"
+        "!*_demo*.png\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "truenas_dashboard.png").write_bytes(b"png")
+    (tmp_path / "truenas_dashboard_demo.png").write_bytes(b"png")
+    (tmp_path / "system_stats.png").write_bytes(b"png")
+
+    capture_template_snaps._write_manifest(tmp_path)
+
+    payload = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    entries = {e["name"]: e["image"] for e in payload["templates"]}
+    assert list(entries.keys()) == ["system_stats", "truenas_dashboard"]
+    assert entries["truenas_dashboard"] == "images/template_snaps/truenas_dashboard_demo.png"
+
+
 def test_prompt_confirmation_supports_skip_and_approve_all(
     monkeypatch: object,
     tmp_path: Path,

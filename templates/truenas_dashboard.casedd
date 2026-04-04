@@ -41,7 +41,7 @@ widgets:
     source: truenas.system.hostname
     color: "#9fe6c3"
     font_size: auto
-    max_font_size: 50
+    max_font_size: 34
 
   cpu_hist:
     type: sparkline
@@ -65,43 +65,66 @@ widgets:
     padding: [8, 10]
     grid:
       template_areas: |
-        label pool1_name pool1_used
-        label pool1_status pool1_free
-      columns: "1.3fr 2.4fr 1.3fr"
-      rows: "1fr 1fr"
+        label label label
+        pool_name_hdr used_hdr free_hdr
+        pool1_name pool1_used pool1_free
+        status_hdr pool1_status pool1_status
+      columns: "1.65fr 1fr 1fr"
+      rows: "0.62fr 0.55fr 0.95fr 0.88fr"
     children_named:
       label:
         type: text
-        content: |
-          Storage
-          
+        content: "Storage"
         color: "#768d9f"
-        font_size: 13
-        padding: [0, 0, 4, 0]
+        font_size: 16
+
+      pool_name_hdr:
+        type: text
+        content: "Pool"
+        color: "#7aa7c2"
+        font_size: 12
+
+      used_hdr:
+        type: text
+        content: "Used %"
+        color: "#7aa7c2"
+        font_size: 12
+
+      free_hdr:
+        type: text
+        content: "Free TB"
+        color: "#7aa7c2"
+        font_size: 12
 
       pool1_name:
         type: text
         source: truenas.pool_1.name
         color: "#fff"
-        font_size: auto
+        font_size: 23
 
       pool1_used:
         type: text
         source: truenas.pool_1.used_percent
         color: "#ff6b35"
-        font_size: auto
+        font_size: 25
+
+      status_hdr:
+        type: text
+        content: "Status"
+        color: "#7aa7c2"
+        font_size: 12
 
       pool1_status:
         type: text
         source: truenas.pool_1.status
         color: "#9fe6c3"
-        font_size: auto
+        font_size: 23
 
       pool1_free:
         type: text
         source: truenas.pool_1.free_tb
         color: "#e8f0f5"
-        font_size: auto
+        font_size: 25
 
   status:
     type: value
@@ -111,21 +134,21 @@ widgets:
     source: truenas.auth.ok
     color: "#7cb342"
     font_size: auto
-    max_font_size: 42
+    max_font_size: 30
 
   pools:
     type: table
     background: "#162028"
     padding: [8, 10]
     source: truenas.pools.rows
-    font_size: 15
+    font_size: 18
 
   services:
     type: table
     background: "#162028"
     padding: [8, 10]
     source: truenas.services.rows
-    font_size: 15
+    font_size: 18
 
   disk_io:
     type: sparkline

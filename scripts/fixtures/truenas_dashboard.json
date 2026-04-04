@@ -1,0 +1,20 @@
+[
+  {
+    "at_ms": 0,
+    "update": {
+      "truenas.auth.ok": 1.0,
+      "truenas.system.reachable": 1.0,
+      "truenas.system.hostname": "truenas-demo",
+      "truenas.pool_1.name": "tank",
+      "truenas.pool_1.status": "HEALTHY",
+      "truenas.pool_1.used_percent": 62.4,
+      "truenas.pool_1.free_tb": 3.18,
+      "truenas.pools.rows": "tank|●|62.4%",
+      "truenas.services.rows": "cifs|▶|RUN\nnfs|▶|RUN\nssh|▶|RUN\nftp|■|STOP\niscsitarget|■|STOP",
+      "cpu.percent": 23.8,
+      "memory.percent": 44.7,
+      "disk.read_mb_s": 12.6,
+      "network.bytes_recv_rate": 118445323.0
+    }
+  }
+]

@@ -90,4 +90,4 @@ def test_truenas_pool_usage_falls_back_to_dataset_values() -> None:
     assert out["truenas.pool_1.status"] == "DEGRADED"
     assert out["truenas.pool_1.used_percent"] == 80.0
     assert out["truenas.pool_1.free_tb"] == 2.0
-    assert out["truenas.pools.rows"] == "storagepool|⚠|80.0%"
+    assert out["truenas.pools.rows"] == "storagepool|▼|80.0%"

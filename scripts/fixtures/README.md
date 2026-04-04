@@ -22,6 +22,7 @@ two ways:
 | `pihole.json` | `pihole` | `pihole.*` |
 | `servarr_dashboard.json` | `servarr_dashboard` | `radarr.*`, `sonarr.*` |
 | `synology_dashboard.json` | `synology_dashboard` | `synology.*` |
+| `truenas_dashboard.json` | `truenas_dashboard` | `truenas.*`, supporting `cpu.*`/`memory.*`/`disk.*`/`network.*` |
 
 ## Replay format
 

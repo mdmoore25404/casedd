@@ -287,7 +287,7 @@ class TrueNASGetter(BaseGetter):
 
             # Add to rows for table display (limit to 3 rows)
             if idx <= 3:
-                status_icon = "●" if pool_status == "healthy" else "⚠"
+                status_icon = "●" if pool_status == "healthy" else "▼"
                 usage_text = f"{used_pct}%" if used_pct is not None else "--"
                 row = f"{pool_name}|{status_icon}|{usage_text}"
                 pool_rows.append(row)
@@ -345,8 +345,10 @@ class TrueNASGetter(BaseGetter):
             service_name = _as_text(service_dict.get("service", ""))
             service_state = _as_text(service_dict.get("state", "unknown"))
             if service_name:
-                state_icon = "●" if service_state == "RUNNING" else "○"
-                row = f"{service_name}|{state_icon}|{service_state}"
+                is_running = service_state.upper() == "RUNNING"
+                state_icon = "▶" if is_running else "■"
+                state_text = "RUN" if is_running else "STOP"
+                row = f"{service_name}|{state_icon}|{state_text}"
                 service_rows.append(row)
         if service_rows:
             out["truenas.services.rows"] = "\n".join(service_rows[:10])
