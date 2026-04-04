@@ -42,6 +42,7 @@ Store keys written include:
     - ``synology.backup.configured``
     - ``synology.backup.success``
     - ``synology.backup.summary``
+    - ``synology.backup.rows``
 """
 
 from __future__ import annotations
@@ -209,6 +210,7 @@ def _icon_for_state(state_text: str) -> str:
         "online",
         "recording",
         "latest",
+        "success",
         "ok",
         "normal",
         "enabled",
@@ -219,6 +221,7 @@ def _icon_for_state(state_text: str) -> str:
         "offline",
         "error",
         "failed",
+        "failure",
         "available",
         "critical",
         "disabled",
@@ -444,6 +447,7 @@ class SynologyGetter(BaseGetter):
             "synology.backup.configured": -1.0,
             "synology.backup.success": -1.0,
             "synology.backup.summary": "unknown",
+            "synology.backup.rows": "",
         }
 
     def _sample_backup_health(
@@ -461,6 +465,7 @@ class SynologyGetter(BaseGetter):
                 "synology.backup.configured": 0.0,
                 "synology.backup.success": 0.0,
                 "synology.backup.summary": "not installed",
+                "synology.backup.rows": "",
             }
 
         data = self._call_first(
@@ -489,6 +494,7 @@ class SynologyGetter(BaseGetter):
                 "synology.backup.configured": -1.0,
                 "synology.backup.success": -1.0,
                 "synology.backup.summary": "installed",
+                "synology.backup.rows": "",
             }
 
         if not tasks:
@@ -497,14 +503,26 @@ class SynologyGetter(BaseGetter):
                 "synology.backup.configured": 0.0,
                 "synology.backup.success": 0.0,
                 "synology.backup.summary": "not configured",
+                "synology.backup.rows": "",
             }
 
         total_jobs = len(tasks)
         success_jobs = 0
         failed_jobs = 0
         running_jobs = 0
+        backup_rows: list[str] = []
         for task_obj in tasks:
             task = _as_dict(task_obj)
+            task_name = _first_text(
+                task,
+                (
+                    ("name",),
+                    ("task_name",),
+                    ("plan_name",),
+                    ("display_name",),
+                    ("id",),
+                ),
+            )
             raw_state = _first_text(
                 task,
                 (
@@ -519,10 +537,20 @@ class SynologyGetter(BaseGetter):
             classified = _backup_job_state(raw_state)
             if classified == "success":
                 success_jobs += 1
+                state_label = "SUCCESS"
             elif classified == "failure":
                 failed_jobs += 1
+                state_label = "FAILURE"
             elif classified == "running":
                 running_jobs += 1
+                state_label = "RUNNING"
+            else:
+                state_label = "UNKNOWN"
+
+            row_name = task_name if task_name else f"Backup {len(backup_rows) + 1}"
+            backup_rows.append(
+                f"{row_name}|{_icon_for_state(classified)}|{state_label}"
+            )
 
         success_state = -1.0
         summary = "configured"
@@ -542,6 +570,7 @@ class SynologyGetter(BaseGetter):
             "synology.backup.configured": 1.0,
             "synology.backup.success": success_state,
             "synology.backup.summary": summary,
+            "synology.backup.rows": "\n".join(backup_rows[:20]),
         }
 
     def _sample_utilization(self, sid: str) -> dict[str, StoreValue]:
@@ -1399,6 +1428,11 @@ class SynologyGetter(BaseGetter):
         elif "running" in backup_summary.lower():
             backup_state = "running"
         rows.append(f"Backups|{_icon_for_state(backup_state)}|{backup_summary}")
+
+        backup_rows_text = _as_text(payload.get("synology.backup.rows"))
+        for backup_row in backup_rows_text.splitlines()[:6]:
+            if backup_row.count("|") == 2:
+                rows.append(backup_row)
 
         return "\n".join(rows)
 

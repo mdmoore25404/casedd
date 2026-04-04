@@ -64,8 +64,8 @@ def _route_payload(path: str, query: dict[str, object]) -> dict[str, object]:
             "success": True,
             "data": {
                 "tasks": [
-                    {"status": "success"},
-                    {"status": "success"},
+                    {"name": "nas1 backup", "status": "success"},
+                    {"name": "usb backup", "status": "failed"},
                 ]
             },
         },
@@ -166,9 +166,12 @@ async def test_synology_getter_healthy_payload(monkeypatch) -> None:
     assert "GetSnapshot" in str(payload["synology.camera_1.snapshot_url"])
     assert payload["synology.backup.installed"] == 1.0
     assert payload["synology.backup.configured"] == 1.0
-    assert payload["synology.backup.success"] == 1.0
-    assert payload["synology.backup.summary"] == "2/2 ok"
-    assert "Backups|started|2/2 ok" in str(payload["synology.status.rows"])
+    assert payload["synology.backup.success"] == 0.0
+    assert payload["synology.backup.summary"] == "1/2 ok, 1 failed"
+    assert "Backups|exited|1/2 ok, 1 failed" in str(payload["synology.status.rows"])
+    assert "nas1 backup|started|SUCCESS" in str(payload["synology.backup.rows"])
+    assert "usb backup|exited|FAILURE" in str(payload["synology.backup.rows"])
+    assert "nas1 backup|started|SUCCESS" in str(payload["synology.status.rows"])
 
 
 async def test_synology_getter_auth_failure_returns_placeholder(monkeypatch) -> None:
