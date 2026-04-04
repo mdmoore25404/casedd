@@ -52,6 +52,13 @@ from casedd.getters.base import BaseGetter
 
 _log = logging.getLogger(__name__)
 
+_OPTIONAL_ENDPOINTS = {
+    "virt/instance",
+    "jail",
+    "update/check_available",
+    "update/get_pending",
+}
+
 
 class _TrueNASAuthError(RuntimeError):
     """Raised when TrueNAS auth state is invalid."""
@@ -642,6 +649,9 @@ class TrueNASGetter(BaseGetter):
         except HTTPError as exc:
             if exc.code == 401:
                 raise _TrueNASAuthError(f"TrueNAS auth failed: {exc}") from exc
+            if endpoint in _OPTIONAL_ENDPOINTS and exc.code in {404, 405}:
+                _log.debug("TrueNAS optional endpoint unavailable %s: %s", endpoint, exc)
+                return {}
             _log.warning("TrueNAS API error on %s: %s", endpoint, exc)
             return {}
         except URLError as exc:
