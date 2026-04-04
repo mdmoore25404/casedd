@@ -103,6 +103,12 @@ def _strip_domain(hostname: str, enabled: bool) -> str:
     return text.split(".", maxsplit=1)[0]
 
 
+def _is_running_state(value: object) -> bool:
+    """Return True when a TrueNAS status-like value indicates running."""
+    state_upper = _as_text(value).strip().upper()
+    return state_upper in {"RUNNING", "ACTIVE", "UP", "STARTED", "ON", "TRUE", "1"}
+
+
 def _as_float(value: object, default: float = 0.0) -> float:
     """Coerce a scalar value to float."""
     if isinstance(value, (int, float)):
@@ -512,18 +518,28 @@ class TrueNASGetter(BaseGetter):
         out["truenas.system.update_status"] = status_text
 
     def _sample_vms(self, out: dict[str, StoreValue]) -> None:
-        """Sample TrueNAS virtual machine state (SCALE virt instances)."""
+        """Sample TrueNAS virtual machine state across SCALE/CORE API variants."""
         vm_rows_raw = _as_list(self._call("virt/instance"))
+        if not vm_rows_raw:
+            vm_rows_raw = _as_list(self._call("vm"))
+        if not vm_rows_raw:
+            vm_payload = _as_dict(self._call("vm"))
+            vm_rows_raw = _as_list(vm_payload.get("records", []))
         vm_rows: list[str] = []
         running = 0
         stopped = 0
 
         for vm_obj in vm_rows_raw:
             vm = _as_dict(vm_obj)
-            name = _as_text(vm.get("name", "")) or _as_text(vm.get("id", ""))
-            status_text = _as_text(vm.get("status", "")) or _as_text(vm.get("state", ""))
-            state_upper = status_text.strip().upper()
-            if state_upper in {"RUNNING", "ACTIVE", "UP", "STARTED"}:
+            name = (
+                _as_text(vm.get("name", ""))
+                or _as_text(vm.get("vm_name", ""))
+                or _as_text(vm.get("id", ""))
+            )
+            is_running = _is_running_state(vm.get("status")) or _is_running_state(vm.get("state"))
+            if not is_running:
+                is_running = _is_running_state(vm.get("running"))
+            if is_running:
                 running += 1
                 label = "Running"
             else:
@@ -551,13 +567,11 @@ class TrueNASGetter(BaseGetter):
                 or _as_text(jail.get("host_hostuuid", ""))
                 or _as_text(jail.get("host_hostname", ""))
             )
-            state_text = (
-                _as_text(jail.get("state", ""))
-                or _as_text(jail.get("status", ""))
-                or _as_text(jail.get("running", ""))
+            is_running = (
+                _is_running_state(jail.get("state"))
+                or _is_running_state(jail.get("status"))
+                or _is_running_state(jail.get("running"))
             )
-            state_upper = state_text.strip().upper()
-            is_running = state_upper in {"UP", "RUNNING", "ON", "TRUE", "1"}
             if is_running:
                 running += 1
                 label = "Running"

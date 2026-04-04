@@ -31,7 +31,7 @@ widgets:
         scale: fit
       title:
         type: text
-        content: "TrueNAS VMs"
+        content: "VMs"
         color: "#dfe7ef"
         font_size: auto
 
@@ -67,7 +67,7 @@ widgets:
   table:
     type: table
     source: truenas.vms.rows
-    label: "TrueNAS Virtual Machines"
+    label: "VMs"
     color: "#dfe7ef"
     background: "#101822"
     font_size: auto

@@ -219,6 +219,34 @@ def test_truenas_vm_and_jail_rows_are_published() -> None:
     assert out["truenas.jails.rows"] == "jail-a|Running\njail-b|Stopped"
 
 
+def test_truenas_vm_rows_fallback_to_vm_endpoint_shape() -> None:
+    """VM sampling should support legacy vm endpoint payload shapes."""
+    getter = TrueNASGetter(DataStore(), host="nas.local", api_key="key")
+
+    def _fake_call(endpoint: str, method: str = "GET", body: object | None = None) -> object:
+        _ = method
+        _ = body
+        if endpoint == "virt/instance":
+            return []
+        if endpoint == "vm":
+            return {
+                "records": [
+                    {"id": "ubuntu-vm", "running": True},
+                    {"name": "windows-vm", "state": "STOPPED"},
+                ]
+            }
+        return []
+
+    getter._call = _fake_call  # type: ignore[method-assign]
+    out: dict[str, float | int | str] = {}
+    getter._sample_vms(out)
+
+    assert out["truenas.vms.count_total"] == 2.0
+    assert out["truenas.vms.count_running"] == 1.0
+    assert out["truenas.vms.count_stopped"] == 1.0
+    assert out["truenas.vms.rows"] == "ubuntu-vm|Running\nwindows-vm|Stopped"
+
+
 def test_truenas_hostname_strips_domain_by_default() -> None:
     """FQDN hostnames should publish the short hostname by default."""
     getter = TrueNASGetter(DataStore(), host="nas.local", api_key="key")
