@@ -52,6 +52,23 @@ def _route_payload(path: str, query: dict[str, object]) -> dict[str, object]:
                 ]
             },
         },
+        "SYNO.Core.Package.list": {
+            "success": True,
+            "data": {
+                "packages": [
+                    {"id": "HyperBackup", "status": "running"},
+                ]
+            },
+        },
+        "SYNO.Backup.Task.list": {
+            "success": True,
+            "data": {
+                "tasks": [
+                    {"status": "success"},
+                    {"status": "success"},
+                ]
+            },
+        },
         "SYNO.Core.User.list": {
             "success": True,
             "data": {
@@ -147,6 +164,11 @@ async def test_synology_getter_healthy_payload(monkeypatch) -> None:
     assert payload["synology.surveillance.camera_count"] == 2.0
     assert payload["synology.camera_1.name"] == "Driveway"
     assert "GetSnapshot" in str(payload["synology.camera_1.snapshot_url"])
+    assert payload["synology.backup.installed"] == 1.0
+    assert payload["synology.backup.configured"] == 1.0
+    assert payload["synology.backup.success"] == 1.0
+    assert payload["synology.backup.summary"] == "2/2 ok"
+    assert "Backups|started|2/2 ok" in str(payload["synology.status.rows"])
 
 
 async def test_synology_getter_auth_failure_returns_placeholder(monkeypatch) -> None:
@@ -308,3 +330,37 @@ async def test_synology_getter_prefers_online_cameras_for_snapshots(monkeypatch)
     assert "id=1" in str(payload["synology.camera_1.snapshot_url"])
     assert "id=5" in str(payload["synology.camera_2.snapshot_url"])
     assert "Old Cam" not in str(payload["synology.surveillance.status.rows"])
+
+
+async def test_synology_getter_backup_installed_but_not_configured(monkeypatch) -> None:
+    """Installed backup package with no tasks should report not configured."""
+
+    getter = SynologyGetter(
+        DataStore(),
+        host="http://nas1:5000",
+        username="demo",
+        password="secret",
+        interval=1.0,
+    )
+
+    def _backup_not_configured(path: str, query: dict[str, object]) -> dict[str, object]:
+        if path.endswith("/webapi/auth.cgi"):
+            return {"success": True, "data": {"sid": "sid-abc"}}
+        api = str(query.get("api", ""))
+        method = str(query.get("method", ""))
+        key = f"{api}.{method}"
+        if key == "SYNO.Core.Package.list":
+            return {
+                "success": True,
+                "data": {"packages": [{"id": "HyperBackup", "status": "running"}]},
+            }
+        if key == "SYNO.Backup.Task.list":
+            return {"success": True, "data": {"tasks": []}}
+        return {"success": True, "data": {}}
+
+    monkeypatch.setattr(getter, "_request_json", _backup_not_configured)
+    payload = await getter.fetch()
+
+    assert payload["synology.backup.installed"] == 1.0
+    assert payload["synology.backup.configured"] == 0.0
+    assert payload["synology.backup.summary"] == "not configured"

@@ -191,7 +191,7 @@ widgets:
       backup:
         type: value
         label: Backup
-        source: synology.services.hyper_backup_state
+        source: synology.backup.summary
         color: "#9ec6ff"
         max_font_size: 32
 

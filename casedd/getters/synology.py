@@ -38,6 +38,10 @@ Store keys written include:
     - ``synology.camera_<n>.name``
     - ``synology.camera_<n>.status``
     - ``synology.camera_<n>.snapshot_url``
+    - ``synology.backup.installed``
+    - ``synology.backup.configured``
+    - ``synology.backup.success``
+    - ``synology.backup.summary``
 """
 
 from __future__ import annotations
@@ -233,6 +237,38 @@ def _normalize_state_text(state_text: str) -> str:
     return "unknown"
 
 
+def _backup_job_state(state_text: str) -> str:
+    """Classify a backup task state as success/failure/running/unknown."""
+    lowered = state_text.strip().lower()
+    if lowered in {
+        "success",
+        "ok",
+        "normal",
+        "finished",
+        "complete",
+        "completed",
+    }:
+        return "success"
+    if lowered in {
+        "failed",
+        "error",
+        "aborted",
+        "stopped",
+        "canceled",
+        "cancelled",
+    }:
+        return "failure"
+    if lowered in {
+        "running",
+        "in_progress",
+        "processing",
+        "backing_up",
+        "executing",
+    }:
+        return "running"
+    return "unknown"
+
+
 def _camera_state(status_text: str) -> str:
     """Normalize camera status values from numeric/string payload forms."""
     lowered = status_text.strip().lower()
@@ -358,6 +394,7 @@ class SynologyGetter(BaseGetter):
             payload.update(self._sample_utilization(sid))
             payload.update(self._sample_storage(sid))
             payload.update(self._sample_services(sid))
+            payload.update(self._sample_backup_health(sid, payload))
             payload.update(self._sample_users(sid))
             payload.update(self._sample_shares(sid))
             if self._include_dsm_updates:
@@ -403,6 +440,108 @@ class SynologyGetter(BaseGetter):
             "synology.surveillance.status.rows": "",
             "synology.services.hyper_backup_state": "unknown",
             "synology.services.active_backup_state": "unknown",
+            "synology.backup.installed": 0.0,
+            "synology.backup.configured": -1.0,
+            "synology.backup.success": -1.0,
+            "synology.backup.summary": "unknown",
+        }
+
+    def _sample_backup_health(
+        self,
+        sid: str,
+        payload: dict[str, StoreValue],
+    ) -> dict[str, StoreValue]:
+        """Assess backup app presence, configuration, and task health."""
+        hyper_state = _as_text(payload.get("synology.services.hyper_backup_state"))
+        active_state = _as_text(payload.get("synology.services.active_backup_state"))
+        installed = hyper_state != "unknown" or active_state != "unknown"
+        if not installed:
+            return {
+                "synology.backup.installed": 0.0,
+                "synology.backup.configured": 0.0,
+                "synology.backup.success": 0.0,
+                "synology.backup.summary": "not installed",
+            }
+
+        data = self._call_first(
+            (
+                _ApiCall("SYNO.Backup.Task", "list", 1, {"offset": 0, "limit": 200}),
+                _ApiCall("SYNO.HyperBackup.Task", "list", 1, {"offset": 0, "limit": 200}),
+                _ApiCall("SYNO.ActiveBackup.Task", "list", 1, {"offset": 0, "limit": 200}),
+            ),
+            sid,
+        )
+        tasks = _first_list(
+            data,
+            (
+                ("tasks",),
+                ("task",),
+                ("jobs",),
+                ("plans",),
+                ("data", "tasks"),
+                ("data", "jobs"),
+            ),
+        )
+
+        if not data:
+            return {
+                "synology.backup.installed": 1.0,
+                "synology.backup.configured": -1.0,
+                "synology.backup.success": -1.0,
+                "synology.backup.summary": "installed",
+            }
+
+        if not tasks:
+            return {
+                "synology.backup.installed": 1.0,
+                "synology.backup.configured": 0.0,
+                "synology.backup.success": 0.0,
+                "synology.backup.summary": "not configured",
+            }
+
+        total_jobs = len(tasks)
+        success_jobs = 0
+        failed_jobs = 0
+        running_jobs = 0
+        for task_obj in tasks:
+            task = _as_dict(task_obj)
+            raw_state = _first_text(
+                task,
+                (
+                    ("status",),
+                    ("state",),
+                    ("result",),
+                    ("last_result",),
+                    ("task_status",),
+                    ("last_bkp_result",),
+                ),
+            )
+            classified = _backup_job_state(raw_state)
+            if classified == "success":
+                success_jobs += 1
+            elif classified == "failure":
+                failed_jobs += 1
+            elif classified == "running":
+                running_jobs += 1
+
+        success_state = -1.0
+        summary = "configured"
+        if failed_jobs > 0:
+            success_state = 0.0
+            summary = f"{success_jobs}/{total_jobs} ok, {failed_jobs} failed"
+        elif running_jobs > 0:
+            summary = f"{running_jobs}/{total_jobs} running"
+            if success_jobs > 0:
+                summary += f", {success_jobs} ok"
+        elif success_jobs > 0:
+            success_state = 1.0
+            summary = f"{success_jobs}/{total_jobs} ok"
+
+        return {
+            "synology.backup.installed": 1.0,
+            "synology.backup.configured": 1.0,
+            "synology.backup.success": success_state,
+            "synology.backup.summary": summary,
         }
 
     def _sample_utilization(self, sid: str) -> dict[str, StoreValue]:
@@ -1243,11 +1382,23 @@ class SynologyGetter(BaseGetter):
             ("synology.services.file_station_state", "File Station"),
             ("synology.services.synology_drive_state", "Drive"),
             ("synology.services.surveillance_station_state", "Surveillance"),
-            ("synology.services.hyper_backup_state", "Hyper Backup"),
-            ("synology.services.active_backup_state", "Active Backup"),
         ):
             state_text = _as_text(payload.get(service_key)) or "unknown"
             rows.append(f"{label}|{_icon_for_state(state_text)}|{state_text}")
+
+        backup_configured = _as_float(payload.get("synology.backup.configured"))
+        backup_success = _as_float(payload.get("synology.backup.success"))
+        backup_summary = _as_text(payload.get("synology.backup.summary")) or "unknown"
+        backup_state = "unknown"
+        if backup_configured == 0.0:
+            backup_state = "available"
+        elif backup_success == 1.0:
+            backup_state = "latest"
+        elif backup_success == 0.0:
+            backup_state = "critical"
+        elif "running" in backup_summary.lower():
+            backup_state = "running"
+        rows.append(f"Backups|{_icon_for_state(backup_state)}|{backup_summary}")
 
         return "\n".join(rows)
 
