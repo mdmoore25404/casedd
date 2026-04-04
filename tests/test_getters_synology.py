@@ -367,3 +367,140 @@ async def test_synology_getter_backup_installed_but_not_configured(monkeypatch) 
     assert payload["synology.backup.installed"] == 1.0
     assert payload["synology.backup.configured"] == 0.0
     assert payload["synology.backup.summary"] == "not configured"
+
+
+async def test_synology_getter_backup_reads_task_list_payload_shape(monkeypatch) -> None:
+    """Backup detection should support task_list payload variants from Hyper Backup."""
+
+    getter = SynologyGetter(
+        DataStore(),
+        host="http://nas1:5000",
+        username="demo",
+        password="secret",
+        interval=1.0,
+    )
+
+    def _backup_task_list_shape(path: str, query: dict[str, object]) -> dict[str, object]:
+        if path.endswith("/webapi/auth.cgi"):
+            return {"success": True, "data": {"sid": "sid-abc"}}
+        api = str(query.get("api", ""))
+        method = str(query.get("method", ""))
+        version = str(query.get("version", ""))
+        key = f"{api}.{method}.{version}"
+        if key.startswith("SYNO.Core.Package.list"):
+            return {
+                "success": True,
+                "data": {"packages": [{"id": "HyperBackup", "status": "running"}]},
+            }
+        if key == "SYNO.HyperBackup.Task.list.2":
+            return {
+                "success": True,
+                "data": {
+                    "task_list": [
+                        {"name": "nas1 backup", "last_backup_result": "success"},
+                        {"name": "offsite", "last_backup_result": "failed"},
+                    ]
+                },
+            }
+        if api in {"SYNO.Backup.Task", "SYNO.HyperBackup.Task", "SYNO.ActiveBackup.Task"}:
+            return {"success": False, "error": {"code": 103}}
+        return {"success": True, "data": {}}
+
+    monkeypatch.setattr(getter, "_request_json", _backup_task_list_shape)
+    payload = await getter.fetch()
+
+    assert payload["synology.backup.installed"] == 1.0
+    assert payload["synology.backup.configured"] == 1.0
+    assert payload["synology.backup.success"] == 0.0
+    assert payload["synology.backup.summary"] == "1/2 ok, 1 failed"
+    assert "nas1 backup|started|SUCCESS" in str(payload["synology.backup.rows"])
+    assert "offsite|exited|FAILURE" in str(payload["synology.backup.rows"])
+
+
+async def test_synology_getter_backup_prefers_last_result_over_status(monkeypatch) -> None:
+    """Task enabled/running state should not override last-run success/failure."""
+
+    getter = SynologyGetter(
+        DataStore(),
+        host="http://nas1:5000",
+        username="demo",
+        password="secret",
+        interval=1.0,
+    )
+
+    def _backup_last_result_priority(path: str, query: dict[str, object]) -> dict[str, object]:
+        if path.endswith("/webapi/auth.cgi"):
+            return {"success": True, "data": {"sid": "sid-abc"}}
+        api = str(query.get("api", ""))
+        method = str(query.get("method", ""))
+        if f"{api}.{method}" == "SYNO.Core.Package.list":
+            return {
+                "success": True,
+                "data": {"packages": [{"id": "HyperBackup", "status": "running"}]},
+            }
+        if f"{api}.{method}" == "SYNO.Backup.Task.list":
+            return {
+                "success": True,
+                "data": {
+                    "tasks": [
+                        {"name": "nas1 backup", "status": "enabled", "last_bkp_result": "success"},
+                        {"name": "offsite", "status": "enabled", "last_bkp_result": "failed"},
+                    ]
+                },
+            }
+        return {"success": True, "data": {}}
+
+    monkeypatch.setattr(getter, "_request_json", _backup_last_result_priority)
+    payload = await getter.fetch()
+
+    assert "nas1 backup|started|SUCCESS" in str(payload["synology.backup.rows"])
+    assert "offsite|exited|FAILURE" in str(payload["synology.backup.rows"])
+
+
+async def test_synology_getter_backup_uses_version_list_last_result(monkeypatch) -> None:
+    """Version list status should drive last-run result when task status is non-result state."""
+
+    getter = SynologyGetter(
+        DataStore(),
+        host="http://nas1:5000",
+        username="demo",
+        password="secret",
+        interval=1.0,
+    )
+
+    def _backup_with_version_list(path: str, query: dict[str, object]) -> dict[str, object]:
+        if path.endswith("/webapi/auth.cgi"):
+            return {"success": True, "data": {"sid": "sid-abc"}}
+        api = str(query.get("api", ""))
+        method = str(query.get("method", ""))
+        if f"{api}.{method}" == "SYNO.Core.Package.list":
+            return {
+                "success": True,
+                "data": {"packages": [{"id": "HyperBackup", "status": "running"}]},
+            }
+        if f"{api}.{method}" == "SYNO.Backup.Task.list":
+            return {
+                "success": True,
+                "data": {
+                    "task_list": [
+                        {"task_id": 1, "name": "nas1 backup", "status": "none"},
+                    ]
+                },
+            }
+        if f"{api}.{method}" == "SYNO.Backup.Version.list":
+            return {
+                "success": True,
+                "data": {
+                    "version_info_list": [
+                        {"status": "success"},
+                    ]
+                },
+            }
+        return {"success": True, "data": {}}
+
+    monkeypatch.setattr(getter, "_request_json", _backup_with_version_list)
+    payload = await getter.fetch()
+
+    assert payload["synology.backup.configured"] == 1.0
+    assert payload["synology.backup.success"] == 1.0
+    assert "nas1 backup|started|SUCCESS" in str(payload["synology.backup.rows"])

@@ -471,7 +471,11 @@ class SynologyGetter(BaseGetter):
         data = self._call_first(
             (
                 _ApiCall("SYNO.Backup.Task", "list", 1, {"offset": 0, "limit": 200}),
+                _ApiCall("SYNO.Backup.Task", "list", 2, {"offset": 0, "limit": 200}),
+                _ApiCall("SYNO.Backup.Task", "list", 3, {"offset": 0, "limit": 200}),
                 _ApiCall("SYNO.HyperBackup.Task", "list", 1, {"offset": 0, "limit": 200}),
+                _ApiCall("SYNO.HyperBackup.Task", "list", 2, {"offset": 0, "limit": 200}),
+                _ApiCall("SYNO.HyperBackup.Task", "load", 1, {}),
                 _ApiCall("SYNO.ActiveBackup.Task", "list", 1, {"offset": 0, "limit": 200}),
             ),
             sid,
@@ -481,10 +485,15 @@ class SynologyGetter(BaseGetter):
             (
                 ("tasks",),
                 ("task",),
+                ("task_list",),
+                ("backup_tasks",),
                 ("jobs",),
                 ("plans",),
+                ("list",),
                 ("data", "tasks"),
                 ("data", "jobs"),
+                ("data", "task_list"),
+                ("data", "backup_tasks"),
             ),
         )
 
@@ -523,18 +532,23 @@ class SynologyGetter(BaseGetter):
                     ("id",),
                 ),
             )
+            task_id = _first_text(task, (("task_id",), ("id",)))
+            version_state = self._latest_backup_version_state(sid, task_id)
             raw_state = _first_text(
                 task,
                 (
+                    ("last_result",),
+                    ("last_backup_result",),
+                    ("last_bkp_result",),
+                    ("last_bkp", "result"),
+                    ("last_bkp", "status"),
+                    ("result",),
+                    ("task_status",),
                     ("status",),
                     ("state",),
-                    ("result",),
-                    ("last_result",),
-                    ("task_status",),
-                    ("last_bkp_result",),
                 ),
             )
-            classified = _backup_job_state(raw_state)
+            classified = _backup_job_state(version_state or raw_state)
             if classified == "success":
                 success_jobs += 1
                 state_label = "SUCCESS"
@@ -572,6 +586,51 @@ class SynologyGetter(BaseGetter):
             "synology.backup.summary": summary,
             "synology.backup.rows": "\n".join(backup_rows[:20]),
         }
+
+    def _latest_backup_version_state(self, sid: str, task_id: str) -> str:
+        """Return latest backup version status text for a task, if available."""
+        if not task_id:
+            return ""
+
+        data = self._call_first(
+            (
+                _ApiCall(
+                    "SYNO.Backup.Version",
+                    "list",
+                    2,
+                    {
+                        "task_id": task_id,
+                        "offset": 0,
+                        "limit": 1,
+                    },
+                ),
+                _ApiCall(
+                    "SYNO.Backup.Version",
+                    "list",
+                    1,
+                    {
+                        "task_id": task_id,
+                        "offset": 0,
+                        "limit": 1,
+                    },
+                ),
+            ),
+            sid,
+        )
+        versions = _first_list(
+            data,
+            (
+                ("version_info_list",),
+                ("versions",),
+                ("list",),
+                ("data", "version_info_list"),
+            ),
+        )
+        if not versions:
+            return ""
+
+        latest = _as_dict(versions[0])
+        return _first_text(latest, (("status",), ("result",), ("state",)))
 
     def _sample_utilization(self, sid: str) -> dict[str, StoreValue]:
         """Collect CPU/RAM/network utilization metrics from DSM."""
