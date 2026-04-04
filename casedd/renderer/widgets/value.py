@@ -35,6 +35,22 @@ from casedd.template.grid import Rect
 from casedd.template.models import WidgetConfig
 
 
+def _status_color(raw_value: object, default_color: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Resolve a semantic color for status-like string values."""
+    if not isinstance(raw_value, str):
+        return default_color
+    normalized = raw_value.strip().lower()
+    if not normalized:
+        return default_color
+    if normalized in {"healthy", "online", "ok", "running", "up-to-date", "up to date"}:
+        return (124, 222, 156)
+    if normalized in {"degraded", "warning", "warn", "pending", "available"}:
+        return (239, 192, 88)
+    if normalized in {"faulted", "offline", "failed", "down", "critical", "error"}:
+        return (234, 107, 107)
+    return default_color
+
+
 class ValueWidget(BaseWidget):
     """Renders a numeric value centered in its bounding box.
 
@@ -84,6 +100,8 @@ class ValueWidget(BaseWidget):
 
         if cfg.color_stops and numeric_value is not None:
             color = interpolate_color_stops(numeric_value, cfg.color_stops, cfg.min, cfg.max)
+        elif isinstance(raw, str):
+            color = _status_color(raw, color)
 
         if cfg.unit:
             display = f"{display}{cfg.unit}"

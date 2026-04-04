@@ -94,12 +94,133 @@ class _ContainerRenderContext:
     color: str | None
 
 
+@dataclass(frozen=True)
+class _SynologyStatusRow:
+    """One parsed Synology status row with an icon key."""
+
+    name: str
+    status_icon: str
+    state: str
+
+
+@dataclass(frozen=True)
+class _SynologyStatusRenderContext:
+    """Render context for Synology status icon table mode."""
+
+    draw: ImageDraw.ImageDraw
+    inner: Rect
+    label_h: int
+    source_text: str
+    font_size: int | str
+    max_items: int | None
+    color: str | None
+
+
+@dataclass(frozen=True)
+class _SynologyDiskRow:
+    """One parsed Synology disk row with status level and detail text."""
+
+    name: str
+    level: str
+    detail: str
+
+
+@dataclass(frozen=True)
+class _SynologyDiskRenderContext:
+    """Render context for Synology disk status table mode."""
+
+    draw: ImageDraw.ImageDraw
+    inner: Rect
+    label_h: int
+    source_text: str
+    font_size: int | str
+    max_items: int | None
+    color: str | None
+
+
+@dataclass(frozen=True)
+class _SynologyShareRow:
+    """One parsed Synology share row with optional metadata flags."""
+
+    name: str
+    volume: str
+    flags: str
+
+
+@dataclass(frozen=True)
+class _SynologyShareRenderContext:
+    """Render context for Synology shares table mode."""
+
+    draw: ImageDraw.ImageDraw
+    inner: Rect
+    label_h: int
+    source_text: str
+    font_size: int | str
+    max_items: int | None
+    color: str | None
+
+
+@dataclass(frozen=True)
+class _TrueNASServiceRenderContext:
+    """Render context for TrueNAS service status table mode."""
+
+    draw: ImageDraw.ImageDraw
+    inner: Rect
+    label_h: int
+    source_text: str
+    font_size: int | str
+    max_items: int | None
+    color: str | None
+
+
+@dataclass(frozen=True)
+class _SpecialSourceContext:
+    """Shared inputs for rendering special source-specific table layouts."""
+
+    draw: ImageDraw.ImageDraw
+    inner: Rect
+    label_h: int
+    source_text: str
+
+
 _ICON_RETRY_BACKOFF_SEC = 10.0
 _ICON_CACHE: dict[str, Image.Image] = {}
 _ICON_MTIME: dict[str, float] = {}
 _ICON_RETRY_AFTER: dict[str, float] = {}
 _STATUS_ICON_BASE = "assets/icons/status"
 _HEALTH_ICON_BASE = "assets/icons/health"
+
+
+def _temp_color(temp_text: str, default_color: tuple[int, int, int]) -> tuple[int, int, int]:
+    """Return a color for Celsius temperature text such as ``34.5C``."""
+    raw = temp_text.strip().upper()
+    if not raw or raw == "-":
+        return (134, 140, 148)
+    if raw.endswith("C"):
+        raw = raw[:-1]
+    try:
+        temp_c = float(raw)
+    except ValueError:
+        return default_color
+    if temp_c < 45:
+        return (124, 222, 156)
+    if temp_c < 55:
+        return (239, 192, 88)
+    return (234, 107, 107)
+
+
+def _looks_like_temp_text(value: str) -> bool:
+    """Return True when a detail cell looks like a Celsius temperature."""
+    raw = value.strip().upper()
+    if raw == "-":
+        return True
+    if raw.endswith("C"):
+        raw = raw[:-1]
+    try:
+        float(raw)
+    except ValueError:
+        return False
+    return True
 
 
 class TableWidget(BaseWidget):
@@ -132,18 +253,14 @@ class TableWidget(BaseWidget):
 
         raw = resolve_value(cfg, data)
         source_text = str(raw) if raw is not None else ""
-        if cfg.source == "containers.rows":
-            context = _ContainerRenderContext(
-                draw=draw,
-                inner=inner,
-                label_h=label_h,
-                source_text=source_text,
-                font_size=cfg.font_size,
-                max_items=cfg.max_items,
-                color=cfg.color,
-            )
-            if self._draw_containers_table(img, context):
-                return
+        special_context = _SpecialSourceContext(
+            draw=draw,
+            inner=inner,
+            label_h=label_h,
+            source_text=source_text,
+        )
+        if self._draw_special_source_table(img, cfg, special_context):
+            return
 
         rows = _parse_rows(source_text)
 
@@ -220,6 +337,75 @@ class TableWidget(BaseWidget):
                     font=prepared.font,
                 )
             y += prepared.row_h
+
+    def _draw_special_source_table(
+        self,
+        img: Image.Image,
+        cfg: WidgetConfig,
+        context: _SpecialSourceContext,
+    ) -> bool:
+        """Render special table layouts for known structured row payloads."""
+        rendered = False
+        if cfg.source == "containers.rows":
+            container_ctx = _ContainerRenderContext(
+                draw=context.draw,
+                inner=context.inner,
+                label_h=context.label_h,
+                source_text=context.source_text,
+                font_size=cfg.font_size,
+                max_items=cfg.max_items,
+                color=cfg.color,
+            )
+            rendered = self._draw_containers_table(img, container_ctx)
+
+        elif cfg.source in {"synology.status.rows", "synology.surveillance.status.rows"}:
+            status_ctx = _SynologyStatusRenderContext(
+                draw=context.draw,
+                inner=context.inner,
+                label_h=context.label_h,
+                source_text=context.source_text,
+                font_size=cfg.font_size,
+                max_items=cfg.max_items,
+                color=cfg.color,
+            )
+            rendered = self._draw_synology_status_table(img, status_ctx)
+
+        elif cfg.source in {"synology.disks.rows", "truenas.disks.rows"}:
+            disk_ctx = _SynologyDiskRenderContext(
+                draw=context.draw,
+                inner=context.inner,
+                label_h=context.label_h,
+                source_text=context.source_text,
+                font_size=cfg.font_size,
+                max_items=cfg.max_items,
+                color=cfg.color,
+            )
+            rendered = self._draw_synology_disks_table(disk_ctx)
+
+        elif cfg.source == "truenas.services.rows":
+            service_ctx = _TrueNASServiceRenderContext(
+                draw=context.draw,
+                inner=context.inner,
+                label_h=context.label_h,
+                source_text=context.source_text,
+                font_size=cfg.font_size,
+                max_items=cfg.max_items,
+                color=cfg.color,
+            )
+            rendered = self._draw_truenas_services_table(service_ctx)
+
+        elif cfg.source == "synology.shares.rows":
+            share_ctx = _SynologyShareRenderContext(
+                draw=context.draw,
+                inner=context.inner,
+                label_h=context.label_h,
+                source_text=context.source_text,
+                font_size=cfg.font_size,
+                max_items=cfg.max_items,
+                color=cfg.color,
+            )
+            rendered = self._draw_synology_shares_table(share_ctx)
+        return rendered
 
     def _draw_containers_table(
         self,
@@ -303,6 +489,265 @@ class TableWidget(BaseWidget):
                 fill=color,
                 font=body_font,
             )
+            y += row_h
+        return True
+
+    def _draw_truenas_services_table(
+        self,
+        context: _TrueNASServiceRenderContext,
+    ) -> bool:
+        """Render ``truenas.services.rows`` with per-state color coding."""
+        rows = _parse_synology_disks_rows(context.source_text)
+        if not rows:
+            return False
+
+        if context.max_items is not None and context.max_items > 0:
+            rows = rows[: context.max_items]
+
+        draw = context.draw
+        inner = context.inner
+        y = inner.y + context.label_h + 2
+        avail_w = inner.w - 4
+        x0 = inner.x + 2
+        name_x = x0
+        level_x = x0 + int(avail_w * 0.52)
+        detail_x = x0 + int(avail_w * 0.68)
+
+        color = parse_color(context.color, fallback=(220, 225, 230))
+        header_color = (160, 170, 182)
+        ok_color = (124, 222, 156)
+        warn_color = (239, 192, 88)
+        alert_color = (234, 107, 107)
+        muted_color = (134, 140, 148)
+
+        resolved_font_size = _to_font_size(context.font_size, inner)
+        header_font = get_font(max(10, int(resolved_font_size * 0.78)))
+        body_font = get_font(resolved_font_size)
+
+        draw.text((name_x, y), "Service", fill=header_color, font=header_font)
+        draw.text((level_x, y), "State", fill=header_color, font=header_font)
+        draw.text((detail_x, y), "Info", fill=header_color, font=header_font)
+
+        header_bb = draw.textbbox((0, 0), "Ag", font=header_font)
+        row_h = int((draw.textbbox((0, 0), "Ag", font=body_font)[3]) + 2)
+        y += int(header_bb[3] - header_bb[1]) + 5
+        draw.line((x0, y, inner.x + inner.w - 2, y), fill=(56, 64, 74), width=1)
+        y += 4
+
+        for row in rows:
+            if y + row_h > inner.y + inner.h:
+                break
+
+            service_name = _ellipsize(draw, body_font, row.name, level_x - name_x - 6, {})
+            draw.text((name_x, y), service_name, fill=color, font=body_font)
+
+            level_color = muted_color
+            if row.level == "OK":
+                level_color = ok_color
+            elif row.level == "WARN":
+                level_color = warn_color
+            elif row.level in {"ALERT", "CRIT", "FAIL"}:
+                level_color = alert_color
+            draw.text((level_x, y), row.level, fill=level_color, font=body_font)
+
+            detail_color = level_color if row.level != "UNK" else muted_color
+            detail_text = _ellipsize(
+                draw,
+                body_font,
+                row.detail,
+                inner.x + inner.w - detail_x - 4,
+                {},
+            )
+            draw.text((detail_x, y), detail_text, fill=detail_color, font=body_font)
+            y += row_h
+        return True
+
+    def _draw_synology_status_table(
+        self,
+        img: Image.Image,
+        context: _SynologyStatusRenderContext,
+    ) -> bool:
+        """Render ``synology.status.rows`` as name + icon + state columns."""
+        rows = _parse_synology_status_rows(context.source_text)
+        if not rows:
+            return False
+
+        if context.max_items is not None and context.max_items > 0:
+            rows = rows[: context.max_items]
+
+        color = parse_color(context.color, fallback=(220, 225, 230))
+        header_color = (160, 170, 182)
+        muted_color = (134, 140, 148)
+        draw = context.draw
+        inner = context.inner
+        y = inner.y + context.label_h + 2
+        avail_w = inner.w - 4
+        x0 = inner.x + 2
+        name_x = x0
+        icon_x = x0 + int(avail_w * 0.64)
+        state_x = x0 + int(avail_w * 0.73)
+
+        resolved_font_size = _to_font_size(context.font_size, inner)
+        header_font = get_font(max(10, int(resolved_font_size * 0.78)))
+        body_font = get_font(resolved_font_size)
+
+        draw.text((name_x, y), "Service", fill=header_color, font=header_font)
+        draw.text((icon_x, y), "", fill=header_color, font=header_font)
+        draw.text((state_x, y), "State", fill=header_color, font=header_font)
+
+        header_bb = draw.textbbox((0, 0), "Ag", font=header_font)
+        row_h = int((draw.textbbox((0, 0), "Ag", font=body_font)[3]) + 2)
+        y += int(header_bb[3] - header_bb[1]) + 5
+        draw.line((x0, y, inner.x + inner.w - 2, y), fill=(56, 64, 74), width=1)
+        y += 4
+
+        icon_size = max(10, row_h - 4)
+        for row in rows:
+            if y + row_h > inner.y + inner.h:
+                break
+
+            name_text = _ellipsize(draw, body_font, row.name, icon_x - name_x - 6, {})
+            draw.text((name_x, y), name_text, fill=color, font=body_font)
+
+            icon = _load_icon(f"assets/icons/status-{row.status_icon}.png")
+            if icon is not None:
+                icon_scaled = icon.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
+                img.paste(icon_scaled, (icon_x, y + 1), icon_scaled)
+
+            state_color = muted_color if row.status_icon == "unknown" else color
+            draw.text((state_x, y), row.state, fill=state_color, font=body_font)
+            y += row_h
+        return True
+
+    def _draw_synology_disks_table(
+        self,
+        context: _SynologyDiskRenderContext,
+    ) -> bool:
+        """Render ``synology.disks.rows`` with colored status levels."""
+        rows = _parse_synology_disks_rows(context.source_text)
+        if not rows:
+            return False
+
+        if context.max_items is not None and context.max_items > 0:
+            rows = rows[: context.max_items]
+
+        draw = context.draw
+        inner = context.inner
+        y = inner.y + context.label_h + 2
+        avail_w = inner.w - 4
+        x0 = inner.x + 2
+        name_x = x0
+        level_x = x0 + int(avail_w * 0.43)
+        detail_x = x0 + int(avail_w * 0.62)
+
+        color = parse_color(context.color, fallback=(220, 225, 230))
+        header_color = (160, 170, 182)
+        ok_color = (124, 222, 156)
+        warn_color = (239, 192, 88)
+        alert_color = (234, 107, 107)
+        muted_color = (134, 140, 148)
+
+        resolved_font_size = _to_font_size(context.font_size, inner)
+        header_font = get_font(max(10, int(resolved_font_size * 0.78)))
+        body_font = get_font(resolved_font_size)
+
+        is_temp_table = rows and all(_looks_like_temp_text(row.detail) for row in rows)
+        detail_header = "Temp" if is_temp_table else "Detail"
+
+        draw.text((name_x, y), "Disk", fill=header_color, font=header_font)
+        draw.text((level_x, y), "State", fill=header_color, font=header_font)
+        draw.text((detail_x, y), detail_header, fill=header_color, font=header_font)
+
+        header_bb = draw.textbbox((0, 0), "Ag", font=header_font)
+        row_h = int((draw.textbbox((0, 0), "Ag", font=body_font)[3]) + 2)
+        y += int(header_bb[3] - header_bb[1]) + 5
+        draw.line((x0, y, inner.x + inner.w - 2, y), fill=(56, 64, 74), width=1)
+        y += 4
+
+        for row in rows:
+            if y + row_h > inner.y + inner.h:
+                break
+
+            disk_name = _ellipsize(draw, body_font, row.name, level_x - name_x - 6, {})
+            draw.text((name_x, y), disk_name, fill=color, font=body_font)
+
+            level_color = muted_color
+            if row.level == "OK":
+                level_color = ok_color
+            elif row.level == "WARN":
+                level_color = warn_color
+            elif row.level in {"ALERT", "CRIT", "FAIL"}:
+                level_color = alert_color
+            draw.text((level_x, y), row.level, fill=level_color, font=body_font)
+
+            detail_text = _ellipsize(
+                draw,
+                body_font,
+                row.detail,
+                inner.x + inner.w - detail_x - 4,
+                {},
+            )
+            detail_color = _temp_color(row.detail, color)
+            draw.text((detail_x, y), detail_text, fill=detail_color, font=body_font)
+            y += row_h
+        return True
+
+    def _draw_synology_shares_table(
+        self,
+        context: _SynologyShareRenderContext,
+    ) -> bool:
+        """Render ``synology.shares.rows`` with share, volume, and flags columns."""
+        rows = _parse_synology_shares_rows(context.source_text)
+        if not rows:
+            return False
+
+        if context.max_items is not None and context.max_items > 0:
+            rows = rows[: context.max_items]
+
+        draw = context.draw
+        inner = context.inner
+        y = inner.y + context.label_h + 2
+        avail_w = inner.w - 4
+        x0 = inner.x + 2
+        share_x = x0
+        volume_x = x0 + int(avail_w * 0.50)
+        flags_x = x0 + int(avail_w * 0.72)
+
+        color = parse_color(context.color, fallback=(220, 225, 230))
+        header_color = (160, 170, 182)
+
+        resolved_font_size = _to_font_size(context.font_size, inner)
+        header_font = get_font(max(10, int(resolved_font_size * 0.78)))
+        body_font = get_font(resolved_font_size)
+
+        draw.text((share_x, y), "Share", fill=header_color, font=header_font)
+        draw.text((volume_x, y), "Vol", fill=header_color, font=header_font)
+        draw.text((flags_x, y), "Flags", fill=header_color, font=header_font)
+
+        header_bb = draw.textbbox((0, 0), "Ag", font=header_font)
+        row_h = int((draw.textbbox((0, 0), "Ag", font=body_font)[3]) + 2)
+        y += int(header_bb[3] - header_bb[1]) + 5
+        draw.line((x0, y, inner.x + inner.w - 2, y), fill=(56, 64, 74), width=1)
+        y += 4
+
+        for row in rows:
+            if y + row_h > inner.y + inner.h:
+                break
+
+            share_text = _ellipsize(draw, body_font, row.name, volume_x - share_x - 6, {})
+            draw.text((share_x, y), share_text, fill=color, font=body_font)
+
+            volume_text = _ellipsize(draw, body_font, row.volume, flags_x - volume_x - 6, {})
+            draw.text((volume_x, y), volume_text, fill=color, font=body_font)
+
+            flags_text = _ellipsize(
+                draw,
+                body_font,
+                row.flags,
+                inner.x + inner.w - flags_x - 4,
+                {},
+            )
+            draw.text((flags_x, y), flags_text, fill=color, font=body_font)
             y += row_h
         return True
 
@@ -395,6 +840,66 @@ def _parse_container_rows(source_text: str) -> list[_ContainerTableRow]:
                 health_icon=parts[2].strip() or "unknown",
                 uptime=parts[3].strip() or "-",
                 image=parts[4].strip() or "—",
+            )
+        )
+    return rows
+
+
+def _parse_synology_status_rows(source_text: str) -> list[_SynologyStatusRow]:
+    """Parse 3-column Synology status rows: ``name|status_icon|state``."""
+    rows: list[_SynologyStatusRow] = []
+    for raw_line in source_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split("|", maxsplit=2)
+        if len(parts) != 3:
+            return []
+        rows.append(
+            _SynologyStatusRow(
+                name=parts[0].strip() or "—",
+                status_icon=parts[1].strip() or "unknown",
+                state=parts[2].strip() or "unknown",
+            )
+        )
+    return rows
+
+
+def _parse_synology_disks_rows(source_text: str) -> list[_SynologyDiskRow]:
+    """Parse 3-column Synology disk rows: ``name|level|detail``."""
+    rows: list[_SynologyDiskRow] = []
+    for raw_line in source_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split("|", maxsplit=2)
+        if len(parts) != 3:
+            return []
+        rows.append(
+            _SynologyDiskRow(
+                name=parts[0].strip() or "—",
+                level=parts[1].strip().upper() or "UNK",
+                detail=parts[2].strip() or "-",
+            )
+        )
+    return rows
+
+
+def _parse_synology_shares_rows(source_text: str) -> list[_SynologyShareRow]:
+    """Parse 3-column Synology share rows: ``share|volume|flags``."""
+    rows: list[_SynologyShareRow] = []
+    for raw_line in source_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        parts = line.split("|", maxsplit=2)
+        if len(parts) != 3:
+            return []
+        rows.append(
+            _SynologyShareRow(
+                name=parts[0].strip() or "—",
+                volume=parts[1].strip() or "-",
+                flags=parts[2].strip() or "-",
             )
         )
     return rows

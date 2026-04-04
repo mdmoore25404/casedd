@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-02 22:15 UTC",
+  "generated_at": "2026-04-04 15:02 UTC",
   "getter_types": [
     "apod",
     "containers",
@@ -21,8 +21,10 @@
     "servarr",
     "sonarr",
     "speedtest",
+    "synology",
     "sysinfo",
     "system",
+    "truenas",
     "ups",
     "vms",
     "weather"

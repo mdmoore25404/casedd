@@ -54,7 +54,7 @@ def test_image_widget_uses_store_backed_remote_url(monkeypatch) -> None:
     remote_source.save(payload, format="PNG")
     request_count = {"count": 0}
 
-    def _ok(req, timeout: float):
+    def _ok(req, timeout: float, context=None):
         request_count["count"] += 1
         return _FakeResponse(payload.getvalue())
 
@@ -81,7 +81,7 @@ def test_image_widget_remote_failures_use_retry_backoff(monkeypatch) -> None:
     img = Image.new("RGB", (200, 120), (0, 0, 0))
     request_count = {"count": 0}
 
-    def _fail(req, timeout: float):
+    def _fail(req, timeout: float, context=None):
         request_count["count"] += 1
         raise URLError("boom")
 

@@ -1,0 +1,14 @@
+[
+  {
+    "at_ms": 0,
+    "update": {
+      "truenas.auth.ok": 1.0,
+      "truenas.system.reachable": 1.0,
+      "truenas.system.hostname": "truenas-demo",
+      "truenas.vms.count_total": 5.0,
+      "truenas.vms.count_running": 3.0,
+      "truenas.vms.count_stopped": 2.0,
+      "truenas.vms.rows": "docker-host|Running\nk8s-node-01|Running\nwindows11|Stopped\nubuntu-lab|Running\nha-test|Stopped"
+    }
+  }
+]

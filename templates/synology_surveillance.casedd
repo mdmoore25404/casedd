@@ -1,0 +1,106 @@
+# synology_surveillance.casedd — Surveillance Station focused monitor
+
+name: synology_surveillance
+description: Surveillance Station focused view with camera snapshots and recorder status.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0e1418"
+refresh_rate: 1.0
+
+grid:
+  template_areas: |
+    brand title title status
+    cam1 cam1 cam2 cam2
+    cam3 cam3 cam4 cam4
+  columns: "0.55fr 1.25fr 1.25fr 1.2fr"
+  rows: "0.5fr 1.25fr 1.25fr"
+
+widgets:
+  brand:
+    type: panel
+    background: "#162028"
+    padding: [6, 6]
+    grid:
+      template_areas: |
+        logo
+      columns: "1fr"
+      rows: "1fr"
+    children_named:
+      logo:
+        type: image
+        path: assets/synology/surveillance-station-logo.png
+        scale: fit
+        padding: [2, 2]
+
+  title:
+    type: panel
+    background: "#162028"
+    padding: [8, 10]
+    grid:
+      template_areas: |
+        name cams rec
+      columns: "1.3fr 0.9fr 0.9fr"
+      rows: "1fr"
+    children_named:
+      name:
+        type: value
+        label: Host
+        source: synology.system.hostname
+        color: "#9fe6c3"
+        font_size: auto
+        max_font_size: 44
+      cams:
+        type: value
+        label: Cameras
+        source: synology.surveillance.camera_count
+        precision: 0
+        color: "#e8f2ff"
+        font_size: auto
+        max_font_size: 40
+      rec:
+        type: value
+        label: Recording
+        source: synology.surveillance.recording_count
+        precision: 0
+        color: "#ffd177"
+        font_size: auto
+        max_font_size: 40
+
+  status:
+    type: table
+    label: Surveillance Status
+    source: synology.surveillance.status.rows
+    color: "#e8f2ff"
+    background: "#162028"
+    font_size: 18
+    table_fit_text: false
+    max_items: 8
+    padding: [8, 10]
+
+  cam1:
+    type: image
+    label: Camera 1
+    source: synology.camera_1.snapshot_url
+    scale: fill
+    padding: [4, 4]
+
+  cam2:
+    type: image
+    label: Camera 2
+    source: synology.camera_2.snapshot_url
+    scale: fill
+    padding: [4, 4]
+
+  cam3:
+    type: image
+    label: Camera 3
+    source: synology.camera_3.snapshot_url
+    scale: fill
+    padding: [4, 4]
+
+  cam4:
+    type: image
+    label: Camera 4
+    source: synology.camera_4.snapshot_url
+    scale: fill
+    padding: [4, 4]

@@ -281,6 +281,13 @@ Startup splash handling (required for visual checks):
 - If uncertain, capture two frames several seconds apart and only evaluate the
   post-splash runtime frame.
 
+Demo snapshot verification (required for fixture-driven captures):
+- When generating `{template}_demo.*` snapshots from replay fixtures, the agent
+  must verify the rendered image content matches key fixture values (for
+  example host label, counts, and table rows) before finalizing.
+- If rendered content does not match the replay payload, regenerate using test
+  mode/fixture flow and re-verify instead of accepting the snapshot.
+
 > **Note:** The `/image` endpoint serves **JPEG** (not PNG). The dev server runs on port
 > **18080** (not 8080 which is reserved for production). Always use `http://localhost:18080`
 > during development.

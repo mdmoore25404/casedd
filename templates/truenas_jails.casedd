@@ -1,0 +1,71 @@
+# truenas_jails.casedd — TrueNAS jail status dashboard
+
+name: truenas_jails
+description: TrueNAS jail overview and status table.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0b1118"
+refresh_rate: 3.0
+
+grid:
+  template_areas: |
+    "brand host running stopped"
+    "table table table table"
+  columns: "1.2fr 1.4fr 0.7fr 0.7fr"
+  rows: "0.30fr 0.70fr"
+
+widgets:
+  brand:
+    type: panel
+    background: "#101822"
+    padding: [6, 8]
+    grid:
+      template_areas: |
+        "logo"
+      columns: "1fr"
+      rows: "1fr"
+    children_named:
+      logo:
+        type: image
+        path: assets/truenas/truenas-logo-full-color-rgb.png
+        scale: fit
+
+  host:
+    type: value
+    source: truenas.system.hostname
+    label: "Host"
+    color: "#9fe6c3"
+    background: "#101822"
+    font_size: auto
+    padding: 8
+
+  running:
+    type: value
+    source: truenas.jails.count_running
+    label: "Running"
+    color: "#74d680"
+    background: "#0f1a24"
+    font_size: auto
+    precision: 0
+    padding: 8
+
+  stopped:
+    type: value
+    source: truenas.jails.count_stopped
+    label: "Stopped"
+    color: "#ff8c69"
+    background: "#0f1a24"
+    font_size: auto
+    precision: 0
+    padding: 8
+
+  table:
+    type: table
+    source: truenas.jails.rows
+    label: "Jails"
+    color: "#dfe7ef"
+    background: "#101822"
+    font_size: auto
+    table_fit_text: true
+    max_items: 14
+    padding: [8, 10]

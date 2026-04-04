@@ -1,34 +1,6 @@
 {
-  "generated_at": "2026-04-02 22:21 UTC",
+  "generated_at": "2026-04-04 14:52 UTC",
   "templates": [
-    {
-      "name": "system_stats",
-      "image": "images/template_snaps/system_stats.png"
-    },
-    {
-      "name": "invokeai",
-      "image": "images/template_snaps/invokeai_demo.jpg"
-    },
-    {
-      "name": "nzbget_dashboard",
-      "image": "images/template_snaps/nzbget_dashboard_demo.jpg"
-    },
-    {
-      "name": "nzbget_queue",
-      "image": "images/template_snaps/nzbget_queue_demo.jpg"
-    },
-    {
-      "name": "pihole",
-      "image": "images/template_snaps/pihole_demo.jpg"
-    },
-    {
-      "name": "plex_dashboard",
-      "image": "images/template_snaps/plex_dashboard_demo.jpg"
-    },
-    {
-      "name": "servarr_dashboard",
-      "image": "images/template_snaps/servarr_dashboard_demo.jpg"
-    },
     {
       "name": "apod",
       "image": "images/template_snaps/apod.png"
@@ -44,14 +16,6 @@
     {
       "name": "kvm_vms",
       "image": "images/template_snaps/kvm_vms.png"
-    },
-    {
-      "name": "net_ports",
-      "image": "images/template_snaps/net_ports.jpg"
-    },
-    {
-      "name": "nvidia_detail",
-      "image": "images/template_snaps/nvidia_detail.jpg"
     },
     {
       "name": "ollama_host",
@@ -70,16 +34,28 @@
       "image": "images/template_snaps/startup_splash.png"
     },
     {
-      "name": "sysinfo",
-      "image": "images/template_snaps/sysinfo.jpg"
+      "name": "synology_dashboard",
+      "image": "images/template_snaps/synology_dashboard_demo.png"
     },
     {
-      "name": "ups_stats",
-      "image": "images/template_snaps/ups_stats.jpg"
+      "name": "synology_surveillance",
+      "image": "images/template_snaps/synology_surveillance_demo.png"
     },
     {
-      "name": "ups_status",
-      "image": "images/template_snaps/ups_status.jpg"
+      "name": "system_stats",
+      "image": "images/template_snaps/system_stats.png"
+    },
+    {
+      "name": "truenas_dashboard",
+      "image": "images/template_snaps/truenas_dashboard_demo.png"
+    },
+    {
+      "name": "truenas_jails",
+      "image": "images/template_snaps/truenas_jails_demo.png"
+    },
+    {
+      "name": "truenas_vms",
+      "image": "images/template_snaps/truenas_vms_demo.png"
     },
     {
       "name": "weather_nws",

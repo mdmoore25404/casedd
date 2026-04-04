@@ -1,0 +1,218 @@
+# truenas_dashboard.casedd — TrueNAS storage and system overview
+
+name: truenas_dashboard
+description: TrueNAS system health and storage dashboard with pools and services.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0e1418"
+refresh_rate: 1.0
+
+grid:
+  template_areas: |
+    brand host updates updates
+    storage storage cpu_hist ram_hist
+    services services disk_io net_hist
+    disks disks disk_io net_hist
+  columns: "1fr 1.25fr 1.2fr 1.2fr"
+  rows: "0.44fr 0.86fr 0.85fr 0.85fr"
+
+widgets:
+  brand:
+    type: panel
+    background: "#162028"
+    padding: [6, 10]
+    grid:
+      template_areas: |
+        logo
+      columns: "1fr"
+      rows: "1fr"
+    children_named:
+      logo:
+        type: image
+        path: assets/truenas/truenas-logo-full-color-rgb.png
+        scale: fit
+
+  host:
+    type: value
+    background: "#162028"
+    padding: [8, 10]
+    label: Host
+    source: truenas.system.hostname
+    color: "#9fe6c3"
+    font_size: auto
+    max_font_size: 34
+
+  cpu_hist:
+    type: sparkline
+    label: CPU %
+    source: cpu.percent
+    precision: 1
+    unit: "%"
+    min: 0
+    max: 100
+    samples: 120
+    window_seconds: 120
+    padding: [4, 6]
+    color_stops:
+      - [0, "#7cde9c"]
+      - [70, "#efc058"]
+      - [90, "#ea6b6b"]
+
+  ram_hist:
+    type: sparkline
+    label: RAM %
+    source: memory.percent
+    precision: 1
+    unit: "%"
+    min: 0
+    max: 100
+    samples: 120
+    window_seconds: 120
+    padding: [4, 6]
+    color_stops:
+      - [0, "#7cde9c"]
+      - [70, "#efc058"]
+      - [90, "#ea6b6b"]
+
+  storage:
+    type: panel
+    background: "#162028"
+    padding: [8, 10]
+    grid:
+      template_areas: |
+        pool_name pool_used pool_free pool_total
+        pool_status pool_status cpu_temp cpu_temp
+      columns: "1.4fr 0.9fr 0.9fr 0.9fr"
+      rows: "1fr 1fr"
+    children_named:
+      pool_name:
+        type: value
+        label: Pool
+        source: truenas.pool_1.name
+        color: "#e8f2ff"
+        font_size: auto
+        max_font_size: 44
+      pool_used:
+        type: value
+        label: Used %
+        source: truenas.pool_1.used_percent
+        precision: 1
+        unit: "%"
+        font_size: auto
+        max_font_size: 48
+        color_stops:
+          - [0, "#78dd9c"]
+          - [70, "#efc058"]
+          - [90, "#ea6b6b"]
+      pool_free:
+        type: value
+        label: Free TB
+        source: truenas.pool_1.free_tb
+        precision: 2
+        color: "#8fd8b2"
+        font_size: auto
+        max_font_size: 42
+      pool_total:
+        type: value
+        label: Total TB
+        source: truenas.pool_1.total_tb
+        precision: 2
+        color: "#c4d7ef"
+        font_size: auto
+        max_font_size: 38
+      pool_status:
+        type: value
+        label: Pool Status
+        source: truenas.pool_1.status
+        color: "#e8f2ff"
+        font_size: auto
+        max_font_size: 36
+      cpu_temp:
+        type: value
+        label: CPU C
+        source: truenas.performance.cpu_temp_c
+        precision: 1
+        unit: "C"
+        color: "#7cde9c"
+        min: 20
+        max: 85
+        color_stops:
+          - [20, "#7cde9c"]
+          - [55, "#7cde9c"]
+          - [65, "#efc058"]
+          - [80, "#ea6b6b"]
+        font_size: auto
+        max_font_size: 36
+  updates:
+    type: value
+    background: "#162028"
+    padding: [8, 10]
+    label: Updates
+    source: truenas.system.update_status
+    color: "#e8f2ff"
+    font_size: auto
+    max_font_size: 36
+
+  services:
+    type: table
+    label: Services
+    background: "#162028"
+    padding: [8, 10]
+    source: truenas.services.rows
+    color: "#e8f2ff"
+    table_fit_text: false
+    max_items: 18
+    font_size: auto
+    max_font_size: 16
+
+  disks:
+    type: table
+    label: Disks
+    background: "#162028"
+    padding: [8, 10]
+    source: truenas.disks.rows
+    color: "#e8f2ff"
+    table_fit_text: false
+    max_items: 5
+    font_size: auto
+    max_font_size: 20
+
+  disk_io:
+    type: sparkline
+    label: Disk I/O (MB/s)
+    sources:
+      - disk.read_mb_s
+      - disk.write_mb_s
+    series_labels:
+      - Read
+      - Write
+    series_colors:
+      - "#8ed9ff"
+      - "#ffb75c"
+    precision: 2
+    unit: MB/s
+    min: 0
+    max: 120
+    samples: 120
+    window_seconds: 120
+    padding: [4, 6]
+
+  net_hist:
+    type: sparkline
+    label: Net RX/TX (KB/s)
+    sources:
+      - net.bytes_recv_rate
+      - net.bytes_sent_rate
+    series_labels:
+      - RX
+      - TX
+    series_colors:
+      - "#7acbff"
+      - "#b5f27a"
+    precision: 0
+    unit: KB/s
+    min: 0
+    max: 3000
+    samples: 120
+    window_seconds: 120
+    padding: [4, 6]

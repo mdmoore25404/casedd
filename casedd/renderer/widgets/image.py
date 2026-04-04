@@ -34,14 +34,18 @@ from __future__ import annotations
 
 from io import BytesIO
 import logging
+import os
 from pathlib import Path
+import re
+import ssl
 import time
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from casedd.data_store import DataStore, StoreValue
+from casedd.renderer.fonts import get_font
 from casedd.renderer.widgets.base import BaseWidget, fill_background
 from casedd.template.grid import Rect
 from casedd.template.models import ImageTier, ScaleMode, WidgetConfig
@@ -55,6 +59,22 @@ _image_mtime_cache: dict[str, float] = {}
 # Source retry cache for failed image loads (disk missing / remote errors).
 _image_retry_after: dict[str, float] = {}
 _IMAGE_RETRY_BACKOFF_SEC = 5.0
+_SYNOLOGY_CAMERA_SOURCE_RE = re.compile(r"^synology\.camera_(\d+)\.snapshot_url$")
+
+
+def _remote_ssl_context(url: str) -> ssl.SSLContext | None:
+    """Return an optional SSL context for remote image fetches.
+
+    Synology camera snapshots are fetched by the generic image widget. When
+    ``CASEDD_SYNOLOGY_VERIFY_TLS=0`` we honor that setting here to avoid
+    certificate trust failures for NAS self-signed certs.
+    """
+    synology_verify_tls = os.environ.get("CASEDD_SYNOLOGY_VERIFY_TLS", "1")
+    if synology_verify_tls in {"0", "false", "False", ""} and (
+        "SYNO.SurveillanceStation.Camera" in url or "SurveillanceStation.Camera" in url
+    ):
+        return ssl._create_unverified_context()  # noqa: S323
+    return None
 
 # Comparison dispatch table keyed by operator token.
 _OPS: dict[str, object] = {
@@ -178,8 +198,9 @@ def _load_local_image(source_ref: str) -> Image.Image | None:
 def _load_remote_image(url: str) -> Image.Image | None:
     """Fetch and cache an image from a remote HTTP(S) URL."""
     req = Request(url, headers={"User-Agent": "CASEDD/0.2"}, method="GET")  # noqa: S310
+    ssl_context = _remote_ssl_context(url)
     try:
-        with urlopen(req, timeout=5) as resp:  # noqa: S310
+        with urlopen(req, timeout=5, context=ssl_context) as resp:  # noqa: S310
             raw = resp.read()
     except URLError as exc:
         _log.warning("Image widget: failed to fetch '%s': %s", url, exc)
@@ -193,6 +214,16 @@ def _load_remote_image(url: str) -> Image.Image | None:
 
     _image_cache[url] = loaded
     return loaded
+
+
+def _load_image_with_fallback(active_path: str, fallback_path: str | None) -> Image.Image | None:
+    """Load dynamic image first, then optional static fallback path."""
+    source = _load_image(active_path)
+    if source is not None:
+        return source
+    if fallback_path is None or fallback_path == active_path:
+        return None
+    return _load_image(fallback_path)
 
 
 def _scale_image(source: Image.Image, w: int, h: int, mode: ScaleMode) -> Image.Image:
@@ -287,8 +318,9 @@ class ImageWidget(BaseWidget):
             _log.warning("Image widget has no 'path' or populated 'source' configured.")
             return
 
-        source = _load_image(active_path)
+        source = _load_image_with_fallback(active_path, cfg.path)
         if source is None:
+            self._draw_no_camera_placeholder(img, rect, cfg)
             return
 
         cache_key = (active_path, rect.w, rect.h, cfg.scale.value)
@@ -305,6 +337,70 @@ class ImageWidget(BaseWidget):
             offset_x = rect.x + (rect.w - scaled.width) // 2
             offset_y = rect.y + (rect.h - scaled.height) // 2
             img.paste(scaled, (offset_x, offset_y), scaled)
+            self._draw_camera_overlay(img, rect, cfg, data)
             return
 
         img.paste(scaled, (rect.x, rect.y), scaled)
+        self._draw_camera_overlay(img, rect, cfg, data)
+
+    def _draw_no_camera_placeholder(
+        self,
+        img: Image.Image,
+        rect: Rect,
+        cfg: WidgetConfig,
+    ) -> None:
+        """Draw muted placeholder text for empty Synology camera slots."""
+        if cfg.source is None or not cfg.source.startswith("synology.camera_"):
+            return
+        draw = ImageDraw.Draw(img)
+        text = "no camera"
+        font = get_font(max(12, min(rect.h // 8, rect.w // 12)))
+        bb = draw.textbbox((0, 0), text, font=font)
+        text_w = int(bb[2] - bb[0])
+        text_h = int(bb[3] - bb[1])
+        draw_x = rect.x + max(0, (rect.w - text_w) // 2)
+        draw_y = rect.y + max(0, (rect.h - text_h) // 2) - int(bb[1])
+        draw.text((draw_x, draw_y), text, fill=(120, 130, 140), font=font)
+
+    def _draw_camera_overlay(
+        self,
+        img: Image.Image,
+        rect: Rect,
+        cfg: WidgetConfig,
+        data: DataStore,
+    ) -> None:
+        """Draw camera name and capture timestamp overlay for Synology frames."""
+        if cfg.source is None:
+            return
+        match = _SYNOLOGY_CAMERA_SOURCE_RE.match(cfg.source)
+        if match is None:
+            return
+        camera_index = match.group(1)
+        camera_name = data.get(f"synology.camera_{camera_index}.name")
+        captured_at = data.get(f"synology.camera_{camera_index}.captured_at")
+        if not isinstance(camera_name, str) or not camera_name.strip():
+            return
+
+        right_text = captured_at.strip() if isinstance(captured_at, str) else ""
+        left_text = camera_name.strip()
+        draw = ImageDraw.Draw(img)
+
+        bar_h = max(18, rect.h // 9)
+        top = rect.y + rect.h - bar_h
+        draw.rectangle(
+            (rect.x, top, rect.x + rect.w, rect.y + rect.h),
+            fill=(8, 12, 16),
+        )
+
+        font = get_font(max(11, min(22, bar_h // 2 + 2)))
+        label = left_text if not right_text else f"{left_text}  {right_text}"
+        bb = draw.textbbox((0, 0), label, font=font)
+        text_h = int(bb[3] - bb[1])
+        text_y = top + max(1, (bar_h - text_h) // 2) - int(bb[1])
+
+        draw.text((rect.x + 8, text_y), left_text, fill=(220, 228, 236), font=font)
+        if right_text:
+            right_bb = draw.textbbox((0, 0), right_text, font=font)
+            right_w = int(right_bb[2] - right_bb[0])
+            right_x = rect.x + rect.w - right_w - 8
+            draw.text((right_x, text_y), right_text, fill=(164, 177, 190), font=font)

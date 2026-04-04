@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from PIL import Image
+import pytest
 
 from casedd.data_store import DataStore
 from casedd.renderer.widgets.table import TableWidget, _split_phasing_suffix
@@ -165,5 +166,54 @@ def test_table_widget_renders_container_multicolumn_mode() -> None:
     widget = TableWidget()
     cfg = WidgetConfig(type=WidgetType.TABLE, source="containers.rows", font_size="auto")
     widget.draw(img, Rect(x=0, y=0, w=900, h=320), cfg, store, {})
+
+    assert img.getbbox() is not None
+
+
+def test_table_widget_routes_surveillance_status_to_icon_mode(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Surveillance status rows should use Synology icon table rendering."""
+    img = Image.new("RGB", (640, 240), (0, 0, 0))
+    store = DataStore()
+    store.set(
+        "synology.surveillance.status.rows",
+        "DSM Update|started|LATEST\nSurveillance|started|online",
+    )
+
+    widget = TableWidget()
+    called: list[str] = []
+
+    def _fake_draw_synology_status_table(
+        _img: Image.Image,
+        _context: object,
+    ) -> bool:
+        called.append("ok")
+        return True
+
+    monkeypatch.setattr(widget, "_draw_synology_status_table", _fake_draw_synology_status_table)
+
+    cfg = WidgetConfig(
+        type=WidgetType.TABLE,
+        source="synology.surveillance.status.rows",
+        font_size="auto",
+    )
+    widget.draw(img, Rect(x=0, y=0, w=640, h=240), cfg, store, {})
+
+    assert called == ["ok"]
+
+
+def test_table_widget_renders_synology_shares_multicolumn_mode() -> None:
+    """Synology shares source should render in explicit share/vol/flags mode."""
+    img = Image.new("RGB", (900, 280), (0, 0, 0))
+    store = DataStore()
+    store.set(
+        "synology.shares.rows",
+        "plexmedia|volume2|rw rb\narchives|volume1|ro enc q:2.00TB",
+    )
+
+    widget = TableWidget()
+    cfg = WidgetConfig(type=WidgetType.TABLE, source="synology.shares.rows", font_size="auto")
+    widget.draw(img, Rect(x=0, y=0, w=900, h=280), cfg, store, {})
 
     assert img.getbbox() is not None
