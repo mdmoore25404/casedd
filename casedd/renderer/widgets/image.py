@@ -36,6 +36,7 @@ from io import BytesIO
 import logging
 import os
 from pathlib import Path
+import re
 import ssl
 import time
 from urllib.error import URLError
@@ -58,6 +59,7 @@ _image_mtime_cache: dict[str, float] = {}
 # Source retry cache for failed image loads (disk missing / remote errors).
 _image_retry_after: dict[str, float] = {}
 _IMAGE_RETRY_BACKOFF_SEC = 5.0
+_SYNOLOGY_CAMERA_SOURCE_RE = re.compile(r"^synology\.camera_(\d+)\.snapshot_url$")
 
 
 def _remote_ssl_context(url: str) -> ssl.SSLContext | None:
@@ -335,9 +337,11 @@ class ImageWidget(BaseWidget):
             offset_x = rect.x + (rect.w - scaled.width) // 2
             offset_y = rect.y + (rect.h - scaled.height) // 2
             img.paste(scaled, (offset_x, offset_y), scaled)
+            self._draw_camera_overlay(img, rect, cfg, data)
             return
 
         img.paste(scaled, (rect.x, rect.y), scaled)
+        self._draw_camera_overlay(img, rect, cfg, data)
 
     def _draw_no_camera_placeholder(
         self,
@@ -357,3 +361,46 @@ class ImageWidget(BaseWidget):
         draw_x = rect.x + max(0, (rect.w - text_w) // 2)
         draw_y = rect.y + max(0, (rect.h - text_h) // 2) - int(bb[1])
         draw.text((draw_x, draw_y), text, fill=(120, 130, 140), font=font)
+
+    def _draw_camera_overlay(
+        self,
+        img: Image.Image,
+        rect: Rect,
+        cfg: WidgetConfig,
+        data: DataStore,
+    ) -> None:
+        """Draw camera name and capture timestamp overlay for Synology frames."""
+        if cfg.source is None:
+            return
+        match = _SYNOLOGY_CAMERA_SOURCE_RE.match(cfg.source)
+        if match is None:
+            return
+        camera_index = match.group(1)
+        camera_name = data.get(f"synology.camera_{camera_index}.name")
+        captured_at = data.get(f"synology.camera_{camera_index}.captured_at")
+        if not isinstance(camera_name, str) or not camera_name.strip():
+            return
+
+        right_text = captured_at.strip() if isinstance(captured_at, str) else ""
+        left_text = camera_name.strip()
+        draw = ImageDraw.Draw(img)
+
+        bar_h = max(18, rect.h // 9)
+        top = rect.y + rect.h - bar_h
+        draw.rectangle(
+            (rect.x, top, rect.x + rect.w, rect.y + rect.h),
+            fill=(8, 12, 16),
+        )
+
+        font = get_font(max(11, min(22, bar_h // 2 + 2)))
+        label = left_text if not right_text else f"{left_text}  {right_text}"
+        bb = draw.textbbox((0, 0), label, font=font)
+        text_h = int(bb[3] - bb[1])
+        text_y = top + max(1, (bar_h - text_h) // 2) - int(bb[1])
+
+        draw.text((rect.x + 8, text_y), left_text, fill=(220, 228, 236), font=font)
+        if right_text:
+            right_bb = draw.textbbox((0, 0), right_text, font=font)
+            right_w = int(right_bb[2] - right_bb[0])
+            right_x = rect.x + rect.w - right_w - 8
+            draw.text((right_x, text_y), right_text, fill=(164, 177, 190), font=font)

@@ -12,14 +12,14 @@ grid:
     brand title title status
     cam1 cam1 cam2 cam2
     empty3 empty3 empty4 empty4
-  columns: "0.9fr 1.1fr 1.1fr 1fr"
-  rows: "0.56fr 1.22fr 1.22fr"
+  columns: "0.55fr 1.25fr 1.25fr 1.2fr"
+  rows: "0.5fr 1.25fr 1.25fr"
 
 widgets:
   brand:
     type: panel
     background: "#162028"
-    padding: 8
+    padding: [6, 6]
     grid:
       template_areas: |
         logo
@@ -30,7 +30,7 @@ widgets:
         type: image
         path: assets/synology/surveillance-station-logo.png
         scale: fit
-        padding: [4, 6]
+        padding: [2, 2]
 
   title:
     type: panel
@@ -38,10 +38,9 @@ widgets:
     padding: [8, 10]
     grid:
       template_areas: |
-        name version
-        cams rec
-      columns: "1fr 1fr"
-      rows: "1fr 1fr"
+        name cams rec
+      columns: "1.3fr 0.9fr 0.9fr"
+      rows: "1fr"
     children_named:
       name:
         type: value
@@ -49,14 +48,7 @@ widgets:
         source: synology.system.hostname
         color: "#9fe6c3"
         font_size: auto
-        max_font_size: 40
-      version:
-        type: value
-        label: DSM
-        source: synology.system.version
-        color: "#8ed9ff"
-        font_size: auto
-        max_font_size: 34
+        max_font_size: 44
       cams:
         type: value
         label: Cameras
@@ -64,7 +56,7 @@ widgets:
         precision: 0
         color: "#e8f2ff"
         font_size: auto
-        max_font_size: 34
+        max_font_size: 40
       rec:
         type: value
         label: Recording
@@ -72,16 +64,17 @@ widgets:
         precision: 0
         color: "#ffd177"
         font_size: auto
-        max_font_size: 34
+        max_font_size: 40
 
   status:
     type: table
-    label: Services + Cameras
+    label: Surveillance Status
     source: synology.surveillance.status.rows
     color: "#e8f2ff"
     background: "#162028"
+    font_size: 18
     table_fit_text: false
-    max_items: 12
+    max_items: 8
     padding: [8, 10]
 
   cam1:
