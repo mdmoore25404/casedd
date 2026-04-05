@@ -48,13 +48,24 @@ present.
       image.src = src;
     });
 
+    // Ensure paths are root-relative so they resolve correctly regardless of
+    // which page sub-path this script is loaded from (e.g. /template_format/).
+    const rootPath = (p) => (p.startsWith('/') ? p : '/' + p);
+
     const pickTemplateImage = async (entry) => {
-      const demo = entry.image.replace(/\.png$/i, '_demo.png');
-      if (demo !== entry.image && await probeImage(demo)) {
-        return demo;
+      const src = rootPath(entry.image);
+      // Only probe for a _demo variant when the file does not already have
+      // _demo in its stem (avoids _demo_demo double-suffix).
+      const stemMatch = src.match(/^(.*?)(_demo)?(\.[^.]+)$/i);
+      const alreadyDemo = stemMatch ? Boolean(stemMatch[2]) : false;
+      if (!alreadyDemo) {
+        const demo = src.replace(/(\.[^.]+)$/, '_demo$1');
+        if (await probeImage(demo)) {
+          return demo;
+        }
       }
-      if (await probeImage(entry.image)) {
-        return entry.image;
+      if (await probeImage(src)) {
+        return src;
       }
       return null;
     };
