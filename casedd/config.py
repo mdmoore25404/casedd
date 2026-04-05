@@ -224,6 +224,88 @@ class PanelConfig(BaseModel):
         return int(v)
 
 
+class OutputBackendConfig(BaseModel):
+    """Configuration for one pluggable output backend.
+
+    Used in the ``outputs:`` section of ``casedd.yaml`` to declare named
+    output backends with independent resolution, refresh rate, and template
+    settings.  All backends share the same data store (no redundant polling).
+
+    Example YAML::
+
+        outputs:
+          usb_display:
+            type: framebuffer
+            device: /dev/fb1
+            width: 800
+            height: 480
+            template: system_stats
+          remote_view:
+            type: websocket
+            port: 8765
+            template: system_stats
+
+    Attributes:
+        type: Backend type identifier; must match a registered
+            :class:`~casedd.outputs.registry.OutputRegistry` entry.
+            Built-in values: ``"framebuffer"``, ``"websocket"``.
+        enabled: When ``False`` the backend is skipped at startup.
+        display_name: Human-friendly label used in the HTTP viewer and logs.
+            Defaults to the backend's YAML key name.
+        width: Canvas width in pixels. Falls back to the global ``width``
+            setting when omitted.
+        height: Canvas height in pixels. Falls back to the global ``height``
+            setting when omitted.
+        template: Template name to render for this backend.  Falls back to
+            the global ``template`` setting when omitted.
+        refresh_rate: Render frequency in Hz.  Falls back to the global
+            ``refresh_rate`` when omitted.
+        device: Framebuffer device path (``framebuffer`` type only).
+            Falls back to the global ``fb_device`` setting when omitted.
+        rotation: Display rotation in degrees (0, 90, 180, 270).  Falls back
+            to the global ``fb_rotation`` setting.  Applies to
+            ``framebuffer`` backends only.
+        port: TCP port for the WebSocket server (``websocket`` type only).
+            Falls back to the global ``ws_port`` setting when omitted.
+    """
+
+    # non-strict so dicts coerce to Path etc. when loaded from raw YAML
+    model_config = ConfigDict(strict=False, frozen=True, extra="ignore")
+
+    type: str
+    enabled: bool = True
+    display_name: str | None = None
+    width: int | None = Field(default=None, gt=0)
+    height: int | None = Field(default=None, gt=0)
+    template: str | None = None
+    refresh_rate: float | None = Field(default=None, gt=0)
+    # framebuffer-specific
+    device: Path | None = None
+    rotation: int | None = None
+    # websocket-specific
+    port: int | None = Field(default=None, ge=1, le=65535)
+
+    @field_validator("rotation")
+    @classmethod
+    def _validate_rotation(cls, v: int | None) -> int | None:
+        """Check rotation is a valid degree value.
+
+        Args:
+            v: Raw rotation integer.
+
+        Returns:
+            Validated rotation value.
+
+        Raises:
+            ValueError: If the value is not one of 0, 90, 180, 270.
+        """
+        if v is None:
+            return None
+        if int(v) not in {0, 90, 180, 270}:
+            raise ValueError("rotation must be one of 0, 90, 180, 270")
+        return int(v)
+
+
 @dataclass(config=ConfigDict(frozen=True))
 class Config:
     """Daemon-wide configuration.
@@ -365,6 +447,12 @@ class Config:
             accessible for your display environment (e.g. ``"#ff00ff"`` for
             magenta / fuchsia).
         panels: Optional per-panel output/runtime definitions.
+        outputs: Pluggable output backend definitions.  When present, the
+            daemon builds backends from this mapping and routes rendered
+            frames to each enabled backend.  Keys are stable backend names;
+            values specify type, resolution, template, and other per-backend
+            settings.  Falls back to the ``panels`` / legacy single-panel
+            system when this mapping is empty (default).
         always_collect_prefixes: Namespaces that are always sampled.
         pushover_webhook_url: Pushover webhook URL for trigger notifications.
             Create a webhook at https://pushover.net/dashboard and paste its
@@ -528,6 +616,7 @@ class Config:
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
     trigger_border_color: str = Field(default="#dc1e1e")
     panels: list[PanelConfig] = Field(default_factory=list)
+    outputs: dict[str, OutputBackendConfig] = Field(default_factory=dict)
     always_collect_prefixes: list[str] = Field(default_factory=list)
     test_mode: bool = Field(default=False)
     api_key: str | None = Field(default=None, repr=False)
@@ -1590,6 +1679,10 @@ def load_config() -> Config:
             _get("CASEDD_TRIGGER_BORDER_COLOR", "trigger_border_color", "#dc1e1e")
         ),
         panels=cast("list[PanelConfig]", _get_yaml_list("panels")),
+        outputs=cast(
+            "dict[str, OutputBackendConfig]",
+            yaml_data.get("outputs", {}),
+        ),
         always_collect_prefixes=_get_always_collect_prefixes(),
         test_mode=str(_get("CASEDD_TEST_MODE", "test_mode", "0"))
         not in {"0", "false", "False", ""},

@@ -30,6 +30,7 @@ import psutil
 
 from casedd.config import (
     Config,
+    OutputBackendConfig,
     PanelConfig,
     RotationEntry,
     TemplateScheduleRule,
@@ -72,6 +73,7 @@ from casedd.getters.weather import WeatherGetter
 from casedd.ingestion.unix_socket import UnixSocketIngestion
 from casedd.input_detect import has_local_keyboard_or_mouse
 from casedd.notifications.pushover import send_pushover_webhook
+from casedd.outputs.base import OutputBackend
 from casedd.outputs.framebuffer import FramebufferOutput
 from casedd.outputs.http_viewer import HttpViewerOutput
 from casedd.outputs.websocket import WebSocketOutput
@@ -140,13 +142,29 @@ class _PanelRuntime:
     trigger_rules: list[TemplateTriggerRule]
     selector: TemplateSelector
     engine: RenderEngine
-    framebuffer: FramebufferOutput
+    backend: OutputBackend
     fb_device: Path
     rotation: int
     current_template: str = ""
     next_render_at: float = 0.0
     current_render_interval: float = 0.0
     refresh_signature: tuple[object, ...] | None = None
+
+
+@dataclass
+class _BackendRuntime:
+    """Lightweight runtime for an additional pluggable output backend.
+
+    Used when ``outputs:`` is configured in ``casedd.yaml``.  Each backend
+    receives the rendered image from the primary panel each tick and calls
+    :meth:`~casedd.outputs.base.OutputBackend.output` to deliver it to its
+    sink.  Per-backend template rendering is a future enhancement.
+    """
+
+    name: str
+    display_name: str
+    backend: OutputBackend
+    cfg: OutputBackendConfig
 
 
 @dataclass(frozen=True)
@@ -169,6 +187,7 @@ class _RenderLoopContext:
     http_output: HttpViewerOutput
     getters_by_name: dict[str, BaseGetter]
     getter_tasks: dict[str, asyncio.Task[None]]
+    backend_runtimes: list[_BackendRuntime]
 
 
 class Daemon:
@@ -209,16 +228,7 @@ class Daemon:
     async def run(self) -> None:
         """Start all subsystems and run the main render loop until shutdown."""
         loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, self._shutdown.set)
-        # SIGHUP triggers a config and template hot-reload.
-        loop.add_signal_handler(signal.SIGHUP, self._handle_sighup)
-        self._started_at = time.time()
-
-        self._store.set(_TEST_MODE_STORE_KEY, 1 if self._cfg.test_mode else 0)
-        self._load_speedtest_cache()
-        self._setup_framebuffer_detection()
-        self._setup_emergency_exit_watcher()
+        self._setup_run_environment(loop)
 
         getters = self._create_getters()
         getters_by_name = {type(getter).__name__: getter for getter in getters}
@@ -228,6 +238,11 @@ class Daemon:
         await registry.start()
 
         panel_runtimes = self._build_panel_runtimes(registry)
+
+        # Build and start additional pluggable backends from ``outputs:`` config.
+        # Each enabled backend is started here and stopped in the finally clause.
+        backend_runtimes = self._build_backend_runtimes()
+        await self._start_backend_runtimes(backend_runtimes)
 
         ws_output, http_output, unix_ingestion = self._setup_outputs_and_ingestion(
             panel_runtimes
@@ -265,6 +280,7 @@ class Daemon:
             http_output=http_output,
             getters_by_name=getters_by_name,
             getter_tasks=getter_tasks,
+            backend_runtimes=backend_runtimes,
         )
 
         try:
@@ -285,6 +301,11 @@ class Daemon:
             await ws_output.stop()
             await http_output.stop()
             await registry.stop()
+            # Stop additional backends registered via ``outputs:`` config.
+            for bt in backend_runtimes:
+                with contextlib.suppress(Exception):
+                    await bt.backend.stop()
+                    _log.debug("Backend '%s' stopped.", bt.name)
             await self._blackout_framebuffers(panel_runtimes)
             # Ensure the kernel framebuffer console and VT cursor are restored
             # so the host login prompt is visible again after CASEDD exits.
@@ -294,6 +315,25 @@ class Daemon:
                 _log.exception("Failed to restore kernel console / VT cursor")
 
             _log.info("Daemon shutdown complete.")
+
+    def _setup_run_environment(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Install signal handlers and perform one-time startup initialisation.
+
+        Separated from :meth:`run` to keep the orchestrator method within the
+        PLR0915 statement-count limit.
+
+        Args:
+            loop: The running asyncio event loop.
+        """
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, self._shutdown.set)
+        # SIGHUP triggers a template hot-reload without a full daemon restart.
+        loop.add_signal_handler(signal.SIGHUP, self._handle_sighup)
+        self._started_at = time.time()
+        self._store.set(_TEST_MODE_STORE_KEY, 1 if self._cfg.test_mode else 0)
+        self._load_speedtest_cache()
+        self._setup_framebuffer_detection()
+        self._setup_emergency_exit_watcher()
 
     def _setup_emergency_exit_watcher(self) -> None:
         """Enable optional ESC/Q emergency key watcher.
@@ -734,8 +774,8 @@ class Daemon:
         ws_output: WebSocketOutput,
         http_output: HttpViewerOutput,
     ) -> None:
-        """Write one image to framebuffer, HTTP viewer, and websocket clients."""
-        await asyncio.to_thread(panel.framebuffer.write, image)
+        """Write one image to the panel backend, HTTP viewer, and websocket clients."""
+        await panel.backend.output(image)
         http_output.set_latest_image(panel.name, image)
         await ws_output.broadcast(image, panel=panel.name)
 
@@ -803,7 +843,7 @@ class Daemon:
         _log.info("Writing final black frame to framebuffer(s)")
         for panel in panel_runtimes:
             black = Image.new("RGB", (panel.width, panel.height), (0, 0, 0))
-            await asyncio.to_thread(panel.framebuffer.write, black)
+            await panel.backend.output(black)
 
     def _restore_console_and_cursor(self, panel_runtimes: list[_PanelRuntime]) -> None:
         """Attempt to re-enable kernel console and show VT cursor.
@@ -1001,7 +1041,7 @@ class Daemon:
 
             # Determine rotation: per-panel override wins, otherwise global
             rot = panel.rotation if panel.rotation is not None else self._cfg.fb_rotation
-            framebuffer = FramebufferOutput(fb_device, disabled=no_fb, rotation=rot)
+            framebuffer_backend = FramebufferOutput(fb_device, disabled=no_fb, rotation=rot)
 
             # Validate template availability early so startup fails loudly if broken.
             registry.get(base_template)
@@ -1025,7 +1065,7 @@ class Daemon:
                     debug_frame_logs=self._cfg.debug_frame_logs,
                     display_padding=self._cfg.display_padding,
                 ),
-                framebuffer=framebuffer,
+                backend=framebuffer_backend,
                 fb_device=fb_device,
                 rotation=rot,
             )
@@ -1042,6 +1082,67 @@ class Daemon:
             runtimes.append(runtime)
 
         return runtimes
+
+    def _build_backend_runtimes(self) -> list[_BackendRuntime]:
+        """Create pluggable backend runtimes from the ``outputs:`` config section.
+
+        Each entry in :attr:`~casedd.config.Config.outputs` that has
+        ``enabled: true`` (default) is instantiated via the
+        :class:`~casedd.outputs.registry.OutputRegistry` and wrapped in a
+        :class:`_BackendRuntime`.
+
+        Returns:
+            Ordered list of enabled :class:`_BackendRuntime` records, or an
+            empty list when ``outputs:`` is absent or empty.
+        """
+        if not self._cfg.outputs:
+            return []
+
+        from casedd.outputs.registry import (  # noqa: PLC0415 - deferred to avoid circular import at module level
+            get_default_registry,
+        )
+
+        registry = get_default_registry()
+        runtimes: list[_BackendRuntime] = []
+        for name, cfg in self._cfg.outputs.items():
+            if not cfg.enabled:
+                _log.info("Backend '%s' skipped (enabled: false).", name)
+                continue
+            try:
+                backend = registry.create(cfg, self._cfg)
+            except (KeyError, Exception):
+                _log.exception("Failed to create backend '%s' — skipping.", name)
+                continue
+            display_name = cfg.display_name or name
+            runtimes.append(
+                _BackendRuntime(name=name, display_name=display_name, backend=backend, cfg=cfg)
+            )
+            _log.info(
+                "Registered output backend '%s' (type: %s, display: %s)",
+                name,
+                cfg.type,
+                display_name,
+            )
+        return runtimes
+
+    async def _start_backend_runtimes(
+        self,
+        backend_runtimes: list[_BackendRuntime],
+    ) -> None:
+        """Call :meth:`~casedd.outputs.base.OutputBackend.start` on each backend.
+
+        Args:
+            backend_runtimes: List of runtimes built by
+                :meth:`_build_backend_runtimes`.
+        """
+        for bt in backend_runtimes:
+            await bt.backend.start()
+            _log.info(
+                "Backend '%s' (type=%s) started: %s",
+                bt.name,
+                bt.cfg.type,
+                bt.backend.get_config(),
+            )
 
     async def _render_loop(self, context: _RenderLoopContext) -> None:
         """Drive render/output cycle using per-panel effective refresh rates."""
@@ -1094,9 +1195,18 @@ class Daemon:
                     border_color = parse_color(self._cfg.trigger_border_color)
                     await asyncio.to_thread(_draw_trigger_border, image, border_color)
 
-                await asyncio.to_thread(panel.framebuffer.write, image)
+                await panel.backend.output(image)
                 context.http_output.set_latest_image(panel.name, image)
                 await context.ws_output.broadcast(image, panel=panel.name)
+
+                # Route the rendered frame to each additional backend registered
+                # via the ``outputs:`` config.  Backends receive the image from
+                # the FIRST panel whose frame is available this tick; per-backend
+                # template rendering is a future enhancement.
+                for bt in context.backend_runtimes:
+                    await bt.backend.output(image)
+                    context.http_output.set_latest_image(bt.name, image)
+
                 self._render_count += 1
                 panel.next_render_at = tick_start + render_interval
                 next_due_at = self._earliest_deadline(next_due_at, panel.next_render_at)

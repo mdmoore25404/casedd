@@ -27,6 +27,8 @@ import logging
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from PIL import Image
 
+from casedd.outputs.base import OutputBackend
+
 _log = logging.getLogger(__name__)
 
 
@@ -115,8 +117,11 @@ def _build_app(manager: _ConnectionManager) -> FastAPI:
     return app
 
 
-class WebSocketOutput:
+class WebSocketOutput(OutputBackend):
     """Manages the WebSocket broadcast server.
+
+    Implements :class:`~casedd.outputs.base.OutputBackend` so it can be
+    registered with the pluggable backend system.
 
     Args:
         host: Bind host for the uvicorn server.
@@ -187,3 +192,40 @@ class WebSocketOutput:
         else:
             payload = f'{{"type":"frame","format":"jpeg","panel":"{panel}","data":"{encoded}"}}'
         await self._manager.broadcast(payload)
+
+    # ------------------------------------------------------------------
+    # OutputBackend interface
+    # ------------------------------------------------------------------
+
+    async def output(self, image: Image.Image) -> None:
+        """Broadcast one rendered frame to all connected WebSocket clients.
+
+        Delegates to :meth:`broadcast` without a panel tag.  When the
+        WebSocket backend is used via the registry, callers that need a
+        panel-tagged broadcast should call :meth:`broadcast` directly.
+
+        Args:
+            image: Rendered ``PIL.Image.Image`` in ``RGB`` mode.
+        """
+        await self.broadcast(image)
+
+    def is_healthy(self) -> bool:
+        """Return ``True`` when the WebSocket server task is running.
+
+        Returns:
+            ``True`` if the background server task exists and has not failed;
+            ``False`` when the server has not been started or has crashed.
+        """
+        return self._task is not None and not self._task.done()
+
+    def get_config(self) -> dict[str, object]:
+        """Return a snapshot of the WebSocket backend's configuration.
+
+        Returns:
+            Mapping with ``host``, ``port``, and ``client_count`` entries.
+        """
+        return {
+            "host": self._host,
+            "port": self._port,
+            "client_count": self._manager.client_count,
+        }

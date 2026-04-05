@@ -16,6 +16,7 @@ Public API:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import mmap
 from pathlib import Path
@@ -23,6 +24,8 @@ import re
 import struct
 
 from PIL import Image
+
+from casedd.outputs.base import OutputBackend
 
 _log = logging.getLogger(__name__)
 
@@ -85,8 +88,12 @@ def _parse_fb_modes(sysfs_fb: Path) -> tuple[list[str], list[float]]:
     return modes, sorted(hz_set)
 
 
-class FramebufferOutput:
+class FramebufferOutput(OutputBackend):
     """Writes PIL images to a Linux framebuffer device via mmap.
+
+    Implements :class:`~casedd.outputs.base.OutputBackend` so it can be
+    used with the pluggable backend system while remaining backward-
+    compatible with the existing panel-based rendering path.
 
     Detects pixel format (RGB565 / 32-bit) automatically from sysfs.
 
@@ -179,6 +186,63 @@ class FramebufferOutput:
             or an empty list when unavailable.
         """
         return list(self._supported_hz)
+
+    # ------------------------------------------------------------------
+    # OutputBackend interface
+    # ------------------------------------------------------------------
+
+    async def start(self) -> None:
+        """No-op: framebuffer device is claimed lazily on first write.
+
+        The device is opened and mmap'd on each :meth:`write` call, so no
+        explicit startup action is needed.
+        """
+
+    async def stop(self) -> None:
+        """Disable the output and release internal references.
+
+        After calling ``stop``, further :meth:`output` calls are no-ops.
+        """
+        self._enabled = False
+        _log.debug("FramebufferOutput.stop() called for %s", self._device)
+
+    async def output(self, image: Image.Image) -> None:
+        """Write one rendered frame to the framebuffer (non-blocking).
+
+        Delegates to :meth:`write` via ``asyncio.to_thread`` so the event
+        loop is never blocked by the mmap write.
+
+        Args:
+            image: Rendered ``PIL.Image.Image`` in ``RGB`` mode.
+        """
+        await asyncio.to_thread(self.write, image)
+
+    def is_healthy(self) -> bool:
+        """Return ``True`` if the framebuffer device is open and writable.
+
+        Returns:
+            ``True`` when enabled, ``False`` when disabled (device absent or
+            a prior write error caused self-disabling).
+        """
+        return self._enabled
+
+    def get_config(self) -> dict[str, object]:
+        """Return a snapshot of the framebuffer backend's configuration.
+
+        Returns:
+            Mapping with ``device``, ``enabled``, ``rotation``, ``width``,
+            ``height``, and ``bpp`` entries.
+        """
+        config: dict[str, object] = {
+            "device": str(self._device),
+            "enabled": self._enabled,
+            "rotation": self._rotation,
+        }
+        if self._enabled:
+            config["width"] = self._fb_w
+            config["height"] = self._fb_h
+            config["bpp"] = self._bpp
+        return config
 
     def write(self, image: Image.Image) -> None:
         """Write a PIL image to the framebuffer.
