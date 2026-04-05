@@ -11,6 +11,7 @@ WorkingDirectory=@CASEDD_REPO_ROOT@
 EnvironmentFile=/etc/casedd/casedd.env
 Environment=CASEDD_LOG_LEVEL=NONE
 Environment=CASEDD_DEBUG_FRAME_LOGS=0
+Environment=CASEDD_DEBUG_PERF_METRICS=0
 Environment=CASEDD_NO_FB=0
 # Run pre-start hooks as root even though the main daemon runs as
 # @CASEDD_USER@. This lets us write fbcon sysfs controls safely.

@@ -218,6 +218,11 @@ class WebSocketOutput(OutputBackend):
         """
         return self._task is not None and not self._task.done()
 
+    @property
+    def client_count(self) -> int:
+        """Number of currently connected WebSocket clients."""
+        return self._manager.client_count
+
     def get_config(self) -> dict[str, object]:
         """Return a snapshot of the WebSocket backend's configuration.
 

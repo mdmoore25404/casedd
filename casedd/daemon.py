@@ -212,6 +212,10 @@ class Daemon:
         self._render_loop_ema_ms: float = 0.0
         self._render_loop_max_ms: float = 0.0
         self._emergency_exit_watcher: EmergencyExitWatcher | None = None
+        # Enable per-tick hot-path timing at DEBUG level when set.
+        # Activated via CASEDD_DEBUG_PERF_METRICS=1 (dev.sh sets this automatically).
+        # Not set in the systemd unit to avoid perf_counter overhead in production.
+        self._debug_perf_metrics: bool = config.debug_perf_metrics
 
     def _record_render_timing(self, elapsed_ms: float) -> None:
         """Update rolling render-loop timing statistics."""
@@ -1144,6 +1148,64 @@ class Daemon:
                 bt.backend.get_config(),
             )
 
+    async def _dispatch_frame(
+        self,
+        image: Image.Image,
+        panel: _PanelRuntime,
+        context: _RenderLoopContext,
+        render_ms: float,
+    ) -> None:
+        """Send a rendered frame to all output sinks and log perf timings.
+
+        Handles framebuffer backend, HTTP viewer update, WebSocket broadcast,
+        and any additional pluggable backends registered via ``outputs:`` config.
+        When :attr:`_debug_perf_metrics` is enabled each step is timed and the
+        results are emitted at DEBUG level.
+
+        Args:
+            image: The rendered ``PIL.Image`` for this tick.
+            panel: The panel runtime the image belongs to.
+            context: Shared render-loop context (outputs, backend runtimes).
+            render_ms: Pre-measured PIL render time in milliseconds; only used
+                when :attr:`_debug_perf_metrics` is ``True``.
+        """
+        _t1 = time.perf_counter() if self._debug_perf_metrics else 0.0
+        await panel.backend.output(image)
+        _fb_ms = (time.perf_counter() - _t1) * 1000.0 if self._debug_perf_metrics else 0.0
+
+        context.http_output.set_latest_image(panel.name, image)
+
+        _t2 = time.perf_counter() if self._debug_perf_metrics else 0.0
+        await context.ws_output.broadcast(image, panel=panel.name)
+        _ws_ms = (time.perf_counter() - _t2) * 1000.0 if self._debug_perf_metrics else 0.0
+
+        # Route the rendered frame to each additional backend registered
+        # via the ``outputs:`` config.  Backends receive the image from
+        # the FIRST panel whose frame is available this tick; per-backend
+        # template rendering is a future enhancement.
+        _backends_ms = 0.0
+        for bt in context.backend_runtimes:
+            _tb = time.perf_counter() if self._debug_perf_metrics else 0.0
+            await bt.backend.output(image)
+            if self._debug_perf_metrics:
+                _backends_ms += (time.perf_counter() - _tb) * 1000.0
+            context.http_output.set_latest_image(bt.name, image)
+
+        if self._debug_perf_metrics:
+            _total_ms = render_ms + _fb_ms + _ws_ms + _backends_ms
+            _log.debug(
+                "[perf] tick=%d panel=%s render=%.1fms fb=%.1fms "
+                "ws=%.1fms(clients=%d) backends=%.1fms total=%.1fms",
+                self._render_count,
+                panel.name,
+                render_ms,
+                _fb_ms,
+                _ws_ms,
+                context.ws_output.client_count,
+                _backends_ms,
+                _total_ms,
+            )
+
     async def _render_loop(self, context: _RenderLoopContext) -> None:
         """Drive render/output cycle using per-panel effective refresh rates."""
         last_getter_sync = 0.0
@@ -1180,12 +1242,19 @@ class Daemon:
                     next_due_at = self._earliest_deadline(next_due_at, panel.next_render_at)
                     continue
 
+                _t0 = time.perf_counter() if self._debug_perf_metrics else 0.0
                 image = await asyncio.to_thread(
                     self._render_one,
                     context.registry,
                     panel.engine,
                     selected,
                 )
+                _render_ms = (
+                    (time.perf_counter() - _t0) * 1000.0
+                    if self._debug_perf_metrics
+                    else 0.0
+                )
+
                 if image is None:
                     panel.next_render_at = tick_start + render_interval
                     next_due_at = self._earliest_deadline(next_due_at, panel.next_render_at)
@@ -1195,18 +1264,7 @@ class Daemon:
                     border_color = parse_color(self._cfg.trigger_border_color)
                     await asyncio.to_thread(_draw_trigger_border, image, border_color)
 
-                await panel.backend.output(image)
-                context.http_output.set_latest_image(panel.name, image)
-                await context.ws_output.broadcast(image, panel=panel.name)
-
-                # Route the rendered frame to each additional backend registered
-                # via the ``outputs:`` config.  Backends receive the image from
-                # the FIRST panel whose frame is available this tick; per-backend
-                # template rendering is a future enhancement.
-                for bt in context.backend_runtimes:
-                    await bt.backend.output(image)
-                    context.http_output.set_latest_image(bt.name, image)
-
+                await self._dispatch_frame(image, panel, context, _render_ms)
                 self._render_count += 1
                 panel.next_render_at = tick_start + render_interval
                 next_due_at = self._earliest_deadline(next_due_at, panel.next_render_at)

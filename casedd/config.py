@@ -312,6 +312,11 @@ class Config:
 
     Attributes:
         log_level: Logging verbosity (NONE, DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        debug_perf_metrics: Enable per-tick hot-path timing logs (render, output,
+            encode).  Set ``CASEDD_DEBUG_PERF_METRICS=1`` or add
+            ``debug_perf_metrics: true`` to ``casedd.yaml``.  Should only be
+            used during development; adds ``time.perf_counter()`` calls on
+            every render tick.  Disabled in production via systemd.
         debug_frame_logs: Enable per-frame renderer debug logs (hot path);
             defaults to ``False`` to avoid unnecessary CPU/log overhead.
         no_fb: Disable framebuffer output entirely (dev / no-hardware mode).
@@ -474,6 +479,7 @@ class Config:
 
     log_level: str = Field(default="INFO")
     debug_frame_logs: bool = Field(default=False)
+    debug_perf_metrics: bool = Field(default=False)
     no_fb: bool = Field(default=False)
     fb_device: Path = Field(default=Path("/dev/fb1"))
     fb_auto_detect: bool = Field(default=False)
@@ -1322,6 +1328,9 @@ def load_config() -> Config:
         log_level=str(_get("CASEDD_LOG_LEVEL", "log_level", "INFO")),
         debug_frame_logs=str(
             _get("CASEDD_DEBUG_FRAME_LOGS", "debug_frame_logs", "0")
+        ) not in {"0", "false", "False", ""},
+        debug_perf_metrics=str(
+            _get("CASEDD_DEBUG_PERF_METRICS", "debug_perf_metrics", "0")
         ) not in {"0", "false", "False", ""},
         no_fb=str(_get("CASEDD_NO_FB", "no_fb", "0")) not in {"0", "false", "False", ""},
         fb_device=Path(str(_get("CASEDD_FB_DEVICE", "fb_device", "/dev/fb1"))),

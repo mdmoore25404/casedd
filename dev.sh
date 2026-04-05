@@ -303,6 +303,7 @@ cmd_start() {
     # Production/systemd runs should not use this script.
     export CASEDD_LOG_LEVEL="${CASEDD_DEV_LOG_LEVEL:-DEBUG}"
     export CASEDD_DEBUG_FRAME_LOGS="${CASEDD_DEV_DEBUG_FRAME_LOGS:-1}"
+    export CASEDD_DEBUG_PERF_METRICS="${CASEDD_DEV_DEBUG_PERF_METRICS:-1}"
 
     # Check if user previously ran with -fb; honor it before exporting NO_FB.
     if _should_use_fb && ! _prod_service_active; then
