@@ -179,7 +179,40 @@ Use `--url` to target a non-default daemon address.
 1. **Getters** poll system APIs at their own interval and push values into the **data store** (in-RAM key/value, dotted keys: `cpu.temperature`, `memory.percent`, etc.)
 2. External processes can push values the same way via **Unix socket** (`/run/casedd/casedd.sock`) or **REST POST** (`POST /update`)
 3. Every render cycle, the **renderer** reads the active **template** (a `.casedd` YAML file) and the data store, and produces a `PIL.Image`
-4. The image is simultaneously pushed to **framebuffer** (if enabled) and all connected **WebSocket clients**
+4. The image is distributed to all **output backends** — framebuffer, WebSocket, and any additional backends configured under `outputs:` in `casedd.yaml`
+
+### Multi-output configuration
+
+Additional output backends can be declared in `casedd.yaml` under the `outputs:` key.
+Each backend runs independently with its own port, rotation, or resolution.
+All backends share the **same data-collection pipeline** — getters are never polled more than once per cycle regardless of how many outputs are active.
+
+```yaml
+# casedd.yaml — multiple output backends
+outputs:
+  usb_panel:
+    type: framebuffer
+    device: /dev/fb1
+    enabled: true
+
+  web_view:
+    type: websocket
+    port: 8765
+    enabled: true
+
+  # Low-res secondary panel on a second USB device
+  small_panel:
+    type: framebuffer
+    device: /dev/fb2
+    width: 480
+    height: 320
+    rotation: 90
+    enabled: true
+```
+
+The `width` and `height` fields control the resolution passed to each backend.
+When set, the rendered frame is scaled to those dimensions before dispatch (no separate render pass — one frame, resized per sink).
+See [`docs/output-architecture.md`](docs/output-architecture.md) for full architecture diagrams.
 
 ---
 

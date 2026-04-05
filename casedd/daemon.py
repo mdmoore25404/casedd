@@ -73,7 +73,7 @@ from casedd.getters.weather import WeatherGetter
 from casedd.ingestion.unix_socket import UnixSocketIngestion
 from casedd.input_detect import has_local_keyboard_or_mouse
 from casedd.notifications.pushover import send_pushover_webhook
-from casedd.outputs.base import OutputBackend
+from casedd.outputs.base import OutputBackend, scale_for_backend
 from casedd.outputs.framebuffer import FramebufferOutput
 from casedd.outputs.http_viewer import HttpViewerOutput
 from casedd.outputs.websocket import WebSocketOutput
@@ -1180,16 +1180,17 @@ class Daemon:
         _ws_ms = (time.perf_counter() - _t2) * 1000.0 if self._debug_perf_metrics else 0.0
 
         # Route the rendered frame to each additional backend registered
-        # via the ``outputs:`` config.  Backends receive the image from
-        # the FIRST panel whose frame is available this tick; per-backend
-        # template rendering is a future enhancement.
+        # via the ``outputs:`` config.  Each backend receives the image
+        # scaled to its declared width/height (if configured), preserving
+        # aspect ratio.  Per-backend template rendering is a future enhancement.
         _backends_ms = 0.0
         for bt in context.backend_runtimes:
             _tb = time.perf_counter() if self._debug_perf_metrics else 0.0
-            await bt.backend.output(image)
+            bt_image = scale_for_backend(image, bt.cfg)
+            await bt.backend.output(bt_image, bt.cfg)
             if self._debug_perf_metrics:
                 _backends_ms += (time.perf_counter() - _tb) * 1000.0
-            context.http_output.set_latest_image(bt.name, image)
+            context.http_output.set_latest_image(bt.name, bt_image)
 
         if self._debug_perf_metrics:
             _total_ms = render_ms + _fb_ms + _ws_ms + _backends_ms

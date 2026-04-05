@@ -22,10 +22,14 @@ import mmap
 from pathlib import Path
 import re
 import struct
+from typing import TYPE_CHECKING
 
 from PIL import Image
 
 from casedd.outputs.base import OutputBackend
+
+if TYPE_CHECKING:
+    from casedd.config import OutputBackendConfig
 
 _log = logging.getLogger(__name__)
 
@@ -206,14 +210,22 @@ class FramebufferOutput(OutputBackend):
         self._enabled = False
         _log.debug("FramebufferOutput.stop() called for %s", self._device)
 
-    async def output(self, image: Image.Image) -> None:
+    async def output(
+        self,
+        image: Image.Image,
+        config: OutputBackendConfig | None = None,  # noqa: ARG002  # interface compat
+    ) -> None:
         """Write one rendered frame to the framebuffer (non-blocking).
 
         Delegates to :meth:`write` via ``asyncio.to_thread`` so the event
-        loop is never blocked by the mmap write.
+        loop is never blocked by the mmap write.  The ``config`` parameter
+        is accepted for interface compatibility but is not used here — the
+        framebuffer device's native geometry governs format and resolution.
 
         Args:
-            image: Rendered ``PIL.Image.Image`` in ``RGB`` mode.
+            image: Rendered ``PIL.Image.Image`` in ``RGB`` mode, pre-scaled
+                to this backend's declared resolution by the dispatch layer.
+            config: Unused; present for :class:`OutputBackend` compatibility.
         """
         await asyncio.to_thread(self.write, image)
 

@@ -23,11 +23,15 @@ from collections.abc import Generator
 from contextlib import contextmanager, suppress
 import io
 import logging
+from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from PIL import Image
 
 from casedd.outputs.base import OutputBackend
+
+if TYPE_CHECKING:
+    from casedd.config import OutputBackendConfig
 
 _log = logging.getLogger(__name__)
 
@@ -197,15 +201,21 @@ class WebSocketOutput(OutputBackend):
     # OutputBackend interface
     # ------------------------------------------------------------------
 
-    async def output(self, image: Image.Image) -> None:
+    async def output(
+        self,
+        image: Image.Image,
+        config: OutputBackendConfig | None = None,  # noqa: ARG002  # interface compat
+    ) -> None:
         """Broadcast one rendered frame to all connected WebSocket clients.
 
-        Delegates to :meth:`broadcast` without a panel tag.  When the
-        WebSocket backend is used via the registry, callers that need a
-        panel-tagged broadcast should call :meth:`broadcast` directly.
+        Delegates to :meth:`broadcast` without a panel tag.  The ``config``
+        parameter is accepted for interface compatibility but is not used here
+        — port and host are fixed at construction time.
 
         Args:
-            image: Rendered ``PIL.Image.Image`` in ``RGB`` mode.
+            image: Rendered ``PIL.Image.Image`` in ``RGB`` mode, pre-scaled
+                to this backend's declared resolution by the dispatch layer.
+            config: Unused; present for :class:`OutputBackend` compatibility.
         """
         await self.broadcast(image)
 

@@ -20,7 +20,7 @@ from PIL import Image
 import pytest
 
 from casedd.config import OutputBackendConfig
-from casedd.outputs.base import OutputBackend
+from casedd.outputs.base import OutputBackend, scale_for_backend
 from casedd.outputs.framebuffer import FramebufferOutput
 from casedd.outputs.registry import OutputRegistry, get_default_registry
 from casedd.outputs.websocket import WebSocketOutput
@@ -47,7 +47,11 @@ class _ConcreteBackend(OutputBackend):
         """Mark as stopped."""
         self.stopped = True
 
-    async def output(self, image: Image.Image) -> None:
+    async def output(
+        self,
+        image: Image.Image,
+        config: OutputBackendConfig | None = None,
+    ) -> None:
         """Record received images."""
         self.received.append(image)
 
@@ -440,3 +444,139 @@ async def test_concrete_backend_lifecycle() -> None:
     await backend.stop()
     assert backend.stopped
     assert not backend.is_healthy()
+
+
+# ---------------------------------------------------------------------------
+# scale_for_backend
+# ---------------------------------------------------------------------------
+
+
+def test_scale_for_backend_none_config_returns_same_object() -> None:
+    """scale_for_backend(img, None) returns the original image unchanged."""
+    img = Image.new("RGB", (800, 480))
+    result = scale_for_backend(img, None)
+    assert result is img
+
+
+def test_scale_for_backend_no_dimensions_set_returns_same_object() -> None:
+    """scale_for_backend returns original when config has no width/height."""
+    img = Image.new("RGB", (800, 480))
+    cfg = OutputBackendConfig.model_validate({"type": "websocket"})
+    result = scale_for_backend(img, cfg)
+    assert result is img
+
+
+def test_scale_for_backend_same_dimensions_returns_same_object() -> None:
+    """scale_for_backend returns original when dimensions already match."""
+    img = Image.new("RGB", (1024, 600))
+    cfg = OutputBackendConfig.model_validate({"type": "framebuffer", "width": 1024, "height": 600})
+    result = scale_for_backend(img, cfg)
+    assert result is img
+
+
+def test_scale_for_backend_both_dimensions_resizes() -> None:
+    """scale_for_backend scales to declared width x height."""
+    img = Image.new("RGB", (800, 480))
+    cfg = OutputBackendConfig.model_validate({"type": "framebuffer", "width": 400, "height": 240})
+    result = scale_for_backend(img, cfg)
+    assert result.size == (400, 240)
+    assert result is not img
+
+
+def test_scale_for_backend_width_only_scales_proportionally() -> None:
+    """scale_for_backend with only width set scales height proportionally."""
+    img = Image.new("RGB", (800, 480))
+    cfg = OutputBackendConfig.model_validate({"type": "framebuffer", "width": 400})
+    result = scale_for_backend(img, cfg)
+    assert result.size == (400, 240)  # height = 480 * 400 / 800
+
+
+def test_scale_for_backend_height_only_scales_proportionally() -> None:
+    """scale_for_backend with only height set scales width proportionally."""
+    img = Image.new("RGB", (800, 480))
+    cfg = OutputBackendConfig.model_validate({"type": "framebuffer", "height": 240})
+    result = scale_for_backend(img, cfg)
+    assert result.size == (400, 240)  # width = 800 * 240 / 480
+
+
+# ---------------------------------------------------------------------------
+# Multi-backend integration: two backends simultaneously
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_two_backends_both_receive_every_frame() -> None:
+    """Two concurrent backends both receive every dispatched frame."""
+    b1 = _ConcreteBackend()
+    b2 = _ConcreteBackend()
+
+    await b1.start()
+    await b2.start()
+
+    frames = [
+        Image.new("RGB", (64, 48), (i * 10, 0, 0))
+        for i in range(5)
+    ]
+    cfg = _make_cfg()
+    for frame in frames:
+        await b1.output(frame, cfg)
+        await b2.output(frame, cfg)
+
+    assert len(b1.received) == 5
+    assert len(b2.received) == 5
+    # Each backend received exactly the frames that were sent.
+    for i, frame in enumerate(frames):
+        assert b1.received[i] is frame
+        assert b2.received[i] is frame
+
+    await b1.stop()
+    await b2.stop()
+    assert not b1.is_healthy()
+    assert not b2.is_healthy()
+
+
+@pytest.mark.asyncio
+async def test_two_backends_one_stopped_does_not_affect_other() -> None:
+    """Stopping one backend mid-stream does not prevent the other from receiving frames."""
+    b1 = _ConcreteBackend()
+    b2 = _ConcreteBackend()
+
+    await b1.start()
+    await b2.start()
+
+    img = Image.new("RGB", (64, 48))
+    cfg = _make_cfg()
+
+    await b1.output(img, cfg)
+    await b2.output(img, cfg)
+
+    # Stop b1 mid-stream.
+    await b1.stop()
+
+    # b2 can still receive frames.
+    img2 = Image.new("RGB", (64, 48), (0, 255, 0))
+    await b2.output(img2, cfg)
+
+    assert len(b1.received) == 1
+    assert len(b2.received) == 2
+    assert b2.received[1] is img2
+
+
+@pytest.mark.asyncio
+async def test_scale_for_backend_applied_before_output() -> None:
+    """Backend with declared width/height smaller than source receives a scaled image."""
+    b = _ConcreteBackend()
+    await b.start()
+
+    src = Image.new("RGB", (800, 480), (100, 150, 200))
+    cfg = OutputBackendConfig.model_validate({"type": "test", "width": 400, "height": 240})
+
+    # Simulate the dispatch-layer pattern: scale then output.
+    scaled = scale_for_backend(src, cfg)
+    await b.output(scaled, cfg)
+
+    assert len(b.received) == 1
+    assert b.received[0].size == (400, 240)
+    assert b.received[0] is not src
+
+    await b.stop()

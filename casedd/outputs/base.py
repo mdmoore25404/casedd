@@ -14,8 +14,12 @@ Public API:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import TYPE_CHECKING
 
 from PIL import Image
+
+if TYPE_CHECKING:
+    from casedd.config import OutputBackendConfig
 
 
 class OutputBackend(ABC):
@@ -53,16 +57,32 @@ class OutputBackend(ABC):
         """
 
     @abstractmethod
-    async def output(self, image: Image.Image) -> None:
+    async def output(
+        self,
+        image: Image.Image,
+        config: OutputBackendConfig | None = None,
+    ) -> None:
         """Deliver one rendered frame to this backend's sink.
 
-        The image is already encoded at the backend's configured resolution.
-        Implementations that need a different resolution should resize *in
-        place* before writing.  Blocking I/O must use ``asyncio.to_thread``
-        to avoid stalling the event loop.
+        The image has already been rendered at the primary panel's resolution.
+        Backends that declare a different ``width``/``height`` in their
+        :class:`~casedd.config.OutputBackendConfig` will receive a pre-scaled
+        copy via :func:`~casedd.outputs.base.scale_for_backend` before this
+        method is called by the daemon's ``_dispatch_frame`` path.
+
+        The ``config`` parameter carries the backend's own
+        :class:`~casedd.config.OutputBackendConfig` entry (or ``None`` for
+        the legacy direct-call path) so implementations may inspect it for
+        format, quality, or other backend-specific hints.
+
+        Blocking I/O must use ``asyncio.to_thread`` to avoid stalling the
+        event loop.
 
         Args:
-            image: The fully-rendered ``PIL.Image.Image`` in ``RGB`` mode.
+            image: The fully-rendered ``PIL.Image.Image`` in ``RGB`` mode,
+                already scaled to this backend's declared resolution.
+            config: The backend's own ``OutputBackendConfig``, or ``None``
+                when called without a config context (e.g. in tests).
         """
 
     def is_healthy(self) -> bool:
@@ -88,3 +108,45 @@ class OutputBackend(ABC):
             Mapping of configuration key names to their current values.
         """
         return {}
+
+
+def scale_for_backend(
+    image: Image.Image,
+    config: OutputBackendConfig | None,
+) -> Image.Image:
+    """Return *image* scaled to the backend's declared resolution.
+
+    If ``config`` is ``None`` or neither ``width`` nor ``height`` is set,
+    the original image is returned unchanged (no copy).  When only one
+    dimension is set, proportional scaling is applied.  When both are set
+    the image is scaled to fit within the declared box using
+    ``Image.LANCZOS`` resampling, preserving aspect ratio with letterboxing
+    only if the aspect ratios differ materially.
+
+    This helper is called by the daemon's ``_dispatch_frame`` path before
+    invoking :meth:`OutputBackend.output` so backends always receive an
+    image at their configured resolution.
+
+    Args:
+        image: Source rendered frame in ``RGB`` mode.
+        config: Optional backend config carrying ``width``/``height`` hints.
+
+    Returns:
+        A scaled ``PIL.Image.Image``, or the original if no resize needed.
+    """
+    if config is None:
+        return image
+    target_w = config.width
+    target_h = config.height
+    if target_w is None and target_h is None:
+        return image
+    src_w, src_h = image.size
+    if target_w is None:
+        # Scale proportionally by height.
+        assert target_h is not None
+        target_w = max(1, int(src_w * target_h / src_h))
+    elif target_h is None:
+        target_h = max(1, int(src_h * target_w / src_w))
+    if (target_w, target_h) == (src_w, src_h):
+        return image
+    return image.resize((target_w, target_h), Image.Resampling.LANCZOS)
