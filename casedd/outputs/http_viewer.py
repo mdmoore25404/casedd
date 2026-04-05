@@ -379,10 +379,11 @@ _LIGHT_VIEWER_HTML = """\
       display: flex;
       gap: 10px;
       align-items: center;
-      width: min(100%, 960px);
+      width: min(100%, 1400px);
       flex-wrap: wrap;
       font-size: 13px;
     }
+    /* Single-panel view */
     #frame {
       width: min(100%, 960px);
       height: auto;
@@ -390,6 +391,40 @@ _LIGHT_VIEWER_HTML = """\
       border-radius: 8px;
       background: #000;
       image-rendering: pixelated;
+    }
+    /* Multi-panel grid */
+    #panels-grid {
+      display: none;
+      width: min(100%, 1400px);
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 10px;
+    }
+    body.multi #frame { display: none; }
+    body.multi #panels-grid { display: grid; }
+    body.multi #single-controls { display: none; }
+    body.multi #multi-btn { background: #1f6feb; color: #fff; }
+    .panel-tile {
+      position: relative;
+      border: 1px solid #30363d;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #000;
+    }
+    .panel-tile img {
+      width: 100%;
+      height: auto;
+      display: block;
+      image-rendering: pixelated;
+    }
+    .panel-tile-name {
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      font-size: 11px;
+      background: rgba(13,17,23,0.75);
+      color: #8b949e;
+      border-radius: 4px;
+      padding: 2px 6px;
     }
     select, a {
       background: #161b22;
@@ -400,7 +435,7 @@ _LIGHT_VIEWER_HTML = """\
       text-decoration: none;
     }
     body.kiosk #toolbar { display: none; }
-    #kiosk-btn {
+    button.ctrl {
       background: #161b22;
       color: #8b949e;
       border: 1px solid #30363d;
@@ -430,75 +465,119 @@ _LIGHT_VIEWER_HTML = """\
 </head>
 <body>
   <div id=\"toolbar\">
-    <label for=\"panel\">Panel</label>
-    <select id=\"panel\"></select>
+    <span id=\"single-controls\">
+      <label for=\"panel\">Panel</label>
+      <select id=\"panel\"></select>
+    </span>
     <span id=\"meta\"></span>
+    <button id=\"multi-btn\" class=\"ctrl\" title=\"Toggle multi-panel grid view\">Multi</button>
+    <button id=\"kiosk-btn\" class=\"ctrl\" title=\"Toggle kiosk (hide toolbar)\">Kiosk</button>
     <a href=\"/app\" target=\"_blank\" rel=\"noreferrer\">Advanced App</a>
   </div>
   <img id=\"frame\" src=\"/image\" alt=\"CASEDD frame\" />
+  <div id=\"panels-grid\"></div>
+  <div id=\"kiosk-hint\"></div>
   <script>
     const frame = document.getElementById('frame');
     const panelSelect = document.getElementById('panel');
     const meta = document.getElementById('meta');
+    const panelsGrid = document.getElementById('panels-grid');
 
     let panelName = '';
+    let allPanels = [];
     let ws = null;
+    // panelName -> <img> element (used in multi-panel mode)
+    const tileCells = {};
 
     function wsUrl() {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       return `${proto}://${location.hostname}:__WS_PORT__/ws`;
     }
 
+    // --- Multi-panel grid ---------------------------------------------------
+
+    function buildMultiGrid() {
+      panelsGrid.innerHTML = '';
+      for (const key of Object.keys(tileCells)) {
+        delete tileCells[key];
+      }
+      for (const p of allPanels) {
+        const tile = document.createElement('div');
+        tile.className = 'panel-tile';
+        const img = document.createElement('img');
+        img.src = '/image?panel=' + encodeURIComponent(p.name) + '&t=' + Date.now();
+        img.alt = p.display_name || p.name;
+        const lbl = document.createElement('div');
+        lbl.className = 'panel-tile-name';
+        lbl.textContent = p.display_name || p.name;
+        tile.appendChild(img);
+        tile.appendChild(lbl);
+        panelsGrid.appendChild(tile);
+        tileCells[p.name] = img;
+      }
+    }
+
+    function refreshAllTiles() {
+      for (const p of allPanels) {
+        const img = tileCells[p.name];
+        if (img) {
+          img.src = '/image?panel=' + encodeURIComponent(p.name) + '&t=' + Date.now();
+        }
+      }
+    }
+
+    // --- Panel list ---------------------------------------------------------
+
     async function loadPanels() {
       const response = await fetch('/api/panels', { cache: 'no-store' });
       const payload = await response.json();
-      const panels = Array.isArray(payload.panels) ? payload.panels : [];
+      allPanels = Array.isArray(payload.panels) ? payload.panels : [];
       panelSelect.innerHTML = '';
-      for (const panel of panels) {
+      for (const p of allPanels) {
         const option = document.createElement('option');
-        option.value = panel.name;
-        option.textContent = panel.display_name || panel.name;
+        option.value = p.name;
+        option.textContent = p.display_name || p.name;
         panelSelect.appendChild(option);
       }
-      panelName = payload.default_panel || (panels[0] ? panels[0].name : '');
+      panelName = payload.default_panel || (allPanels[0] ? allPanels[0].name : '');
       panelSelect.value = panelName;
-            meta.textContent =
-                'panel: ' + panelName + ' | state: ' + (payload.test_mode ? 'test-mode' : 'live');
+      meta.textContent =
+        (payload.test_mode ? 'test-mode' : 'live') + ' \u2022 ' + allPanels.length + ' panel(s)';
+      buildMultiGrid();
       refreshFrame();
     }
 
     function refreshFrame() {
-      if (!panelName) {
-        return;
-      }
+      if (!panelName) return;
       frame.src = '/image?panel=' + encodeURIComponent(panelName) + '&t=' + Date.now();
     }
 
+    // --- WebSocket ----------------------------------------------------------
+
     function connectWs() {
-      if (ws) {
-        ws.close();
-      }
+      if (ws) ws.close();
       ws = new WebSocket(wsUrl());
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type !== 'frame' || !msg.data) {
-            return;
+          if (msg.type !== 'frame' || !msg.data) return;
+          const src = 'data:image/' + (msg.format || 'jpeg') + ';base64,' + msg.data;
+          if (document.body.classList.contains('multi')) {
+            // Multi-panel mode: update the matching tile.
+            if (msg.panel && tileCells[msg.panel]) {
+              tileCells[msg.panel].src = src;
+            }
+          } else {
+            // Single-panel mode: only update when the frame matches the active panel.
+            if (msg.panel && msg.panel !== panelName) return;
+            frame.src = src;
           }
-          if (msg.panel && msg.panel !== panelName) {
-            return;
-          }
-          frame.src = 'data:image/' + (msg.format || 'jpeg') + ';base64,' + msg.data;
         } catch (_err) {
           refreshFrame();
         }
       };
-      ws.onclose = () => {
-        setTimeout(connectWs, 1000);
-      };
-      ws.onerror = () => {
-        ws.close();
-      };
+      ws.onclose = () => { setTimeout(connectWs, 1000); };
+      ws.onerror = () => { ws.close(); };
     }
 
     panelSelect.addEventListener('change', () => {
@@ -510,11 +589,31 @@ _LIGHT_VIEWER_HTML = """\
       setInterval(refreshFrame, 1000);
     });
 
-    // --- Kiosk mode ---------------------------------------------------------
-    // Activate via ?kiosk=1 (or =true / =yes) or keyboard shortcut H.
+    // --- Multi-panel toggle (keyboard: M) -----------------------------------
+
+    const multiBtn = document.getElementById('multi-btn');
+
+    function toggleMulti() {
+      const entering = document.body.classList.toggle('multi');
+      if (entering) {
+        refreshAllTiles();
+        showKioskHint('Multi-panel view — press M to return');
+      } else {
+        refreshFrame();
+        showKioskHint('Single-panel view restored');
+      }
+    }
+
+    multiBtn.addEventListener('click', toggleMulti);
+
+    // --- Kiosk mode (keyboard: H) -------------------------------------------
+
     const _params = new URLSearchParams(location.search);
     if (['1', 'true', 'yes'].includes((_params.get('kiosk') || '').toLowerCase())) {
       document.body.classList.add('kiosk');
+    }
+    if (['1', 'true', 'yes'].includes((_params.get('multi') || '').toLowerCase())) {
+      document.body.classList.add('multi');
     }
 
     const kioskBtn = document.getElementById('kiosk-btn');
@@ -539,15 +638,14 @@ _LIGHT_VIEWER_HTML = """\
 
     document.addEventListener('keydown', (e) => {
       const tag = document.activeElement ? document.activeElement.tagName : '';
-      if ((e.key === 'h' || e.key === 'H') && tag !== 'INPUT' && tag !== 'SELECT') {
-        toggleKiosk();
-      }
+      if (tag === 'INPUT' || tag === 'SELECT') return;
+      if (e.key === 'h' || e.key === 'H') toggleKiosk();
+      if (e.key === 'm' || e.key === 'M') toggleMulti();
     });
   </script>
 </body>
 </html>
 """
-
 
 _ADVANCED_APP_PORT = int(os.environ.get("CASEDD_APP_PORT", "5173"))
 

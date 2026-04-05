@@ -912,25 +912,34 @@ class Daemon:
         Supports mixed config lists containing plain template names and
         :class:`RotationEntry` records with per-template dwell times.
 
+        When the panel does not override ``template_rotation`` the global
+        :attr:`~casedd.config.Config.template_rotation` list is used as a
+        fallback, so multi-panel YAML configs can omit rotation on panels
+        that share the primary rotation schedule.
+
         Args:
             panel: Panel configuration to normalize.
 
         Returns:
             Tuple of ``(rotation_templates, rotation_entries_or_none)``.
         """
-        if not panel.template_rotation:
+        # Fall back to the global rotation list when the panel does not
+        # override it.  This lets multi-panel YAML configs omit rotation on
+        # secondary panels that want the same schedule as the primary.
+        raw_list = list(panel.template_rotation) or list(self._cfg.template_rotation)
+        if not raw_list:
             return [], None
 
         rotation_templates = [
             item.template if isinstance(item, RotationEntry) else item
-            for item in panel.template_rotation
+            for item in raw_list
         ]
-        if not any(isinstance(item, RotationEntry) for item in panel.template_rotation):
+        if not any(isinstance(item, RotationEntry) for item in raw_list):
             return rotation_templates, None
 
         rotation_entries = [
             item if isinstance(item, RotationEntry) else RotationEntry(template=item)
-            for item in panel.template_rotation
+            for item in raw_list
         ]
         return rotation_templates, rotation_entries
 
@@ -972,8 +981,10 @@ class Daemon:
             height = panel.height if panel.height is not None else 0
             base_template = panel.template if panel.template is not None else self._cfg.template
             rotation_templates, configured_rotation_entries = self._resolve_rotation_config(panel)
-            schedule_rules = list(panel.template_schedule)
-            trigger_rules = list(panel.template_triggers)
+            # Fall back to global schedule/trigger rules when the panel does
+            # not define its own — consistent with rotation inheritance above.
+            schedule_rules = list(panel.template_schedule or self._cfg.template_schedule)
+            trigger_rules = list(panel.template_triggers or self._cfg.template_triggers)
             rotation_interval = (
                 panel.template_rotation_interval
                 if panel.template_rotation_interval is not None
