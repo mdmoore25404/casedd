@@ -666,7 +666,7 @@ class Config:
     nzbget_timeout: float = Field(default=3.0)
     nzbget_category_filter_regex: str | None = Field(default=None)
     nasa_api_key: str | None = Field(default=None, repr=False)
-    apod_interval: float = Field(default=3600.0, gt=0)
+    apod_interval: float = Field(default=14400.0, gt=0)
     apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data
     pushover_webhook_url: str | None = Field(default=None, repr=False)
     template_rotation: list[str | RotationEntry] = Field(default_factory=list)
