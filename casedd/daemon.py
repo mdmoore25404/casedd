@@ -1538,13 +1538,17 @@ class Daemon:
             psutil.PROCFS_PATH = self._cfg.procfs_path
 
         getters: list[BaseGetter] = [
-            CpuGetter(self._store),
-            GpuGetter(self._store),
-            MemoryGetter(self._store),
-            DiskGetter(self._store, mount=self._cfg.disk_mount),
-            NetworkGetter(self._store, interfaces=self._cfg.net_interfaces),
-            SystemGetter(self._store),
-            FanGetter(self._store),
+            CpuGetter(self._store, interval=self._cfg.cpu_interval),
+            GpuGetter(self._store, interval=self._cfg.gpu_interval),
+            MemoryGetter(self._store, interval=self._cfg.memory_interval),
+            DiskGetter(self._store, mount=self._cfg.disk_mount, interval=self._cfg.disk_interval),
+            NetworkGetter(
+                self._store,
+                interfaces=self._cfg.net_interfaces,
+                interval=self._cfg.network_interval,
+            ),
+            SystemGetter(self._store, interval=self._cfg.system_interval),
+            FanGetter(self._store, interval=self._cfg.fans_interval),
             ContainersGetter(
                 self._store,
                 interval=self._cfg.containers_interval,
@@ -1707,8 +1711,8 @@ class Daemon:
                 interval=self._cfg.apod_interval,
                 cache_dir=self._cfg.apod_cache_dir,
             ),
-            NetPortsGetter(self._store),
-            SysinfoGetter(self._store),
+            NetPortsGetter(self._store, interval=self._cfg.net_ports_interval),
+            SysinfoGetter(self._store, interval=self._cfg.sysinfo_interval),
         ]
         # Attach health registry so each getter reports outcomes.
         for getter in getters:

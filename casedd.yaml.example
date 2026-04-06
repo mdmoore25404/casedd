@@ -7,6 +7,19 @@ log_level: INFO
 template: system_stats
 refresh_rate: 2.0
 
+# Core system getter poll intervals.
+# High-cadence getters default to 2-5 s; slow-changing data can be relaxed.
+# Use CASEDD_<NAME>_INTERVAL env vars or uncomment the lines below.
+# cpu_interval: 2.0           # CASEDD_CPU_INTERVAL
+# gpu_interval: 5.0           # CASEDD_GPU_INTERVAL
+# memory_interval: 2.0        # CASEDD_MEMORY_INTERVAL
+# disk_interval: 2.0          # CASEDD_DISK_INTERVAL
+# network_interval: 2.0       # CASEDD_NETWORK_INTERVAL
+# system_interval: 10.0       # CASEDD_SYSTEM_INTERVAL
+# fans_interval: 3.0          # CASEDD_FANS_INTERVAL
+# net_ports_interval: 5.0     # CASEDD_NET_PORTS_INTERVAL
+# sysinfo_interval: 30.0      # CASEDD_SYSINFO_INTERVAL
+
 # Speedtest cache persists the latest pushed/polled speedtest payload so a dev
 # restart does not blank the speedtest dashboard until the next update arrives.
 # Cache entries older than this max-age are ignored at startup.

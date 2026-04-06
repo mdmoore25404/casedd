@@ -17,6 +17,10 @@ Welcome to the CASEDD getter docs. This page describes all built-in system colle
 
 Module: casedd/getters/cpu.py
 
+Config:
+- `CASEDD_CPU_INTERVAL` — poll interval in seconds (default: `2.0`)
+- `cpu_interval` in `casedd.yaml`
+
 Emits:
 - cpu.percent
 - cpu.temperature
@@ -29,6 +33,10 @@ Notes:
 ## Fan getter
 
 Module: casedd/getters/fans.py
+
+Config:
+- `CASEDD_FANS_INTERVAL` — poll interval in seconds (default: `3.0`)
+- `fans_interval` in `casedd.yaml`
 
 Emits aggregate keys:
 - fans.total.count
@@ -57,6 +65,10 @@ Notes:
 ## GPU getter (NVIDIA via nvidia-smi)
 
 Module: casedd/getters/gpu.py
+
+Config:
+- `CASEDD_GPU_INTERVAL` — poll interval in seconds (default: `5.0`)
+- `gpu_interval` in `casedd.yaml`
 
 Emits backward-compatible primary keys (GPU 0 when present):
 - nvidia.name
@@ -97,6 +109,10 @@ Notes:
 
 Module: casedd/getters/memory.py
 
+Config:
+- `CASEDD_MEMORY_INTERVAL` — poll interval in seconds (default: `2.0`)
+- `memory_interval` in `casedd.yaml`
+
 Emits:
 - memory.percent
 - memory.used_gb
@@ -106,6 +122,10 @@ Emits:
 ## Disk getter
 
 Module: casedd/getters/disk.py
+
+Config:
+- `CASEDD_DISK_INTERVAL` — poll interval in seconds (default: `2.0`)
+- `disk_interval` in `casedd.yaml`
 
 Emits:
 - disk.percent
@@ -121,6 +141,11 @@ Emits:
 
 Module: casedd/getters/network.py
 
+Config:
+- `CASEDD_NETWORK_INTERVAL` — poll interval in seconds (default: `2.0`)
+- `CASEDD_NET_INTERFACES` — comma-separated list of NIC names to monitor
+- `network_interval` in `casedd.yaml`
+
 Emits:
 - net.bytes_recv_rate
 - net.bytes_sent_rate
@@ -132,6 +157,10 @@ Emits:
 ## System getter
 
 Module: casedd/getters/system.py
+
+Config:
+- `CASEDD_SYSTEM_INTERVAL` — poll interval in seconds (default: `10.0`)
+- `system_interval` in `casedd.yaml`
 
 Emits:
 - system.hostname
@@ -503,6 +532,11 @@ Notes:
 
 Module: casedd/getters/htop.py
 
+Config:
+- `CASEDD_HTOP_INTERVAL` — poll interval in seconds (default: `2.0`)
+- `CASEDD_HTOP_MAX_ROWS` — maximum process rows emitted (default: `12`)
+- `htop_interval` and `htop_max_rows` in `casedd.yaml`
+
 Emits:
 - htop.process_count
 - htop.top_name
@@ -512,12 +546,16 @@ Emits:
 
 Notes:
 - `htop.rows` is newline-delimited. Each row: `PID|CPU%|MEM%|Name`.
-- Sorted by CPU utilization descending. Configurable `max_rows` (default: 12).
-- No config env vars needed — uses psutil exclusively, no external CLI required.
+- Sorted by CPU utilization descending.
+- Uses psutil exclusively; no external CLI required.
 
 ## Net ports getter
 
 Module: casedd/getters/net_ports.py
+
+Config:
+- `CASEDD_NET_PORTS_INTERVAL` — poll interval in seconds (default: `5.0`)
+- `net_ports_interval` in `casedd.yaml`
 
 Emits:
 - netports.port_count
@@ -526,7 +564,7 @@ Emits:
 Notes:
 - `netports.rows` is newline-delimited pipe-separated rows: `PROTO|PORT|ADDR|PID|NAME`.
 - TCP: `LISTEN` state only; UDP: all bound sockets.
-- Default interval: 5 s. Requires process access to resolve PIDs to names.
+- Requires process access to resolve PIDs to names.
 - Run as root (or with appropriate capabilities) for complete port visibility.
 
 ## NZBGet getter
@@ -605,6 +643,10 @@ Notes:
 
 Module: casedd/getters/sysinfo.py
 
+Config:
+- `CASEDD_SYSINFO_INTERVAL` — poll interval in seconds (default: `30.0`)
+- `sysinfo_interval` in `casedd.yaml`
+
 Emits:
 - sysinfo.hostname
 - sysinfo.os
@@ -619,8 +661,6 @@ Emits:
 
 Notes:
 - `sysinfo.rows` is newline-delimited `Label|Value` for table/panel widgets.
-- Designed for a long refresh interval (default: 30 s) since most data changes only on
-  reboot or package upgrades.
 - `sysinfo.cpu_cores` format: `"4c / 8t"` (physical / logical).
 - `sysinfo.memory` and `sysinfo.disk_root` are human-readable strings (e.g. `"5.2G / 32.0G"`).
 

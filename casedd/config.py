@@ -371,6 +371,16 @@ class Config:
         procfs_path: Linux procfs root path used by psutil.
         disk_mount: Filesystem mount point to monitor for disk metrics.
         viewer_bg: Default browser viewer page background color.
+        cpu_interval: CPU usage / temperature polling interval in seconds (default: 2.0).
+        gpu_interval: GPU metrics (nvidia-smi) polling interval in seconds (default: 5.0).
+        memory_interval: Memory usage polling interval in seconds (default: 2.0).
+        disk_interval: Disk usage / I/O polling interval in seconds (default: 2.0).
+        network_interval: Network throughput polling interval in seconds (default: 2.0).
+        system_interval: Host metadata (hostname, uptime, load) polling interval in
+            seconds (default: 10.0).
+        fans_interval: Fan speed polling interval in seconds (default: 3.0).
+        net_ports_interval: Open network ports polling interval in seconds (default: 5.0).
+        sysinfo_interval: Static system info polling interval in seconds (default: 30.0).
         containers_interval: Container runtime polling interval in seconds.
         containers_runtime: Preferred runtime backend (auto/docker/podman/containerd).
         containers_max_items: Maximum indexed ``containers.<n>`` rows emitted.
@@ -537,6 +547,15 @@ class Config:
     disk_mount: str = Field(default="/")
     viewer_bg: str = Field(default="#0d0f12")
     display_padding: int | list[int] = Field(default=0)
+    cpu_interval: float = Field(default=2.0, gt=0)
+    gpu_interval: float = Field(default=5.0, gt=0)
+    memory_interval: float = Field(default=2.0, gt=0)
+    disk_interval: float = Field(default=2.0, gt=0)
+    network_interval: float = Field(default=2.0, gt=0)
+    system_interval: float = Field(default=10.0, gt=0)
+    fans_interval: float = Field(default=3.0, gt=0)
+    net_ports_interval: float = Field(default=5.0, gt=0)
+    sysinfo_interval: float = Field(default=30.0, gt=0)
     containers_interval: float = Field(default=8.0)
     containers_runtime: str = Field(default="auto")
     containers_max_items: int = Field(default=12, ge=1, le=100)
@@ -1394,6 +1413,17 @@ def load_config() -> Config:
         procfs_path=str(_get("CASEDD_PROCFS_PATH", "procfs_path", "/proc")),
         disk_mount=str(_get("CASEDD_DISK_MOUNT", "disk_mount", "/")),
         viewer_bg=str(_get("CASEDD_VIEWER_BG", "viewer_bg", "#0d0f12")),
+        cpu_interval=float(str(_get("CASEDD_CPU_INTERVAL", "cpu_interval", 2.0))),
+        gpu_interval=float(str(_get("CASEDD_GPU_INTERVAL", "gpu_interval", 5.0))),
+        memory_interval=float(str(_get("CASEDD_MEMORY_INTERVAL", "memory_interval", 2.0))),
+        disk_interval=float(str(_get("CASEDD_DISK_INTERVAL", "disk_interval", 2.0))),
+        network_interval=float(str(_get("CASEDD_NETWORK_INTERVAL", "network_interval", 2.0))),
+        system_interval=float(str(_get("CASEDD_SYSTEM_INTERVAL", "system_interval", 10.0))),
+        fans_interval=float(str(_get("CASEDD_FANS_INTERVAL", "fans_interval", 3.0))),
+        net_ports_interval=float(
+            str(_get("CASEDD_NET_PORTS_INTERVAL", "net_ports_interval", 5.0))
+        ),
+        sysinfo_interval=float(str(_get("CASEDD_SYSINFO_INTERVAL", "sysinfo_interval", 30.0))),
         containers_interval=float(
             str(_get("CASEDD_CONTAINERS_INTERVAL", "containers_interval", 8.0))
         ),
