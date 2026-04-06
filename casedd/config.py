@@ -178,6 +178,38 @@ class RotationEntry(BaseModel):
     skip_if: list[RotationSkipCondition] = Field(default_factory=list)
 
 
+class ViewerLayout(BaseModel):
+    """Grid layout for the multi-panel web viewer.
+
+    Defines how panels are arranged in the viewer's grid view.  When
+    ``viewer_layout`` is present in ``casedd.yaml`` the web UI uses this
+    layout instead of the auto-fit fallback, giving operators full control
+    over which panel appears in which cell.
+
+    The ``cells`` list maps left-to-right, top-to-bottom into a
+    ``columns``-wide CSS grid.  Empty strings (``""``) leave a cell blank.
+
+    Example YAML (2-column, 2-row grid)::
+
+        viewer_layout:
+          columns: 2
+          cells:
+            - primary     # row 1, col 1
+            - virtpanel   # row 1, col 2
+            - virtpanel2  # row 2, col 1
+            - ""          # row 2, col 2 — intentionally empty
+
+    Attributes:
+        columns: Number of grid columns.  Must be between 1 and 16.
+        cells: Panel names in grid order (empty string = blank cell).
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
+
+    columns: int = Field(default=2, ge=1, le=16)
+    cells: list[str] = Field(default_factory=list)
+
+
 class PanelConfig(BaseModel):
     """Configuration for one output panel/framebuffer.
 
@@ -452,6 +484,9 @@ class Config:
             accessible for your display environment (e.g. ``"#ff00ff"`` for
             magenta / fuchsia).
         panels: Optional per-panel output/runtime definitions.
+        viewer_layout: Optional grid layout for the multi-panel web viewer.
+            Defines column count and which panel appears in each cell.
+            When omitted the viewer uses an auto-fit grid.
         outputs: Pluggable output backend definitions.  When present, the
             daemon builds backends from this mapping and routes rendered
             frames to each enabled backend.  Keys are stable backend names;
@@ -622,6 +657,7 @@ class Config:
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
     trigger_border_color: str = Field(default="#dc1e1e")
     panels: list[PanelConfig] = Field(default_factory=list)
+    viewer_layout: ViewerLayout | None = Field(default=None)
     outputs: dict[str, OutputBackendConfig] = Field(default_factory=dict)
     always_collect_prefixes: list[str] = Field(default_factory=list)
     test_mode: bool = Field(default=False)
@@ -1688,6 +1724,9 @@ def load_config() -> Config:
             _get("CASEDD_TRIGGER_BORDER_COLOR", "trigger_border_color", "#dc1e1e")
         ),
         panels=cast("list[PanelConfig]", _get_yaml_list("panels")),
+        viewer_layout=ViewerLayout.model_validate(yaml_data["viewer_layout"])
+        if isinstance(yaml_data.get("viewer_layout"), dict)
+        else None,
         outputs=cast(
             "dict[str, OutputBackendConfig]",
             yaml_data.get("outputs", {}),

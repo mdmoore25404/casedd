@@ -177,3 +177,13 @@ panels:
     height: 720
     template: system_stats
 
+# Optional grid layout for the multi-panel web viewer.
+# columns: number of CSS grid columns.
+# cells:   panel names in left-to-right, top-to-bottom order.
+#          Use "" (empty string) to leave a cell blank.
+# When omitted, the viewer uses an auto-fit grid.
+viewer_layout:
+  columns: 2
+  cells:
+    - primary
+    - virtpanel

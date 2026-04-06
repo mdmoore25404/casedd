@@ -35,6 +35,7 @@ from casedd.config import (
     RotationEntry,
     TemplateScheduleRule,
     TemplateTriggerRule,
+    ViewerLayout,
     save_rotation_config_to_yaml,
 )
 from casedd.data_store import DataStore, StoreValue
@@ -240,6 +241,8 @@ class Daemon:
 
         registry = TemplateRegistry(Path(self._cfg.templates_dir))
         await registry.start()
+
+        self._validate_config_pre_run(registry)
 
         panel_runtimes = self._build_panel_runtimes(registry)
 
@@ -633,6 +636,11 @@ class Daemon:
             },
             _rotation_provider,
             _rotation_updater,
+            viewer_layout=(
+                self._cfg.viewer_layout.model_dump(mode="json")
+                if self._cfg.viewer_layout is not None
+                else None
+            ),
             health_provider=_health_provider,
             api_key=self._cfg.api_key,
             api_basic_user=self._cfg.api_basic_user,
@@ -902,6 +910,75 @@ class Daemon:
             )
 
         return _notify
+
+    def _validate_config_pre_run(self, registry: TemplateRegistry) -> None:
+        """Validate config that requires filesystem access (templates dir).
+
+        Checks executed after the template registry is ready but before any
+        panel runtimes are built:
+
+        1. Every panel ``template`` and each rotation/schedule/trigger template
+           referenced within a panel must exist in the templates directory.
+           Missing templates emit CRITICAL log messages so operators see them
+           immediately; they do not abort startup so the remaining panels can
+           still render.
+
+        2. ``viewer_layout`` cells are validated against the declared
+           ``panels`` list.  An unknown panel name in a cell is a hard error
+           because it indicates a typo or stale config — the operator must fix
+           it before the layout can be used.
+
+        Args:
+            registry: Active template registry (already started).
+
+        Raises:
+            ValueError: If ``viewer_layout`` references an unknown panel name.
+        """
+        panel_names = {p.name for p in self._cfg.panels} if self._cfg.panels else {"primary"}
+        available = registry.available_template_names()
+
+        def _check_template(name: str, context: str) -> None:
+            if name not in available:
+                _log.critical(
+                    "Config error: template %r (referenced in %s) does not exist "
+                    "in templates directory. Available: %s",
+                    name,
+                    context,
+                    ", ".join(sorted(available)) or "(none)",
+                )
+
+        for panel in self._cfg.panels or []:
+            ctx = f"panel '{panel.name}'"
+            base = panel.template or self._cfg.template
+            _check_template(base, f"{ctx} base template")
+
+            rotation_list = list(panel.template_rotation) or list(self._cfg.template_rotation)
+            for entry in rotation_list:
+                tname = entry.template if isinstance(entry, RotationEntry) else entry
+                _check_template(tname, f"{ctx} rotation")
+
+            schedule_rules: list[TemplateScheduleRule] = list(
+                panel.template_schedule or self._cfg.template_schedule
+            )
+            for rule in schedule_rules:
+                _check_template(rule.template, f"{ctx} schedule rule")
+
+            trigger_rules: list[TemplateTriggerRule] = list(
+                panel.template_triggers or self._cfg.template_triggers
+            )
+            for trule in trigger_rules:
+                _check_template(trule.template, f"{ctx} trigger rule")
+
+        if self._cfg.viewer_layout is not None:
+            layout: ViewerLayout = self._cfg.viewer_layout
+            unknown = [c for c in layout.cells if c and c not in panel_names]
+            if unknown:
+                msg = (
+                    f"viewer_layout.cells references unknown panel(s): "
+                    f"{', '.join(sorted(unknown))}. "
+                    f"Declared panels: {', '.join(sorted(panel_names))}"
+                )
+                raise ValueError(msg)
 
     def _resolve_rotation_config(
         self,

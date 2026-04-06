@@ -396,7 +396,6 @@ _LIGHT_VIEWER_HTML = """\
     #panels-grid {
       display: none;
       width: min(100%, 1400px);
-      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
       gap: 10px;
     }
     body.multi #frame { display: none; }
@@ -485,6 +484,7 @@ _LIGHT_VIEWER_HTML = """\
 
     let panelName = '';
     let allPanels = [];
+    let savedLayout = null;  // viewer_layout from /api/panels (or null)
     let ws = null;
     // panelName -> <img> element (used in multi-panel mode)
     const tileCells = {};
@@ -495,25 +495,54 @@ _LIGHT_VIEWER_HTML = """\
     }
 
     // --- Multi-panel grid ---------------------------------------------------
+    // When savedLayout is set, build the grid according to its column count
+    // and cells array (empty string = blank placeholder cell).
+    // When no saved layout exists, fall back to auto-fit using allPanels order.
 
     function buildMultiGrid() {
       panelsGrid.innerHTML = '';
       for (const key of Object.keys(tileCells)) {
         delete tileCells[key];
       }
-      for (const p of allPanels) {
+
+      // Build a name -> panel-info lookup for display_name etc.
+      const panelMap = {};
+      for (const p of allPanels) { panelMap[p.name] = p; }
+
+      let cellNames;
+      let columns;
+      if (savedLayout && Array.isArray(savedLayout.cells) && savedLayout.cells.length > 0) {
+        columns = savedLayout.columns || 2;
+        cellNames = savedLayout.cells;
+      } else {
+        // Auto-fit: one tile per panel in allPanels order.
+        columns = Math.min(allPanels.length, 3);
+        cellNames = allPanels.map(p => p.name);
+      }
+
+      panelsGrid.style.gridTemplateColumns = 'repeat(' + columns + ', 1fr)';
+
+      for (const cellName of cellNames) {
         const tile = document.createElement('div');
         tile.className = 'panel-tile';
+        if (!cellName) {
+          // Empty placeholder keeps the grid position occupied.
+          tile.style.background = 'transparent';
+          tile.style.border = 'none';
+          panelsGrid.appendChild(tile);
+          continue;
+        }
+        const p = panelMap[cellName];
         const img = document.createElement('img');
-        img.src = '/image?panel=' + encodeURIComponent(p.name) + '&t=' + Date.now();
-        img.alt = p.display_name || p.name;
+        img.src = '/image?panel=' + encodeURIComponent(cellName) + '&t=' + Date.now();
+        img.alt = (p && (p.display_name || p.name)) || cellName;
         const lbl = document.createElement('div');
         lbl.className = 'panel-tile-name';
-        lbl.textContent = p.display_name || p.name;
+        lbl.textContent = (p && (p.display_name || p.name)) || cellName;
         tile.appendChild(img);
         tile.appendChild(lbl);
         panelsGrid.appendChild(tile);
-        tileCells[p.name] = img;
+        tileCells[cellName] = img;
       }
     }
 
@@ -532,6 +561,7 @@ _LIGHT_VIEWER_HTML = """\
       const response = await fetch('/api/panels', { cache: 'no-store' });
       const payload = await response.json();
       allPanels = Array.isArray(payload.panels) ? payload.panels : [];
+      savedLayout = payload.viewer_layout || null;
       panelSelect.innerHTML = '';
       for (const p of allPanels) {
         const option = document.createElement('option');
@@ -729,6 +759,7 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
     simulation: _SimulationController,
     rotation_provider: Callable[[str], dict[str, object]],
     rotation_updater: Callable[[str, list[str], float, bool, list[RotationEntry] | None], None],
+    viewer_layout: dict[str, object] | None = None,
     health_provider: Callable[[], dict[str, object]] | None = None,
     api_key: str | None = None,
     api_basic_user: str | None = None,
@@ -869,6 +900,7 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
         return {
             "default_panel": default_panel,
             "test_mode": _is_test_mode(store.get(_TEST_MODE_STORE_KEY)),
+            "viewer_layout": viewer_layout,
             "panels": [
                 {
                     **panel,
@@ -1348,6 +1380,7 @@ class HttpViewerOutput:
         rotation_updater: (
             Callable[[str, list[str], float, bool, list[RotationEntry] | None], None] | None
         ) = None,
+        viewer_layout: dict[str, object] | None = None,
         health_provider: Callable[[], dict[str, object]] | None = None,
         api_key: str | None = None,
         api_basic_user: str | None = None,
@@ -1380,6 +1413,7 @@ class HttpViewerOutput:
             simulation=self._simulation,
             rotation_provider=_rot_provider,
             rotation_updater=_rot_updater,
+            viewer_layout=viewer_layout,
             health_provider=health_provider,
             api_key=api_key,
             api_basic_user=api_basic_user,
