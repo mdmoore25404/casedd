@@ -424,7 +424,14 @@ _LIGHT_VIEWER_HTML = """\
       color: #8b949e;
       border-radius: 4px;
       padding: 2px 6px;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+      pointer-events: none;
     }
+    .panel-tile:hover .panel-tile-name {
+      opacity: 1;
+    }
+    body.kiosk .panel-tile-name { display: none; }
     select, a {
       background: #161b22;
       color: #d0d7de;

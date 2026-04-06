@@ -23,6 +23,7 @@ import pytest
 from casedd.config import Config, PanelConfig, ViewerLayout
 from casedd.daemon import Daemon
 from casedd.data_store import DataStore
+import casedd.outputs.http_viewer as _http_viewer_mod
 from casedd.outputs.http_viewer import HttpViewerOutput
 from casedd.template.registry import TemplateRegistry
 
@@ -226,3 +227,38 @@ def test_available_template_names_missing_dir() -> None:
     """available_template_names() returns empty set when directory doesn't exist."""
     registry = TemplateRegistry(Path("/tmp/casedd-nonexistent-dir-xyz"))
     assert registry.available_template_names() == set()
+
+
+# -- Panel-name overlay: hover-reveal + kiosk hiding --
+
+
+def _get_viewer_html() -> str:
+    """Return the raw _LIGHT_VIEWER_HTML string from the http_viewer module."""
+    return _http_viewer_mod._LIGHT_VIEWER_HTML
+
+
+def test_panel_tile_name_hidden_by_default() -> None:
+    """panel-tile-name must have opacity:0 so it is invisible by default."""
+    html = _get_viewer_html()
+    assert "opacity: 0" in html or "opacity:0" in html
+
+
+def test_panel_tile_name_visible_on_hover() -> None:
+    """Hovering .panel-tile must reveal the label via opacity:1."""
+    html = _get_viewer_html()
+    assert ".panel-tile:hover .panel-tile-name" in html
+    # The hover rule must set opacity
+    hover_block_start = html.index(".panel-tile:hover .panel-tile-name")
+    # Grab a short slice after the selector to find the opacity rule.
+    snippet = html[hover_block_start : hover_block_start + 80]
+    assert "opacity" in snippet
+
+
+def test_panel_tile_name_hidden_in_kiosk() -> None:
+    """In kiosk mode the label must be completely suppressed (display:none)."""
+    html = _get_viewer_html()
+    # Must have a kiosk-scoped rule that hides the overlay entirely.
+    assert "body.kiosk .panel-tile-name" in html
+    kiosk_idx = html.index("body.kiosk .panel-tile-name")
+    snippet = html[kiosk_idx : kiosk_idx + 60]
+    assert "none" in snippet  # display: none
