@@ -178,6 +178,38 @@ class RotationEntry(BaseModel):
     skip_if: list[RotationSkipCondition] = Field(default_factory=list)
 
 
+class ViewerLayout(BaseModel):
+    """Grid layout for the multi-panel web viewer.
+
+    Defines how panels are arranged in the viewer's grid view.  When
+    ``viewer_layout`` is present in ``casedd.yaml`` the web UI uses this
+    layout instead of the auto-fit fallback, giving operators full control
+    over which panel appears in which cell.
+
+    The ``cells`` list maps left-to-right, top-to-bottom into a
+    ``columns``-wide CSS grid.  Empty strings (``""``) leave a cell blank.
+
+    Example YAML (2-column, 2-row grid)::
+
+        viewer_layout:
+          columns: 2
+          cells:
+            - primary     # row 1, col 1
+            - virtpanel   # row 1, col 2
+            - virtpanel2  # row 2, col 1
+            - ""          # row 2, col 2 — intentionally empty
+
+    Attributes:
+        columns: Number of grid columns.  Must be between 1 and 16.
+        cells: Panel names in grid order (empty string = blank cell).
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
+
+    columns: int = Field(default=2, ge=1, le=16)
+    cells: list[str] = Field(default_factory=list)
+
+
 class PanelConfig(BaseModel):
     """Configuration for one output panel/framebuffer.
 
@@ -224,12 +256,99 @@ class PanelConfig(BaseModel):
         return int(v)
 
 
+class OutputBackendConfig(BaseModel):
+    """Configuration for one pluggable output backend.
+
+    Used in the ``outputs:`` section of ``casedd.yaml`` to declare named
+    output backends with independent resolution, refresh rate, and template
+    settings.  All backends share the same data store (no redundant polling).
+
+    Example YAML::
+
+        outputs:
+          usb_display:
+            type: framebuffer
+            device: /dev/fb1
+            width: 800
+            height: 480
+            template: system_stats
+          remote_view:
+            type: websocket
+            port: 8765
+            template: system_stats
+
+    Attributes:
+        type: Backend type identifier; must match a registered
+            :class:`~casedd.outputs.registry.OutputRegistry` entry.
+            Built-in values: ``"framebuffer"``, ``"websocket"``.
+        enabled: When ``False`` the backend is skipped at startup.
+        display_name: Human-friendly label used in the HTTP viewer and logs.
+            Defaults to the backend's YAML key name.
+        width: Canvas width in pixels. Falls back to the global ``width``
+            setting when omitted.
+        height: Canvas height in pixels. Falls back to the global ``height``
+            setting when omitted.
+        template: Template name to render for this backend.  Falls back to
+            the global ``template`` setting when omitted.
+        refresh_rate: Render frequency in Hz.  Falls back to the global
+            ``refresh_rate`` when omitted.
+        device: Framebuffer device path (``framebuffer`` type only).
+            Falls back to the global ``fb_device`` setting when omitted.
+        rotation: Display rotation in degrees (0, 90, 180, 270).  Falls back
+            to the global ``fb_rotation`` setting.  Applies to
+            ``framebuffer`` backends only.
+        port: TCP port for the WebSocket server (``websocket`` type only).
+            Falls back to the global ``ws_port`` setting when omitted.
+    """
+
+    # non-strict so dicts coerce to Path etc. when loaded from raw YAML
+    model_config = ConfigDict(strict=False, frozen=True, extra="ignore")
+
+    type: str
+    enabled: bool = True
+    display_name: str | None = None
+    width: int | None = Field(default=None, gt=0)
+    height: int | None = Field(default=None, gt=0)
+    template: str | None = None
+    refresh_rate: float | None = Field(default=None, gt=0)
+    # framebuffer-specific
+    device: Path | None = None
+    rotation: int | None = None
+    # websocket-specific
+    port: int | None = Field(default=None, ge=1, le=65535)
+
+    @field_validator("rotation")
+    @classmethod
+    def _validate_rotation(cls, v: int | None) -> int | None:
+        """Check rotation is a valid degree value.
+
+        Args:
+            v: Raw rotation integer.
+
+        Returns:
+            Validated rotation value.
+
+        Raises:
+            ValueError: If the value is not one of 0, 90, 180, 270.
+        """
+        if v is None:
+            return None
+        if int(v) not in {0, 90, 180, 270}:
+            raise ValueError("rotation must be one of 0, 90, 180, 270")
+        return int(v)
+
+
 @dataclass(config=ConfigDict(frozen=True))
 class Config:
     """Daemon-wide configuration.
 
     Attributes:
         log_level: Logging verbosity (NONE, DEBUG, INFO, WARNING, ERROR, CRITICAL).
+        debug_perf_metrics: Enable per-tick hot-path timing logs (render, output,
+            encode).  Set ``CASEDD_DEBUG_PERF_METRICS=1`` or add
+            ``debug_perf_metrics: true`` to ``casedd.yaml``.  Should only be
+            used during development; adds ``time.perf_counter()`` calls on
+            every render tick.  Disabled in production via systemd.
         debug_frame_logs: Enable per-frame renderer debug logs (hot path);
             defaults to ``False`` to avoid unnecessary CPU/log overhead.
         no_fb: Disable framebuffer output entirely (dev / no-hardware mode).
@@ -252,6 +371,16 @@ class Config:
         procfs_path: Linux procfs root path used by psutil.
         disk_mount: Filesystem mount point to monitor for disk metrics.
         viewer_bg: Default browser viewer page background color.
+        cpu_interval: CPU usage / temperature polling interval in seconds (default: 2.0).
+        gpu_interval: GPU metrics (nvidia-smi) polling interval in seconds (default: 5.0).
+        memory_interval: Memory usage polling interval in seconds (default: 2.0).
+        disk_interval: Disk usage / I/O polling interval in seconds (default: 2.0).
+        network_interval: Network throughput polling interval in seconds (default: 2.0).
+        system_interval: Host metadata (hostname, uptime, load) polling interval in
+            seconds (default: 10.0).
+        fans_interval: Fan speed polling interval in seconds (default: 3.0).
+        net_ports_interval: Open network ports polling interval in seconds (default: 5.0).
+        sysinfo_interval: Static system info polling interval in seconds (default: 30.0).
         containers_interval: Container runtime polling interval in seconds.
         containers_runtime: Preferred runtime backend (auto/docker/podman/containerd).
         containers_max_items: Maximum indexed ``containers.<n>`` rows emitted.
@@ -365,6 +494,15 @@ class Config:
             accessible for your display environment (e.g. ``"#ff00ff"`` for
             magenta / fuchsia).
         panels: Optional per-panel output/runtime definitions.
+        viewer_layout: Optional grid layout for the multi-panel web viewer.
+            Defines column count and which panel appears in each cell.
+            When omitted the viewer uses an auto-fit grid.
+        outputs: Pluggable output backend definitions.  When present, the
+            daemon builds backends from this mapping and routes rendered
+            frames to each enabled backend.  Keys are stable backend names;
+            values specify type, resolution, template, and other per-backend
+            settings.  Falls back to the ``panels`` / legacy single-panel
+            system when this mapping is empty (default).
         always_collect_prefixes: Namespaces that are always sampled.
         pushover_webhook_url: Pushover webhook URL for trigger notifications.
             Create a webhook at https://pushover.net/dashboard and paste its
@@ -386,6 +524,7 @@ class Config:
 
     log_level: str = Field(default="INFO")
     debug_frame_logs: bool = Field(default=False)
+    debug_perf_metrics: bool = Field(default=False)
     no_fb: bool = Field(default=False)
     fb_device: Path = Field(default=Path("/dev/fb1"))
     fb_auto_detect: bool = Field(default=False)
@@ -408,6 +547,15 @@ class Config:
     disk_mount: str = Field(default="/")
     viewer_bg: str = Field(default="#0d0f12")
     display_padding: int | list[int] = Field(default=0)
+    cpu_interval: float = Field(default=2.0, gt=0)
+    gpu_interval: float = Field(default=5.0, gt=0)
+    memory_interval: float = Field(default=2.0, gt=0)
+    disk_interval: float = Field(default=2.0, gt=0)
+    network_interval: float = Field(default=2.0, gt=0)
+    system_interval: float = Field(default=10.0, gt=0)
+    fans_interval: float = Field(default=3.0, gt=0)
+    net_ports_interval: float = Field(default=5.0, gt=0)
+    sysinfo_interval: float = Field(default=30.0, gt=0)
     containers_interval: float = Field(default=8.0)
     containers_runtime: str = Field(default="auto")
     containers_max_items: int = Field(default=12, ge=1, le=100)
@@ -518,7 +666,7 @@ class Config:
     nzbget_timeout: float = Field(default=3.0)
     nzbget_category_filter_regex: str | None = Field(default=None)
     nasa_api_key: str | None = Field(default=None, repr=False)
-    apod_interval: float = Field(default=3600.0, gt=0)
+    apod_interval: float = Field(default=14400.0, gt=0)
     apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data
     pushover_webhook_url: str | None = Field(default=None, repr=False)
     template_rotation: list[str | RotationEntry] = Field(default_factory=list)
@@ -528,6 +676,8 @@ class Config:
     template_triggers: list[TemplateTriggerRule] = Field(default_factory=list)
     trigger_border_color: str = Field(default="#dc1e1e")
     panels: list[PanelConfig] = Field(default_factory=list)
+    viewer_layout: ViewerLayout | None = Field(default=None)
+    outputs: dict[str, OutputBackendConfig] = Field(default_factory=dict)
     always_collect_prefixes: list[str] = Field(default_factory=list)
     test_mode: bool = Field(default=False)
     api_key: str | None = Field(default=None, repr=False)
@@ -1234,6 +1384,9 @@ def load_config() -> Config:
         debug_frame_logs=str(
             _get("CASEDD_DEBUG_FRAME_LOGS", "debug_frame_logs", "0")
         ) not in {"0", "false", "False", ""},
+        debug_perf_metrics=str(
+            _get("CASEDD_DEBUG_PERF_METRICS", "debug_perf_metrics", "0")
+        ) not in {"0", "false", "False", ""},
         no_fb=str(_get("CASEDD_NO_FB", "no_fb", "0")) not in {"0", "false", "False", ""},
         fb_device=Path(str(_get("CASEDD_FB_DEVICE", "fb_device", "/dev/fb1"))),
         fb_auto_detect=str(
@@ -1260,6 +1413,17 @@ def load_config() -> Config:
         procfs_path=str(_get("CASEDD_PROCFS_PATH", "procfs_path", "/proc")),
         disk_mount=str(_get("CASEDD_DISK_MOUNT", "disk_mount", "/")),
         viewer_bg=str(_get("CASEDD_VIEWER_BG", "viewer_bg", "#0d0f12")),
+        cpu_interval=float(str(_get("CASEDD_CPU_INTERVAL", "cpu_interval", 2.0))),
+        gpu_interval=float(str(_get("CASEDD_GPU_INTERVAL", "gpu_interval", 5.0))),
+        memory_interval=float(str(_get("CASEDD_MEMORY_INTERVAL", "memory_interval", 2.0))),
+        disk_interval=float(str(_get("CASEDD_DISK_INTERVAL", "disk_interval", 2.0))),
+        network_interval=float(str(_get("CASEDD_NETWORK_INTERVAL", "network_interval", 2.0))),
+        system_interval=float(str(_get("CASEDD_SYSTEM_INTERVAL", "system_interval", 10.0))),
+        fans_interval=float(str(_get("CASEDD_FANS_INTERVAL", "fans_interval", 3.0))),
+        net_ports_interval=float(
+            str(_get("CASEDD_NET_PORTS_INTERVAL", "net_ports_interval", 5.0))
+        ),
+        sysinfo_interval=float(str(_get("CASEDD_SYSINFO_INTERVAL", "sysinfo_interval", 30.0))),
         containers_interval=float(
             str(_get("CASEDD_CONTAINERS_INTERVAL", "containers_interval", 8.0))
         ),
@@ -1590,6 +1754,13 @@ def load_config() -> Config:
             _get("CASEDD_TRIGGER_BORDER_COLOR", "trigger_border_color", "#dc1e1e")
         ),
         panels=cast("list[PanelConfig]", _get_yaml_list("panels")),
+        viewer_layout=ViewerLayout.model_validate(yaml_data["viewer_layout"])
+        if isinstance(yaml_data.get("viewer_layout"), dict)
+        else None,
+        outputs=cast(
+            "dict[str, OutputBackendConfig]",
+            yaml_data.get("outputs", {}),
+        ),
         always_collect_prefixes=_get_always_collect_prefixes(),
         test_mode=str(_get("CASEDD_TEST_MODE", "test_mode", "0"))
         not in {"0", "false", "False", ""},

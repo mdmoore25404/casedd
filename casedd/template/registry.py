@@ -131,6 +131,19 @@ class TemplateRegistry:
             return []
         return list(template.skip_if)
 
+    def available_template_names(self) -> set[str]:
+        """Return the set of template names available on disk.
+
+        Scans the templates directory for ``.casedd`` files without loading
+        them.  Used for config validation at startup.
+
+        Returns:
+            Set of template name strings (stems of ``.casedd`` files).
+        """
+        if not self._dir.is_dir():
+            return set()
+        return {p.stem for p in self._dir.glob("*.casedd")}
+
     def preload_all(self) -> None:
         """Attempt to load all .casedd files in the templates directory.
 

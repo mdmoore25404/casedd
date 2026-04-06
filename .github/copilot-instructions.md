@@ -325,3 +325,11 @@ Both must pass with zero errors/warnings before any commit. The agent iterates o
 errors automatically. If a rule cannot be satisfied without a human decision, stop and
 ask — do not suppress rules with `# noqa` or `# type: ignore` without a comment
 explaining exactly why it is necessary and safe.
+
+---
+
+## Available skills
+
+| Skill | Location | When to use |
+|-------|----------|-------------|
+| `docs-validation` | `.github/skills/docs-validation/SKILL.md` | After changing getters, CLI, templates, or API — fetch rendered doc pages from the local Jekyll server at `http://localhost:4000` and compare against actual codebase source. Also use before releases for a full accuracy audit. |

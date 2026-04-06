@@ -30,10 +30,12 @@ import psutil
 
 from casedd.config import (
     Config,
+    OutputBackendConfig,
     PanelConfig,
     RotationEntry,
     TemplateScheduleRule,
     TemplateTriggerRule,
+    ViewerLayout,
     save_rotation_config_to_yaml,
 )
 from casedd.data_store import DataStore, StoreValue
@@ -72,6 +74,7 @@ from casedd.getters.weather import WeatherGetter
 from casedd.ingestion.unix_socket import UnixSocketIngestion
 from casedd.input_detect import has_local_keyboard_or_mouse
 from casedd.notifications.pushover import send_pushover_webhook
+from casedd.outputs.base import OutputBackend, scale_for_backend
 from casedd.outputs.framebuffer import FramebufferOutput
 from casedd.outputs.http_viewer import HttpViewerOutput
 from casedd.outputs.websocket import WebSocketOutput
@@ -140,13 +143,29 @@ class _PanelRuntime:
     trigger_rules: list[TemplateTriggerRule]
     selector: TemplateSelector
     engine: RenderEngine
-    framebuffer: FramebufferOutput
+    backend: OutputBackend
     fb_device: Path
     rotation: int
     current_template: str = ""
     next_render_at: float = 0.0
     current_render_interval: float = 0.0
     refresh_signature: tuple[object, ...] | None = None
+
+
+@dataclass
+class _BackendRuntime:
+    """Lightweight runtime for an additional pluggable output backend.
+
+    Used when ``outputs:`` is configured in ``casedd.yaml``.  Each backend
+    receives the rendered image from the primary panel each tick and calls
+    :meth:`~casedd.outputs.base.OutputBackend.output` to deliver it to its
+    sink.  Per-backend template rendering is a future enhancement.
+    """
+
+    name: str
+    display_name: str
+    backend: OutputBackend
+    cfg: OutputBackendConfig
 
 
 @dataclass(frozen=True)
@@ -169,6 +188,7 @@ class _RenderLoopContext:
     http_output: HttpViewerOutput
     getters_by_name: dict[str, BaseGetter]
     getter_tasks: dict[str, asyncio.Task[None]]
+    backend_runtimes: list[_BackendRuntime]
 
 
 class Daemon:
@@ -193,6 +213,10 @@ class Daemon:
         self._render_loop_ema_ms: float = 0.0
         self._render_loop_max_ms: float = 0.0
         self._emergency_exit_watcher: EmergencyExitWatcher | None = None
+        # Enable per-tick hot-path timing at DEBUG level when set.
+        # Activated via CASEDD_DEBUG_PERF_METRICS=1 (dev.sh sets this automatically).
+        # Not set in the systemd unit to avoid perf_counter overhead in production.
+        self._debug_perf_metrics: bool = config.debug_perf_metrics
 
     def _record_render_timing(self, elapsed_ms: float) -> None:
         """Update rolling render-loop timing statistics."""
@@ -209,16 +233,7 @@ class Daemon:
     async def run(self) -> None:
         """Start all subsystems and run the main render loop until shutdown."""
         loop = asyncio.get_running_loop()
-        for sig in (signal.SIGINT, signal.SIGTERM):
-            loop.add_signal_handler(sig, self._shutdown.set)
-        # SIGHUP triggers a config and template hot-reload.
-        loop.add_signal_handler(signal.SIGHUP, self._handle_sighup)
-        self._started_at = time.time()
-
-        self._store.set(_TEST_MODE_STORE_KEY, 1 if self._cfg.test_mode else 0)
-        self._load_speedtest_cache()
-        self._setup_framebuffer_detection()
-        self._setup_emergency_exit_watcher()
+        self._setup_run_environment(loop)
 
         getters = self._create_getters()
         getters_by_name = {type(getter).__name__: getter for getter in getters}
@@ -227,7 +242,14 @@ class Daemon:
         registry = TemplateRegistry(Path(self._cfg.templates_dir))
         await registry.start()
 
+        self._validate_config_pre_run(registry)
+
         panel_runtimes = self._build_panel_runtimes(registry)
+
+        # Build and start additional pluggable backends from ``outputs:`` config.
+        # Each enabled backend is started here and stopped in the finally clause.
+        backend_runtimes = self._build_backend_runtimes()
+        await self._start_backend_runtimes(backend_runtimes)
 
         ws_output, http_output, unix_ingestion = self._setup_outputs_and_ingestion(
             panel_runtimes
@@ -265,6 +287,7 @@ class Daemon:
             http_output=http_output,
             getters_by_name=getters_by_name,
             getter_tasks=getter_tasks,
+            backend_runtimes=backend_runtimes,
         )
 
         try:
@@ -285,6 +308,11 @@ class Daemon:
             await ws_output.stop()
             await http_output.stop()
             await registry.stop()
+            # Stop additional backends registered via ``outputs:`` config.
+            for bt in backend_runtimes:
+                with contextlib.suppress(Exception):
+                    await bt.backend.stop()
+                    _log.debug("Backend '%s' stopped.", bt.name)
             await self._blackout_framebuffers(panel_runtimes)
             # Ensure the kernel framebuffer console and VT cursor are restored
             # so the host login prompt is visible again after CASEDD exits.
@@ -294,6 +322,25 @@ class Daemon:
                 _log.exception("Failed to restore kernel console / VT cursor")
 
             _log.info("Daemon shutdown complete.")
+
+    def _setup_run_environment(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Install signal handlers and perform one-time startup initialisation.
+
+        Separated from :meth:`run` to keep the orchestrator method within the
+        PLR0915 statement-count limit.
+
+        Args:
+            loop: The running asyncio event loop.
+        """
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, self._shutdown.set)
+        # SIGHUP triggers a template hot-reload without a full daemon restart.
+        loop.add_signal_handler(signal.SIGHUP, self._handle_sighup)
+        self._started_at = time.time()
+        self._store.set(_TEST_MODE_STORE_KEY, 1 if self._cfg.test_mode else 0)
+        self._load_speedtest_cache()
+        self._setup_framebuffer_detection()
+        self._setup_emergency_exit_watcher()
 
     def _setup_emergency_exit_watcher(self) -> None:
         """Enable optional ESC/Q emergency key watcher.
@@ -589,6 +636,11 @@ class Daemon:
             },
             _rotation_provider,
             _rotation_updater,
+            viewer_layout=(
+                self._cfg.viewer_layout.model_dump(mode="json")
+                if self._cfg.viewer_layout is not None
+                else None
+            ),
             health_provider=_health_provider,
             api_key=self._cfg.api_key,
             api_basic_user=self._cfg.api_basic_user,
@@ -734,8 +786,8 @@ class Daemon:
         ws_output: WebSocketOutput,
         http_output: HttpViewerOutput,
     ) -> None:
-        """Write one image to framebuffer, HTTP viewer, and websocket clients."""
-        await asyncio.to_thread(panel.framebuffer.write, image)
+        """Write one image to the panel backend, HTTP viewer, and websocket clients."""
+        await panel.backend.output(image)
         http_output.set_latest_image(panel.name, image)
         await ws_output.broadcast(image, panel=panel.name)
 
@@ -803,7 +855,7 @@ class Daemon:
         _log.info("Writing final black frame to framebuffer(s)")
         for panel in panel_runtimes:
             black = Image.new("RGB", (panel.width, panel.height), (0, 0, 0))
-            await asyncio.to_thread(panel.framebuffer.write, black)
+            await panel.backend.output(black)
 
     def _restore_console_and_cursor(self, panel_runtimes: list[_PanelRuntime]) -> None:
         """Attempt to re-enable kernel console and show VT cursor.
@@ -859,6 +911,75 @@ class Daemon:
 
         return _notify
 
+    def _validate_config_pre_run(self, registry: TemplateRegistry) -> None:
+        """Validate config that requires filesystem access (templates dir).
+
+        Checks executed after the template registry is ready but before any
+        panel runtimes are built:
+
+        1. Every panel ``template`` and each rotation/schedule/trigger template
+           referenced within a panel must exist in the templates directory.
+           Missing templates emit CRITICAL log messages so operators see them
+           immediately; they do not abort startup so the remaining panels can
+           still render.
+
+        2. ``viewer_layout`` cells are validated against the declared
+           ``panels`` list.  An unknown panel name in a cell is a hard error
+           because it indicates a typo or stale config — the operator must fix
+           it before the layout can be used.
+
+        Args:
+            registry: Active template registry (already started).
+
+        Raises:
+            ValueError: If ``viewer_layout`` references an unknown panel name.
+        """
+        panel_names = {p.name for p in self._cfg.panels} if self._cfg.panels else {"primary"}
+        available = registry.available_template_names()
+
+        def _check_template(name: str, context: str) -> None:
+            if name not in available:
+                _log.critical(
+                    "Config error: template %r (referenced in %s) does not exist "
+                    "in templates directory. Available: %s",
+                    name,
+                    context,
+                    ", ".join(sorted(available)) or "(none)",
+                )
+
+        for panel in self._cfg.panels or []:
+            ctx = f"panel '{panel.name}'"
+            base = panel.template or self._cfg.template
+            _check_template(base, f"{ctx} base template")
+
+            rotation_list = list(panel.template_rotation) or list(self._cfg.template_rotation)
+            for entry in rotation_list:
+                tname = entry.template if isinstance(entry, RotationEntry) else entry
+                _check_template(tname, f"{ctx} rotation")
+
+            schedule_rules: list[TemplateScheduleRule] = list(
+                panel.template_schedule or self._cfg.template_schedule
+            )
+            for rule in schedule_rules:
+                _check_template(rule.template, f"{ctx} schedule rule")
+
+            trigger_rules: list[TemplateTriggerRule] = list(
+                panel.template_triggers or self._cfg.template_triggers
+            )
+            for trule in trigger_rules:
+                _check_template(trule.template, f"{ctx} trigger rule")
+
+        if self._cfg.viewer_layout is not None:
+            layout: ViewerLayout = self._cfg.viewer_layout
+            unknown = [c for c in layout.cells if c and c not in panel_names]
+            if unknown:
+                msg = (
+                    f"viewer_layout.cells references unknown panel(s): "
+                    f"{', '.join(sorted(unknown))}. "
+                    f"Declared panels: {', '.join(sorted(panel_names))}"
+                )
+                raise ValueError(msg)
+
     def _resolve_rotation_config(
         self,
         panel: PanelConfig,
@@ -868,25 +989,34 @@ class Daemon:
         Supports mixed config lists containing plain template names and
         :class:`RotationEntry` records with per-template dwell times.
 
+        When the panel does not override ``template_rotation`` the global
+        :attr:`~casedd.config.Config.template_rotation` list is used as a
+        fallback, so multi-panel YAML configs can omit rotation on panels
+        that share the primary rotation schedule.
+
         Args:
             panel: Panel configuration to normalize.
 
         Returns:
             Tuple of ``(rotation_templates, rotation_entries_or_none)``.
         """
-        if not panel.template_rotation:
+        # Fall back to the global rotation list when the panel does not
+        # override it.  This lets multi-panel YAML configs omit rotation on
+        # secondary panels that want the same schedule as the primary.
+        raw_list = list(panel.template_rotation) or list(self._cfg.template_rotation)
+        if not raw_list:
             return [], None
 
         rotation_templates = [
             item.template if isinstance(item, RotationEntry) else item
-            for item in panel.template_rotation
+            for item in raw_list
         ]
-        if not any(isinstance(item, RotationEntry) for item in panel.template_rotation):
+        if not any(isinstance(item, RotationEntry) for item in raw_list):
             return rotation_templates, None
 
         rotation_entries = [
             item if isinstance(item, RotationEntry) else RotationEntry(template=item)
-            for item in panel.template_rotation
+            for item in raw_list
         ]
         return rotation_templates, rotation_entries
 
@@ -928,8 +1058,10 @@ class Daemon:
             height = panel.height if panel.height is not None else 0
             base_template = panel.template if panel.template is not None else self._cfg.template
             rotation_templates, configured_rotation_entries = self._resolve_rotation_config(panel)
-            schedule_rules = list(panel.template_schedule)
-            trigger_rules = list(panel.template_triggers)
+            # Fall back to global schedule/trigger rules when the panel does
+            # not define its own — consistent with rotation inheritance above.
+            schedule_rules = list(panel.template_schedule or self._cfg.template_schedule)
+            trigger_rules = list(panel.template_triggers or self._cfg.template_triggers)
             rotation_interval = (
                 panel.template_rotation_interval
                 if panel.template_rotation_interval is not None
@@ -1001,7 +1133,7 @@ class Daemon:
 
             # Determine rotation: per-panel override wins, otherwise global
             rot = panel.rotation if panel.rotation is not None else self._cfg.fb_rotation
-            framebuffer = FramebufferOutput(fb_device, disabled=no_fb, rotation=rot)
+            framebuffer_backend = FramebufferOutput(fb_device, disabled=no_fb, rotation=rot)
 
             # Validate template availability early so startup fails loudly if broken.
             registry.get(base_template)
@@ -1025,7 +1157,7 @@ class Daemon:
                     debug_frame_logs=self._cfg.debug_frame_logs,
                     display_padding=self._cfg.display_padding,
                 ),
-                framebuffer=framebuffer,
+                backend=framebuffer_backend,
                 fb_device=fb_device,
                 rotation=rot,
             )
@@ -1042,6 +1174,126 @@ class Daemon:
             runtimes.append(runtime)
 
         return runtimes
+
+    def _build_backend_runtimes(self) -> list[_BackendRuntime]:
+        """Create pluggable backend runtimes from the ``outputs:`` config section.
+
+        Each entry in :attr:`~casedd.config.Config.outputs` that has
+        ``enabled: true`` (default) is instantiated via the
+        :class:`~casedd.outputs.registry.OutputRegistry` and wrapped in a
+        :class:`_BackendRuntime`.
+
+        Returns:
+            Ordered list of enabled :class:`_BackendRuntime` records, or an
+            empty list when ``outputs:`` is absent or empty.
+        """
+        if not self._cfg.outputs:
+            return []
+
+        from casedd.outputs.registry import (  # noqa: PLC0415 - deferred to avoid circular import at module level
+            get_default_registry,
+        )
+
+        registry = get_default_registry()
+        runtimes: list[_BackendRuntime] = []
+        for name, cfg in self._cfg.outputs.items():
+            if not cfg.enabled:
+                _log.info("Backend '%s' skipped (enabled: false).", name)
+                continue
+            try:
+                backend = registry.create(cfg, self._cfg)
+            except (KeyError, Exception):
+                _log.exception("Failed to create backend '%s' — skipping.", name)
+                continue
+            display_name = cfg.display_name or name
+            runtimes.append(
+                _BackendRuntime(name=name, display_name=display_name, backend=backend, cfg=cfg)
+            )
+            _log.info(
+                "Registered output backend '%s' (type: %s, display: %s)",
+                name,
+                cfg.type,
+                display_name,
+            )
+        return runtimes
+
+    async def _start_backend_runtimes(
+        self,
+        backend_runtimes: list[_BackendRuntime],
+    ) -> None:
+        """Call :meth:`~casedd.outputs.base.OutputBackend.start` on each backend.
+
+        Args:
+            backend_runtimes: List of runtimes built by
+                :meth:`_build_backend_runtimes`.
+        """
+        for bt in backend_runtimes:
+            await bt.backend.start()
+            _log.info(
+                "Backend '%s' (type=%s) started: %s",
+                bt.name,
+                bt.cfg.type,
+                bt.backend.get_config(),
+            )
+
+    async def _dispatch_frame(
+        self,
+        image: Image.Image,
+        panel: _PanelRuntime,
+        context: _RenderLoopContext,
+        render_ms: float,
+    ) -> None:
+        """Send a rendered frame to all output sinks and log perf timings.
+
+        Handles framebuffer backend, HTTP viewer update, WebSocket broadcast,
+        and any additional pluggable backends registered via ``outputs:`` config.
+        When :attr:`_debug_perf_metrics` is enabled each step is timed and the
+        results are emitted at DEBUG level.
+
+        Args:
+            image: The rendered ``PIL.Image`` for this tick.
+            panel: The panel runtime the image belongs to.
+            context: Shared render-loop context (outputs, backend runtimes).
+            render_ms: Pre-measured PIL render time in milliseconds; only used
+                when :attr:`_debug_perf_metrics` is ``True``.
+        """
+        _t1 = time.perf_counter() if self._debug_perf_metrics else 0.0
+        await panel.backend.output(image)
+        _fb_ms = (time.perf_counter() - _t1) * 1000.0 if self._debug_perf_metrics else 0.0
+
+        context.http_output.set_latest_image(panel.name, image)
+
+        _t2 = time.perf_counter() if self._debug_perf_metrics else 0.0
+        await context.ws_output.broadcast(image, panel=panel.name)
+        _ws_ms = (time.perf_counter() - _t2) * 1000.0 if self._debug_perf_metrics else 0.0
+
+        # Route the rendered frame to each additional backend registered
+        # via the ``outputs:`` config.  Each backend receives the image
+        # scaled to its declared width/height (if configured), preserving
+        # aspect ratio.  Per-backend template rendering is a future enhancement.
+        _backends_ms = 0.0
+        for bt in context.backend_runtimes:
+            _tb = time.perf_counter() if self._debug_perf_metrics else 0.0
+            bt_image = scale_for_backend(image, bt.cfg)
+            await bt.backend.output(bt_image, bt.cfg)
+            if self._debug_perf_metrics:
+                _backends_ms += (time.perf_counter() - _tb) * 1000.0
+            context.http_output.set_latest_image(bt.name, bt_image)
+
+        if self._debug_perf_metrics:
+            _total_ms = render_ms + _fb_ms + _ws_ms + _backends_ms
+            _log.debug(
+                "[perf] tick=%d panel=%s render=%.1fms fb=%.1fms "
+                "ws=%.1fms(clients=%d) backends=%.1fms total=%.1fms",
+                self._render_count,
+                panel.name,
+                render_ms,
+                _fb_ms,
+                _ws_ms,
+                context.ws_output.client_count,
+                _backends_ms,
+                _total_ms,
+            )
 
     async def _render_loop(self, context: _RenderLoopContext) -> None:
         """Drive render/output cycle using per-panel effective refresh rates."""
@@ -1079,12 +1331,19 @@ class Daemon:
                     next_due_at = self._earliest_deadline(next_due_at, panel.next_render_at)
                     continue
 
+                _t0 = time.perf_counter() if self._debug_perf_metrics else 0.0
                 image = await asyncio.to_thread(
                     self._render_one,
                     context.registry,
                     panel.engine,
                     selected,
                 )
+                _render_ms = (
+                    (time.perf_counter() - _t0) * 1000.0
+                    if self._debug_perf_metrics
+                    else 0.0
+                )
+
                 if image is None:
                     panel.next_render_at = tick_start + render_interval
                     next_due_at = self._earliest_deadline(next_due_at, panel.next_render_at)
@@ -1094,9 +1353,7 @@ class Daemon:
                     border_color = parse_color(self._cfg.trigger_border_color)
                     await asyncio.to_thread(_draw_trigger_border, image, border_color)
 
-                await asyncio.to_thread(panel.framebuffer.write, image)
-                context.http_output.set_latest_image(panel.name, image)
-                await context.ws_output.broadcast(image, panel=panel.name)
+                await self._dispatch_frame(image, panel, context, _render_ms)
                 self._render_count += 1
                 panel.next_render_at = tick_start + render_interval
                 next_due_at = self._earliest_deadline(next_due_at, panel.next_render_at)
@@ -1281,13 +1538,17 @@ class Daemon:
             psutil.PROCFS_PATH = self._cfg.procfs_path
 
         getters: list[BaseGetter] = [
-            CpuGetter(self._store),
-            GpuGetter(self._store),
-            MemoryGetter(self._store),
-            DiskGetter(self._store, mount=self._cfg.disk_mount),
-            NetworkGetter(self._store, interfaces=self._cfg.net_interfaces),
-            SystemGetter(self._store),
-            FanGetter(self._store),
+            CpuGetter(self._store, interval=self._cfg.cpu_interval),
+            GpuGetter(self._store, interval=self._cfg.gpu_interval),
+            MemoryGetter(self._store, interval=self._cfg.memory_interval),
+            DiskGetter(self._store, mount=self._cfg.disk_mount, interval=self._cfg.disk_interval),
+            NetworkGetter(
+                self._store,
+                interfaces=self._cfg.net_interfaces,
+                interval=self._cfg.network_interval,
+            ),
+            SystemGetter(self._store, interval=self._cfg.system_interval),
+            FanGetter(self._store, interval=self._cfg.fans_interval),
             ContainersGetter(
                 self._store,
                 interval=self._cfg.containers_interval,
@@ -1450,8 +1711,8 @@ class Daemon:
                 interval=self._cfg.apod_interval,
                 cache_dir=self._cfg.apod_cache_dir,
             ),
-            NetPortsGetter(self._store),
-            SysinfoGetter(self._store),
+            NetPortsGetter(self._store, interval=self._cfg.net_ports_interval),
+            SysinfoGetter(self._store, interval=self._cfg.sysinfo_interval),
         ]
         # Attach health registry so each getter reports outcomes.
         for getter in getters:
