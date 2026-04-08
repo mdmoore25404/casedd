@@ -688,6 +688,11 @@ class Config:
     truenas_strip_domain_hostname: bool = Field(default=True)
     tuya_devices: list[TuyaDeviceConfig] = Field(default_factory=list)
     tuya_interval: float = Field(default=10.0)
+    tuya_cloud_enabled: bool = Field(default=False)
+    tuya_api_region: str = Field(default="")
+    tuya_api_key: str | None = Field(default=None, repr=False)
+    tuya_api_secret: str | None = Field(default=None, repr=False)
+    tuya_api_device_id: str | None = Field(default=None)
     plex_base_url: str = Field(default="http://localhost:32400")
     plex_token: str | None = Field(default=None, repr=False)
     plex_client_identifier: str = Field(default="casedd")
@@ -1421,6 +1426,33 @@ def load_config() -> Config:
         text = str(raw)
         return [item.strip() for item in text.split(",") if item.strip()]
 
+    def _get_tuya_devices() -> list[TuyaDeviceConfig]:
+        """Parse Tuya device definitions from env/yaml.
+
+        ``CASEDD_TUYA_DEVICES`` may contain a YAML/JSON list override. When
+        unset, values are read from ``tuya_devices`` in the config file.
+
+        Returns:
+            Validated Tuya device configuration list.
+        """
+        env_raw = os.environ.get("CASEDD_TUYA_DEVICES")
+        raw: object
+        if env_raw is not None and env_raw.strip():
+            parsed = yaml.safe_load(env_raw)
+            raw = parsed if parsed is not None else []
+        else:
+            raw = yaml_data.get("tuya_devices", [])
+        if not isinstance(raw, list):
+            return []
+        out: list[TuyaDeviceConfig] = []
+        for item in raw:
+            if isinstance(item, TuyaDeviceConfig):
+                out.append(item)
+                continue
+            if isinstance(item, dict):
+                out.append(TuyaDeviceConfig.model_validate(item))
+        return out
+
     return Config(
         log_level=str(_get("CASEDD_LOG_LEVEL", "log_level", "INFO")),
         debug_frame_logs=str(
@@ -1736,6 +1768,19 @@ def load_config() -> Config:
             )
         )
         not in {"0", "false", "False", ""},
+        tuya_devices=_get_tuya_devices(),
+        tuya_interval=float(str(_get("CASEDD_TUYA_INTERVAL", "tuya_interval", 10.0))),
+        tuya_cloud_enabled=str(
+            _get("CASEDD_TUYA_CLOUD_ENABLED", "tuya_cloud_enabled", "0")
+        ) not in {"0", "false", "False", ""},
+        tuya_api_region=str(_get("CASEDD_TUYA_API_REGION", "tuya_api_region", "")).strip(),
+        tuya_api_key=str(_get("CASEDD_TUYA_API_KEY", "tuya_api_key", "")).strip() or None,
+        tuya_api_secret=str(_get("CASEDD_TUYA_API_SECRET", "tuya_api_secret", "")).strip()
+        or None,
+        tuya_api_device_id=str(
+            _get("CASEDD_TUYA_API_DEVICE_ID", "tuya_api_device_id", "")
+        ).strip()
+        or None,
         plex_base_url=str(_get("CASEDD_PLEX_BASE_URL", "plex_base_url", "http://localhost:32400")),
         plex_token=str(_get("CASEDD_PLEX_TOKEN", "plex_token", "")).strip() or None,
         plex_client_identifier=str(

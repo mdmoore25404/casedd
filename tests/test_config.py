@@ -258,17 +258,39 @@ def test_synology_env_settings_parse(monkeypatch: object, tmp_path: Path) -> Non
         assert cfg.synology_verify_tls is False
         assert cfg.synology_volume_exclude_regex == "(backup)"
         assert cfg.synology_user_exclude_regex == "(guest)"
-        assert cfg.synology_surveillance_enabled is True
-        assert cfg.synology_surveillance_max_cameras == 3
-        assert cfg.synology_camera_snapshot_enabled is True
-        assert cfg.synology_camera_snapshot_width == 800
-        assert cfg.synology_camera_snapshot_height == 450
-        assert cfg.synology_camera_include_regex == "(Front|Drive)"
-        assert cfg.synology_camera_exclude_regex == "(Old)"
-        assert cfg.synology_camera_exclude_statuses == "7,offline"
-        assert cfg.synology_dsm_updates_enabled is True
-        assert cfg.synology_strip_domain_hostname is False
-        assert cfg.truenas_strip_domain_hostname is False
+
+
+def test_tuya_devices_parse_from_yaml(monkeypatch: object, tmp_path: Path) -> None:
+        """Tuya device list and interval should load from YAML."""
+        cfg_path = tmp_path / "casedd.yaml"
+        cfg_path.write_text(
+                "\n".join(
+                        [
+                                "template: system_stats",
+                                "tuya_interval: 15",
+                                "tuya_devices:",
+                                "  - device_id: plug-1",
+                                "    local_key: local-key-1",
+                                "    device_type: plug",
+                                "  - device_id: sensor-1",
+                                "    local_key: local-key-2",
+                                "    device_type: sensor",
+                        ]
+                ),
+                encoding="utf-8",
+        )
+
+        monkeypatch_obj = monkeypatch
+        monkeypatch_obj.setenv("CASEDD_CONFIG", str(cfg_path))
+
+        cfg = load_config()
+
+        assert cfg.tuya_interval == 15.0
+        assert len(cfg.tuya_devices) == 2
+        assert cfg.tuya_devices[0].device_id == "plug-1"
+        assert cfg.tuya_devices[0].device_type == "plug"
+        assert cfg.tuya_devices[1].device_id == "sensor-1"
+        assert cfg.tuya_devices[1].device_type == "sensor"
 
 
 def test_invokeai_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:

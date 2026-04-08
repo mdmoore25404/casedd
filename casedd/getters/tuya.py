@@ -15,8 +15,9 @@ Store keys written:
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
+from dataclasses import dataclass
 import logging
-from typing import Any
 
 import tinytuya  # type: ignore[import-untyped]
 
@@ -25,6 +26,100 @@ from casedd.data_store import DataStore, StoreValue
 from casedd.getters.base import BaseGetter
 
 _log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TuyaCloudSettings:
+    """Optional Tuya cloud API settings for read-only fallback polling."""
+
+    enabled: bool = False
+    region: str = ""
+    api_key: str | None = None
+    api_secret: str | None = None
+    api_device_id: str | None = None
+
+
+def _coerce_number(value: object) -> float | None:
+    """Convert a raw Tuya value into a float when possible.
+
+    Args:
+        value: Raw value from DPS/status payload.
+
+    Returns:
+        Parsed float, or ``None`` when conversion is not possible.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    return None
+
+
+def _status_code_values(status: Mapping[str, object]) -> dict[str, float]:
+    """Build a ``code -> numeric value`` map from cloud-style status arrays.
+
+    Args:
+        status: Raw device status payload.
+
+    Returns:
+        Dictionary of status code names mapped to numeric values.
+    """
+    result: dict[str, float] = {}
+    raw_status = status.get("status")
+    if not isinstance(raw_status, list):
+        raw_status = status.get("result")
+    if not isinstance(raw_status, list):
+        return result
+    for item in raw_status:
+        if not isinstance(item, Mapping):
+            continue
+        code = item.get("code")
+        if not isinstance(code, str):
+            continue
+        number = _coerce_number(item.get("value"))
+        if number is None:
+            continue
+        result[code] = number
+    return result
+
+
+def _dps_values(status: Mapping[str, object]) -> dict[str, float]:
+    """Build a numeric DPS map from local-protocol payloads.
+
+    Args:
+        status: Raw device status payload.
+
+    Returns:
+        Dictionary of DPS string keys mapped to numeric values.
+    """
+    result: dict[str, float] = {}
+    raw_dps = status.get("dps")
+    if not isinstance(raw_dps, Mapping):
+        return result
+    for key, value in raw_dps.items():
+        if not isinstance(key, str):
+            continue
+        number = _coerce_number(value)
+        if number is None:
+            continue
+        result[key] = number
+    return result
+
+
+def _first_present(values: Mapping[str, float], candidates: tuple[str, ...]) -> float | None:
+    """Return the first candidate key present in a values map.
+
+    Args:
+        values: Candidate numeric values map.
+        candidates: Keys to check in order.
+
+    Returns:
+        Matching value when found, otherwise ``None``.
+    """
+    for key in candidates:
+        if key in values:
+            return values[key]
+    return None
 
 
 class TuyaGetter(BaseGetter):
@@ -45,6 +140,7 @@ class TuyaGetter(BaseGetter):
         store: DataStore,
         devices: list[TuyaDeviceConfig],
         interval: float = 10.0,
+        cloud_settings: TuyaCloudSettings | None = None,
     ) -> None:
         """Initialize the Tuya getter.
 
@@ -57,6 +153,21 @@ class TuyaGetter(BaseGetter):
         self._devices = devices
         self._device_handles: dict[str, tinytuya.Device] = {}
         self._last_error: dict[str, str] = {}
+        self._cloud: tinytuya.Cloud | None = None
+        settings = cloud_settings or TuyaCloudSettings()
+        if (
+            settings.enabled
+            and settings.region
+            and settings.api_key
+            and settings.api_secret
+            and settings.api_device_id
+        ):
+            self._cloud = tinytuya.Cloud(
+                apiRegion=settings.region,
+                apiKey=settings.api_key,
+                apiSecret=settings.api_secret,
+                apiDeviceID=settings.api_device_id,
+            )
 
     async def fetch(self) -> dict[str, StoreValue]:
         """Poll all configured Tuya devices and return aggregated data.
@@ -75,9 +186,23 @@ class TuyaGetter(BaseGetter):
                     self._poll_device,
                     device,
                 )
+                if not data and self._cloud is not None:
+                    data = await asyncio.to_thread(self._poll_device_cloud, device)
                 result.update(data)
                 self._last_error[device.device_id] = ""
             except Exception as exc:
+                if self._cloud is not None:
+                    try:
+                        cloud_data = await asyncio.to_thread(self._poll_device_cloud, device)
+                        result.update(cloud_data)
+                        self._last_error[device.device_id] = ""
+                        continue
+                    except Exception:
+                        _log.debug(
+                            "Cloud fallback failed for Tuya device %s",
+                            device.device_id,
+                            exc_info=True,
+                        )
                 error_msg = str(exc)
                 # Log only on first failure or if error changes
                 if self._last_error.get(device.device_id) != error_msg:
@@ -90,6 +215,35 @@ class TuyaGetter(BaseGetter):
                     self._last_error[device.device_id] = error_msg
 
         return result
+
+    def _poll_device_cloud(self, device: TuyaDeviceConfig) -> dict[str, StoreValue]:
+        """Poll a single Tuya device via cloud API fallback.
+
+        Args:
+            device: TuyaDeviceConfig instance to poll.
+
+        Returns:
+            Dict of updated store keys for this device.
+
+        Raises:
+            RuntimeError: If cloud polling is unavailable or fails.
+        """
+        if self._cloud is None:
+            msg = "Cloud polling is not configured"
+            raise RuntimeError(msg)
+        status = self._cloud.getstatus(device.device_id)
+        if not isinstance(status, Mapping):
+            msg = "Invalid cloud status response"
+            raise RuntimeError(msg)
+        if status.get("success") is False:
+            msg = f"Cloud status fetch failed for {device.device_id}"
+            raise RuntimeError(msg)
+
+        if device.device_type == "sensor":
+            return self._parse_sensor_data(device, status)
+        if device.device_type == "plug":
+            return self._parse_plug_data(device, status)
+        return {}
 
     def _poll_device(self, device: TuyaDeviceConfig) -> dict[str, StoreValue]:
         """Poll a single Tuya device.
@@ -146,7 +300,7 @@ class TuyaGetter(BaseGetter):
     def _parse_sensor_data(
         self,
         device: TuyaDeviceConfig,
-        status: dict[str, Any],
+        status: Mapping[str, object],
     ) -> dict[str, StoreValue]:
         """Extract temperature and humidity from sensor status.
 
@@ -158,23 +312,24 @@ class TuyaGetter(BaseGetter):
             Dict of ``tuya.sensors.<id>.temperature/humidity`` keys.
         """
         result: dict[str, StoreValue] = {}
-        dps = status.get("dps", {})
+        dps = _dps_values(status)
+        codes = _status_code_values(status)
 
         # Common DPS assignments (may vary by manufacturer)
         # DPS 1: temperature (usually in °C, scaled by 10)
         # DPS 2: humidity (%)
-        if "1" in dps:
-            temp_raw = dps["1"]
-            temp = float(temp_raw) / 10.0 if isinstance(temp_raw, (int, float)) else 0.0
+        temp_raw = _first_present(dps, ("1",))
+        if temp_raw is None:
+            temp_raw = _first_present(codes, ("va_temperature",))
+        if temp_raw is not None:
+            temp = float(temp_raw) / 10.0
             result[f"tuya.sensors.{device.device_id}.temperature"] = temp
 
-        if "2" in dps:
-            humidity_raw = dps["2"]
-            humidity = (
-                float(humidity_raw)
-                if isinstance(humidity_raw, (int, float))
-                else 0.0
-            )
+        humidity_raw = _first_present(dps, ("2",))
+        if humidity_raw is None:
+            humidity_raw = _first_present(codes, ("humidity_value",))
+        if humidity_raw is not None:
+            humidity = float(humidity_raw)
             result[f"tuya.sensors.{device.device_id}.humidity"] = humidity
 
         return result
@@ -182,7 +337,7 @@ class TuyaGetter(BaseGetter):
     def _parse_plug_data(
         self,
         device: TuyaDeviceConfig,
-        status: dict[str, Any],
+        status: Mapping[str, object],
     ) -> dict[str, StoreValue]:
         """Extract power, current, voltage from smart plug status.
 
@@ -194,37 +349,44 @@ class TuyaGetter(BaseGetter):
             Dict of ``tuya.plugs.<id>.power/current/voltage/energy`` keys.
         """
         result: dict[str, StoreValue] = {}
-        dps = status.get("dps", {})
+        dps = _dps_values(status)
+        codes = _status_code_values(status)
 
         # Common DPS assignments (documented or empirically observed)
         # DPS 1: Power state (bool) — not used.
-        # DPS 6: Current in mA
-        # DPS 19: Power in watts
-        # DPS 20: Voltage in volts
-        # DPS 26: Total energy in kWh (scaled by 100)
+        # DPS 6/18: Current in mA
+        # DPS 19: Power in watts (scale 1)
+        # DPS 20: Voltage in volts (scale 1)
+        # DPS 17: Total energy in kWh (scale 3)
         # DPS 104: Power state (bool, newer protocol)
         # NOTE: These vary by manufacturer; update as needed for specific plugs.
 
-        if "19" in dps:
-            power_raw = dps["19"]
-            power = float(power_raw) / 10.0 if isinstance(power_raw, (int, float)) else 0.0
+        power_raw = _first_present(dps, ("19",))
+        if power_raw is None:
+            power_raw = _first_present(codes, ("cur_power",))
+        if power_raw is not None:
+            power = float(power_raw) / 10.0
             result[f"tuya.plugs.{device.device_id}.power"] = power
 
-        if "6" in dps:
-            current_raw = dps["6"]
-            current = (
-                float(current_raw) if isinstance(current_raw, (int, float)) else 0.0
-            )
+        current_raw = _first_present(dps, ("18", "6"))
+        if current_raw is None:
+            current_raw = _first_present(codes, ("cur_current",))
+        if current_raw is not None:
+            current = float(current_raw)
             result[f"tuya.plugs.{device.device_id}.current"] = current
 
-        if "20" in dps:
-            voltage_raw = dps["20"]
-            voltage = float(voltage_raw) / 10.0 if isinstance(voltage_raw, (int, float)) else 0.0
+        voltage_raw = _first_present(dps, ("20",))
+        if voltage_raw is None:
+            voltage_raw = _first_present(codes, ("cur_voltage",))
+        if voltage_raw is not None:
+            voltage = float(voltage_raw) / 10.0
             result[f"tuya.plugs.{device.device_id}.voltage"] = voltage
 
-        if "26" in dps:
-            energy_raw = dps["26"]
-            energy = float(energy_raw) / 100.0 if isinstance(energy_raw, (int, float)) else 0.0
+        energy_raw = _first_present(dps, ("17",))
+        if energy_raw is None:
+            energy_raw = _first_present(codes, ("add_ele",))
+        if energy_raw is not None:
+            energy = float(energy_raw) / 1000.0
             result[f"tuya.plugs.{device.device_id}.energy"] = energy
 
         return result

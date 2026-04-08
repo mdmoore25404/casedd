@@ -68,7 +68,7 @@ from casedd.getters.synology import SynologyGetter
 from casedd.getters.sysinfo import SysinfoGetter
 from casedd.getters.system import SystemGetter
 from casedd.getters.truenas import TrueNASGetter
-from casedd.getters.tuya import TuyaGetter
+from casedd.getters.tuya import TuyaCloudSettings, TuyaGetter
 from casedd.getters.ups import UpsGetter
 from casedd.getters.vms import VmGetter
 from casedd.getters.weather import WeatherGetter
@@ -1650,6 +1650,13 @@ class Daemon:
                 self._store,
                 devices=self._cfg.tuya_devices,
                 interval=self._cfg.tuya_interval,
+                cloud_settings=TuyaCloudSettings(
+                    enabled=self._cfg.tuya_cloud_enabled,
+                    region=self._cfg.tuya_api_region,
+                    api_key=self._cfg.tuya_api_key,
+                    api_secret=self._cfg.tuya_api_secret,
+                    api_device_id=self._cfg.tuya_api_device_id,
+                ),
             ) if self._cfg.tuya_devices else None,
             RadarrGetter(
                 self._store,
