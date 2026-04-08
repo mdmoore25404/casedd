@@ -338,6 +338,46 @@ class OutputBackendConfig(BaseModel):
         return int(v)
 
 
+class TuyaDeviceConfig(BaseModel):
+    """Configuration for a single Tuya smart home device.
+
+    Attributes:
+        device_id: Tuya device ID (visible in Tuya app device details).
+        local_key: Device local key (paired via Tuya app or obtained from
+            cloud sync). Required for local network protocol.
+        device_type: Device category — either ``sensor`` (temperature/humidity)
+            or ``plug`` (smart outlet with power monitoring).
+        ip_address: Optional local network IP address for faster polling.
+            When omitted, devices are discovered via mDNS or cloud sync.
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
+
+    device_id: str
+    local_key: str
+    device_type: str
+    ip_address: str | None = Field(default=None)
+
+    @field_validator("device_type")
+    @classmethod
+    def _validate_device_type(cls, value: str) -> str:
+        """Ensure device_type is a recognized category.
+
+        Args:
+            value: Device type string.
+
+        Returns:
+            Validated type.
+
+        Raises:
+            ValueError: If type is not ``sensor`` or ``plug``.
+        """
+        if value not in {"sensor", "plug"}:
+            msg = f"device_type must be 'sensor' or 'plug', got '{value}'"
+            raise ValueError(msg)
+        return value
+
+
 @dataclass(config=ConfigDict(frozen=True))
 class Config:
     """Daemon-wide configuration.
@@ -646,6 +686,8 @@ class Config:
     truenas_timeout: float = Field(default=5.0)
     truenas_verify_tls: bool = Field(default=True)
     truenas_strip_domain_hostname: bool = Field(default=True)
+    tuya_devices: list[TuyaDeviceConfig] = Field(default_factory=list)
+    tuya_interval: float = Field(default=10.0)
     plex_base_url: str = Field(default="http://localhost:32400")
     plex_token: str | None = Field(default=None, repr=False)
     plex_client_identifier: str = Field(default="casedd")

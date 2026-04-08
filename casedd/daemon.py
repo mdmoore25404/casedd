@@ -68,6 +68,7 @@ from casedd.getters.synology import SynologyGetter
 from casedd.getters.sysinfo import SysinfoGetter
 from casedd.getters.system import SystemGetter
 from casedd.getters.truenas import TrueNASGetter
+from casedd.getters.tuya import TuyaGetter
 from casedd.getters.ups import UpsGetter
 from casedd.getters.vms import VmGetter
 from casedd.getters.weather import WeatherGetter
@@ -1537,7 +1538,7 @@ class Daemon:
         if hasattr(psutil, "PROCFS_PATH"):
             psutil.PROCFS_PATH = self._cfg.procfs_path
 
-        getters: list[BaseGetter] = [
+        getters_maybe: list[BaseGetter | None] = [
             CpuGetter(self._store, interval=self._cfg.cpu_interval),
             GpuGetter(self._store, interval=self._cfg.gpu_interval),
             MemoryGetter(self._store, interval=self._cfg.memory_interval),
@@ -1645,6 +1646,11 @@ class Daemon:
                 interval=self._cfg.truenas_interval,
                 strip_domain_hostname=self._cfg.truenas_strip_domain_hostname,
             ),
+            TuyaGetter(
+                self._store,
+                devices=self._cfg.tuya_devices,
+                interval=self._cfg.tuya_interval,
+            ) if self._cfg.tuya_devices else None,
             RadarrGetter(
                 self._store,
                 base_url=self._cfg.radarr_base_url,
@@ -1714,6 +1720,8 @@ class Daemon:
             NetPortsGetter(self._store, interval=self._cfg.net_ports_interval),
             SysinfoGetter(self._store, interval=self._cfg.sysinfo_interval),
         ]
+        # Filter out None values (conditional getters like tuya)
+        getters = [g for g in getters_maybe if g is not None]
         # Attach health registry so each getter reports outcomes.
         for getter in getters:
             getter.attach_health(self._health)
@@ -1822,6 +1830,7 @@ class Daemon:
             ("vms.", "VmGetter"),
             ("pihole.", "PiHoleGetter"),
             ("synology.", "SynologyGetter"),
+            ("tuya.", "TuyaGetter"),
             ("radarr.", "RadarrGetter"),
             ("sonarr.", "SonarrGetter"),
             ("servarr.", "ServarrAggregateGetter"),
