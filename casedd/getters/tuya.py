@@ -152,6 +152,7 @@ class TuyaGetter(BaseGetter):
         super().__init__(store, interval)
         self._devices = devices
         self._device_handles: dict[str, tinytuya.Device] = {}
+        self._device_protocol_versions: dict[str, float] = {}
         self._last_error: dict[str, str] = {}
         self._cloud: tinytuya.Cloud | None = None
         settings = cloud_settings or TuyaCloudSettings()
@@ -258,24 +259,50 @@ class TuyaGetter(BaseGetter):
             RuntimeError: If device connection fails.
         """
         handle = self._get_or_create_handle(device)
-        handle.set_version(3.3)  # Protocol version for local polling
+        preferred_version = self._device_protocol_versions.get(device.device_id)
+        # Try newer protocols first; many plugs require 3.4/3.5.
+        versions: tuple[float, ...] = (
+            (preferred_version,) if preferred_version is not None else (3.5, 3.4, 3.3)
+        )
 
-        # Fetch device status — structure varies by device type
-        status = handle.status()
-        if not status:
-            msg = "No status received from device"
-            raise RuntimeError(msg)
+        last_error = "No status received from device"
+        for version in versions:
+            try:
+                handle.set_version(version)
+                status = handle.status()
+                if not isinstance(status, Mapping) or not status:
+                    last_error = f"empty status response using protocol {version}"
+                    continue
+                result = self._parse_device_status(device, status)
+                if not result:
+                    last_error = f"no metric DPS available using protocol {version}"
+                    continue
+                self._device_protocol_versions[device.device_id] = version
+                return result
+            except Exception as exc:
+                last_error = f"protocol {version} failed: {exc}"
 
-        result: dict[str, StoreValue] = {}
+        raise RuntimeError(last_error)
 
+    def _parse_device_status(
+        self,
+        device: TuyaDeviceConfig,
+        status: Mapping[str, object],
+    ) -> dict[str, StoreValue]:
+        """Parse local/cloud status payload into store keys.
+
+        Args:
+            device: TuyaDeviceConfig instance.
+            status: Raw status mapping.
+
+        Returns:
+            Parsed store key/value pairs for the device.
+        """
         if device.device_type == "sensor":
-            # Temperature/humidity sensor — dps keys typically 1=temp, 2=humidity
-            result.update(self._parse_sensor_data(device, status))
-        elif device.device_type == "plug":
-            # Smart plug with power monitoring — dps keys: 1=power, 6=current, 20=voltage
-            result.update(self._parse_plug_data(device, status))
-
-        return result
+            return self._parse_sensor_data(device, status)
+        if device.device_type == "plug":
+            return self._parse_plug_data(device, status)
+        return {}
 
     def _get_or_create_handle(self, device: TuyaDeviceConfig) -> tinytuya.Device:
         """Reuse or create a device handle for polling.
@@ -322,7 +349,8 @@ class TuyaGetter(BaseGetter):
         if temp_raw is None:
             temp_raw = _first_present(codes, ("va_temperature",))
         if temp_raw is not None:
-            temp = float(temp_raw) / 10.0
+            temp_c = float(temp_raw) / 10.0
+            temp = (temp_c * 9.0 / 5.0) + 32.0
             result[f"tuya.sensors.{device.device_id}.temperature"] = temp
 
         humidity_raw = _first_present(dps, ("2",))

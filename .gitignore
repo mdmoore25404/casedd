@@ -204,6 +204,13 @@ docs/api.json
 
 # Casedd config override (local only — .env.example is committed)
 casedd.yaml
+casedd.local.yaml
+
+# Local Tuya templates with live device IDs (keep examples tracked)
+templates/tuya_power.local.casedd
+templates/tuya_sensors.local.casedd
+templates/tuya_power_local.casedd
+templates/tuya_sensors_local.casedd
 
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to

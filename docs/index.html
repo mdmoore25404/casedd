@@ -737,11 +737,6 @@
       font-size: .72rem;
       opacity: .8;
     }
-    .template-modal-link .fallback-ext {
-      font-size: .72rem;
-      opacity: .8;
-      display: inline-block;
-    }
     .docs-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -1305,10 +1300,6 @@
       const icon = document.createElement('i');
       icon.className = 'fa-solid fa-up-right-from-square';
       icon.setAttribute('aria-hidden', 'true');
-      const fallback = document.createElement('span');
-      fallback.className = 'fallback-ext';
-      fallback.textContent = '↗';
-      icon.append(fallback);
       return icon;
     };
 
@@ -1316,11 +1307,9 @@
       const info = docsByTemplate[entry.name] || { widgets: [] };
 
       const links = [];
-      const templateAnchor = `template-${entry.name.replace(/[^a-z0-9_-]/gi, '-')}`;
-
       const templateLink = document.createElement('a');
       templateLink.className = 'template-modal-link';
-      templateLink.href = `/#${templateAnchor}`;
+      templateLink.href = '/template_format/#template-examples';
       templateLink.target = '_blank';
       templateLink.rel = 'noopener';
       templateLink.textContent = 'Template docs (opens new tab)';

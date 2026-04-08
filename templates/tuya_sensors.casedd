@@ -1,4 +1,5 @@
 # tuya_sensors.casedd — Multiple Tuya temperature/humidity sensors
+# Example template only: replace demo IDs in a local ignored copy.
 
 name: tuya_sensors
 description: Multi-sensor view with paired temperature and humidity values.
@@ -52,14 +53,14 @@ widgets:
     color: "#d6e5f7"
   temp_1:
     type: value
-    source: tuya.sensors.ebdfd261260ea1d162tk7o.temperature
+    source: tuya.sensors.demo_sensor_001.temperature
     precision: 1
-    unit: "C"
+    unit: "F"
     padding: [2, 8]
     color: "#ffd58a"
   hum_1:
     type: value
-    source: tuya.sensors.ebdfd261260ea1d162tk7o.humidity
+    source: tuya.sensors.demo_sensor_001.humidity
     precision: 0
     unit: "%"
     padding: [2, 8]
@@ -72,14 +73,14 @@ widgets:
     color: "#d6e5f7"
   temp_2:
     type: value
-    source: tuya.sensors.eb6ec66548fbcbc1efzxlk.temperature
+    source: tuya.sensors.demo_sensor_002.temperature
     precision: 1
-    unit: "C"
+    unit: "F"
     padding: [2, 8]
     color: "#ffd58a"
   hum_2:
     type: value
-    source: tuya.sensors.eb6ec66548fbcbc1efzxlk.humidity
+    source: tuya.sensors.demo_sensor_002.humidity
     precision: 0
     unit: "%"
     padding: [2, 8]
@@ -92,14 +93,14 @@ widgets:
     color: "#d6e5f7"
   temp_3:
     type: value
-    source: tuya.sensors.eb25b8a71842996b3fjttl.temperature
+    source: tuya.sensors.demo_sensor_003.temperature
     precision: 1
-    unit: "C"
+    unit: "F"
     padding: [2, 8]
     color: "#ffd58a"
   hum_3:
     type: value
-    source: tuya.sensors.eb25b8a71842996b3fjttl.humidity
+    source: tuya.sensors.demo_sensor_003.humidity
     precision: 0
     unit: "%"
     padding: [2, 8]
@@ -112,14 +113,14 @@ widgets:
     color: "#d6e5f7"
   temp_4:
     type: value
-    source: tuya.sensors.eb94f064d3a24ee51dbc0k.temperature
+    source: tuya.sensors.demo_sensor_004.temperature
     precision: 1
-    unit: "C"
+    unit: "F"
     padding: [2, 8]
     color: "#ffd58a"
   hum_4:
     type: value
-    source: tuya.sensors.eb94f064d3a24ee51dbc0k.humidity
+    source: tuya.sensors.demo_sensor_004.humidity
     precision: 0
     unit: "%"
     padding: [2, 8]
@@ -132,14 +133,14 @@ widgets:
     color: "#d6e5f7"
   temp_5:
     type: value
-    source: tuya.sensors.eb19fb9a1fc42a0735dzzh.temperature
+    source: tuya.sensors.demo_sensor_005.temperature
     precision: 1
-    unit: "C"
+    unit: "F"
     padding: [2, 8]
     color: "#ffd58a"
   hum_5:
     type: value
-    source: tuya.sensors.eb19fb9a1fc42a0735dzzh.humidity
+    source: tuya.sensors.demo_sensor_005.humidity
     precision: 0
     unit: "%"
     padding: [2, 8]
@@ -152,14 +153,14 @@ widgets:
     color: "#d6e5f7"
   temp_6:
     type: value
-    source: tuya.sensors.eb47402cd397d6fade8kyu.temperature
+    source: tuya.sensors.demo_sensor_006.temperature
     precision: 1
-    unit: "C"
+    unit: "F"
     padding: [2, 8]
     color: "#ffd58a"
   hum_6:
     type: value
-    source: tuya.sensors.eb47402cd397d6fade8kyu.humidity
+    source: tuya.sensors.demo_sensor_006.humidity
     precision: 0
     unit: "%"
     padding: [2, 8]
@@ -172,14 +173,14 @@ widgets:
     color: "#d6e5f7"
   temp_7:
     type: value
-    source: tuya.sensors.eb8055ccb0a96895e5zu8m.temperature
+    source: tuya.sensors.demo_sensor_007.temperature
     precision: 1
-    unit: "C"
+    unit: "F"
     padding: [2, 8]
     color: "#ffd58a"
   hum_7:
     type: value
-    source: tuya.sensors.eb8055ccb0a96895e5zu8m.humidity
+    source: tuya.sensors.demo_sensor_007.humidity
     precision: 0
     unit: "%"
     padding: [2, 8]

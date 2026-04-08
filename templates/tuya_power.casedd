@@ -1,4 +1,5 @@
 # tuya_power.casedd — Tuya smart plug power monitoring dashboard
+# Example template only: replace demo IDs in a local ignored copy.
 
 name: tuya_power
 description: Live power, current, voltage, and cumulative energy for Bandit smart plug.
@@ -20,7 +21,7 @@ widgets:
   power_graph:
     type: sparkline
     label: "Bandit Power (W)"
-    source: tuya.plugs.eb0a215398dcb86f25rlfa.power
+    source: tuya.plugs.demo_plug_001.power
     padding: [6, 8]
     unit: W
     precision: 1
@@ -36,7 +37,7 @@ widgets:
   power_now:
     type: value
     label: Power Now
-    source: tuya.plugs.eb0a215398dcb86f25rlfa.power
+    source: tuya.plugs.demo_plug_001.power
     precision: 1
     unit: "W"
     padding: [6, 8]
@@ -45,7 +46,7 @@ widgets:
   current:
     type: value
     label: Current
-    source: tuya.plugs.eb0a215398dcb86f25rlfa.current
+    source: tuya.plugs.demo_plug_001.current
     precision: 0
     unit: "mA"
     padding: [6, 8]
@@ -54,7 +55,7 @@ widgets:
   voltage:
     type: value
     label: Voltage
-    source: tuya.plugs.eb0a215398dcb86f25rlfa.voltage
+    source: tuya.plugs.demo_plug_001.voltage
     precision: 1
     unit: "V"
     padding: [6, 8]
@@ -63,7 +64,7 @@ widgets:
   energy:
     type: value
     label: Total Energy
-    source: tuya.plugs.eb0a215398dcb86f25rlfa.energy
+    source: tuya.plugs.demo_plug_001.energy
     precision: 3
     unit: "kWh"
     padding: [6, 8]
