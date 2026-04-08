@@ -338,6 +338,46 @@ class OutputBackendConfig(BaseModel):
         return int(v)
 
 
+class TuyaDeviceConfig(BaseModel):
+    """Configuration for a single Tuya smart home device.
+
+    Attributes:
+        device_id: Tuya device ID (visible in Tuya app device details).
+        local_key: Device local key (paired via Tuya app or obtained from
+            cloud sync). Required for local network protocol.
+        device_type: Device category — either ``sensor`` (temperature/humidity)
+            or ``plug`` (smart outlet with power monitoring).
+        ip_address: Optional local network IP address for faster polling.
+            When omitted, devices are discovered via mDNS or cloud sync.
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
+
+    device_id: str
+    local_key: str
+    device_type: str
+    ip_address: str | None = Field(default=None)
+
+    @field_validator("device_type")
+    @classmethod
+    def _validate_device_type(cls, value: str) -> str:
+        """Ensure device_type is a recognized category.
+
+        Args:
+            value: Device type string.
+
+        Returns:
+            Validated type.
+
+        Raises:
+            ValueError: If type is not ``sensor`` or ``plug``.
+        """
+        if value not in {"sensor", "plug"}:
+            msg = f"device_type must be 'sensor' or 'plug', got '{value}'"
+            raise ValueError(msg)
+        return value
+
+
 @dataclass(config=ConfigDict(frozen=True))
 class Config:
     """Daemon-wide configuration.
@@ -646,6 +686,13 @@ class Config:
     truenas_timeout: float = Field(default=5.0)
     truenas_verify_tls: bool = Field(default=True)
     truenas_strip_domain_hostname: bool = Field(default=True)
+    tuya_devices: list[TuyaDeviceConfig] = Field(default_factory=list)
+    tuya_interval: float = Field(default=10.0)
+    tuya_cloud_enabled: bool = Field(default=False)
+    tuya_api_region: str = Field(default="")
+    tuya_api_key: str | None = Field(default=None, repr=False)
+    tuya_api_secret: str | None = Field(default=None, repr=False)
+    tuya_api_device_id: str | None = Field(default=None)
     plex_base_url: str = Field(default="http://localhost:32400")
     plex_token: str | None = Field(default=None, repr=False)
     plex_client_identifier: str = Field(default="casedd")
@@ -1273,6 +1320,125 @@ def save_rotation_config_to_yaml(
     return config_path
 
 
+def _get_merged_value(
+    yaml_data: dict[str, object],
+    env_key: str,
+    yaml_key: str,
+    default: object,
+) -> object:
+    """Return merged config value with env var precedence over YAML/default."""
+    env_val = os.environ.get(env_key)
+    if env_val is not None:
+        return env_val
+    return yaml_data.get(yaml_key, default)
+
+
+def _get_optional_float_merged(
+    yaml_data: dict[str, object],
+    env_key: str,
+    yaml_key: str,
+) -> float | None:
+    """Parse an optional float from merged env/yaml values."""
+    raw = str(_get_merged_value(yaml_data, env_key, yaml_key, "")).strip()
+    if not raw:
+        return None
+    return float(raw)
+
+
+def _get_int_with_blank_default_merged(
+    yaml_data: dict[str, object],
+    env_key: str,
+    yaml_key: str,
+    default: int,
+) -> int:
+    """Parse an int from merged env/yaml values, defaulting on blanks."""
+    raw = str(_get_merged_value(yaml_data, env_key, yaml_key, default)).strip()
+    if not raw:
+        return default
+    return int(raw)
+
+
+def _get_rotation_templates_from_yaml(yaml_data: dict[str, object]) -> list[str | RotationEntry]:
+    """Parse template rotation entries from YAML."""
+    raw = yaml_data.get("template_rotation", [])
+    if isinstance(raw, list):
+        out: list[str | RotationEntry] = []
+        for item in raw:
+            if isinstance(item, str):
+                name = item.strip()
+                if name:
+                    out.append(name)
+                continue
+            if isinstance(item, RotationEntry):
+                out.append(item)
+                continue
+            if isinstance(item, dict):
+                out.append(RotationEntry.model_validate(item))
+                continue
+            name = str(item).strip()
+            if name:
+                out.append(name)
+        return out
+    text = str(raw)
+    return [item.strip() for item in text.split(",") if item.strip()]
+
+
+def _get_yaml_list_from_data(yaml_data: dict[str, object], key: str) -> list[object]:
+    """Read a top-level YAML list with safe fallback."""
+    raw = yaml_data.get(key, [])
+    if isinstance(raw, list):
+        return raw
+    return []
+
+
+def _get_always_collect_prefixes_from_data(yaml_data: dict[str, object]) -> list[str]:
+    """Parse always-on getter prefixes from merged env/yaml values."""
+    raw = _get_merged_value(
+        yaml_data,
+        "CASEDD_ALWAYS_COLLECT_PREFIXES",
+        "always_collect_prefixes",
+        [],
+    )
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if str(item).strip()]
+    text = str(raw)
+    return [item.strip() for item in text.split(",") if item.strip()]
+
+
+def _get_csv_or_list_from_merged(
+    yaml_data: dict[str, object],
+    env_key: str,
+    yaml_key: str,
+) -> list[str]:
+    """Parse comma-delimited strings or YAML lists from merged config."""
+    raw = _get_merged_value(yaml_data, env_key, yaml_key, [])
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if str(item).strip()]
+    text = str(raw)
+    return [item.strip() for item in text.split(",") if item.strip()]
+
+
+def _get_tuya_devices_from_merged(yaml_data: dict[str, object]) -> list[TuyaDeviceConfig]:
+    """Parse Tuya device definitions from merged env/yaml values."""
+    env_raw = os.environ.get("CASEDD_TUYA_DEVICES")
+    raw: object
+    if env_raw is not None and env_raw.strip():
+        parsed = yaml.safe_load(env_raw)
+        raw = parsed if parsed is not None else []
+    else:
+        raw = yaml_data.get("tuya_devices", [])
+    if not isinstance(raw, list):
+        return []
+    out: list[TuyaDeviceConfig] = []
+    for item in raw:
+        if isinstance(item, TuyaDeviceConfig):
+            out.append(item)
+            continue
+        if isinstance(item, dict):
+            out.append(TuyaDeviceConfig.model_validate(item))
+    return out
+
+
 def load_config() -> Config:
     """Build and return the active daemon configuration.
 
@@ -1288,96 +1454,30 @@ def load_config() -> Config:
     config_path = get_config_path()
     yaml_data = _read_yaml(config_path)
 
-    # Helper: env var overrides yaml, yaml overrides default
+    # Keep thin wrappers local so existing call sites remain readable.
     def _get(env_key: str, yaml_key: str, default: object) -> object:
-        env_val = os.environ.get(env_key)
-        if env_val is not None:
-            return env_val
-        return yaml_data.get(yaml_key, default)
+        return _get_merged_value(yaml_data, env_key, yaml_key, default)
 
     def _get_optional_float(env_key: str, yaml_key: str) -> float | None:
-        """Parse an optional float from env/yaml merged config."""
-        raw = str(_get(env_key, yaml_key, "")).strip()
-        if not raw:
-            return None
-        return float(raw)
+        return _get_optional_float_merged(yaml_data, env_key, yaml_key)
 
     def _get_int_with_blank_default(env_key: str, yaml_key: str, default: int) -> int:
-        """Parse an int, treating blank values as the provided default."""
-        raw = str(_get(env_key, yaml_key, default)).strip()
-        if not raw:
-            return default
-        return int(raw)
+        return _get_int_with_blank_default_merged(yaml_data, env_key, yaml_key, default)
 
     def _get_rotation_templates() -> list[str | RotationEntry]:
-        """Parse template rotation list from YAML.
-
-        Returns:
-            Ordered list of template names and/or rotation entry objects.
-        """
-        raw = yaml_data.get("template_rotation", [])
-        if isinstance(raw, list):
-            out: list[str | RotationEntry] = []
-            for item in raw:
-                if isinstance(item, str):
-                    name = item.strip()
-                    if name:
-                        out.append(name)
-                    continue
-                if isinstance(item, RotationEntry):
-                    out.append(item)
-                    continue
-                if isinstance(item, dict):
-                    out.append(RotationEntry.model_validate(item))
-                    continue
-                name = str(item).strip()
-                if name:
-                    out.append(name)
-            return out
-        text = str(raw)
-        return [item.strip() for item in text.split(",") if item.strip()]
+        return _get_rotation_templates_from_yaml(yaml_data)
 
     def _get_yaml_list(key: str) -> list[object]:
-        """Read a list value from YAML with safe fallback.
-
-        Args:
-            key: Top-level YAML key.
-
-        Returns:
-            List value or empty list.
-        """
-        raw = yaml_data.get(key, [])
-        if isinstance(raw, list):
-            return raw
-        return []
+        return _get_yaml_list_from_data(yaml_data, key)
 
     def _get_always_collect_prefixes() -> list[str]:
-        """Parse always-on getter categories from env/yaml.
-
-        Returns:
-            Namespace prefix list.
-        """
-        raw = _get("CASEDD_ALWAYS_COLLECT_PREFIXES", "always_collect_prefixes", [])
-        if isinstance(raw, list):
-            return [str(item).strip() for item in raw if str(item).strip()]
-        text = str(raw)
-        return [item.strip() for item in text.split(",") if item.strip()]
+        return _get_always_collect_prefixes_from_data(yaml_data)
 
     def _get_csv_or_list(env_key: str, yaml_key: str) -> list[str]:
-        """Parse comma-delimited or YAML-list values from env/yaml.
+        return _get_csv_or_list_from_merged(yaml_data, env_key, yaml_key)
 
-        Args:
-            env_key: Environment key.
-            yaml_key: YAML key.
-
-        Returns:
-            Normalized list of non-empty strings.
-        """
-        raw = _get(env_key, yaml_key, [])
-        if isinstance(raw, list):
-            return [str(item).strip() for item in raw if str(item).strip()]
-        text = str(raw)
-        return [item.strip() for item in text.split(",") if item.strip()]
+    def _get_tuya_devices() -> list[TuyaDeviceConfig]:
+        return _get_tuya_devices_from_merged(yaml_data)
 
     return Config(
         log_level=str(_get("CASEDD_LOG_LEVEL", "log_level", "INFO")),
@@ -1694,6 +1794,19 @@ def load_config() -> Config:
             )
         )
         not in {"0", "false", "False", ""},
+        tuya_devices=_get_tuya_devices(),
+        tuya_interval=float(str(_get("CASEDD_TUYA_INTERVAL", "tuya_interval", 10.0))),
+        tuya_cloud_enabled=str(
+            _get("CASEDD_TUYA_CLOUD_ENABLED", "tuya_cloud_enabled", "0")
+        ) not in {"0", "false", "False", ""},
+        tuya_api_region=str(_get("CASEDD_TUYA_API_REGION", "tuya_api_region", "")).strip(),
+        tuya_api_key=str(_get("CASEDD_TUYA_API_KEY", "tuya_api_key", "")).strip() or None,
+        tuya_api_secret=str(_get("CASEDD_TUYA_API_SECRET", "tuya_api_secret", "")).strip()
+        or None,
+        tuya_api_device_id=str(
+            _get("CASEDD_TUYA_API_DEVICE_ID", "tuya_api_device_id", "")
+        ).strip()
+        or None,
         plex_base_url=str(_get("CASEDD_PLEX_BASE_URL", "plex_base_url", "http://localhost:32400")),
         plex_token=str(_get("CASEDD_PLEX_TOKEN", "plex_token", "")).strip() or None,
         plex_client_identifier=str(
