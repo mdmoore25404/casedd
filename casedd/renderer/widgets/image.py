@@ -32,6 +32,7 @@ Example .casedd config:
 
 from __future__ import annotations
 
+import collections
 from io import BytesIO
 import logging
 import os
@@ -52,10 +53,19 @@ from casedd.template.models import ImageTier, ScaleMode, WidgetConfig
 
 _log = logging.getLogger(__name__)
 
-# Module-level image cache: path string → PIL Image (converted to RGBA)
+# Module-level image cache for LOCAL files: path string → PIL Image (RGBA).
+# Entries are invalidated by mtime checks.  Bounded by the number of distinct
+# template asset paths — typically small (logos, icons, tier images).
 _image_cache: dict[str, Image.Image] = {}
 # Local file mtime cache used to invalidate stale disk-backed image entries.
 _image_mtime_cache: dict[str, float] = {}
+# Bounded LRU cache for REMOTE images.  Dynamic URLs (e.g. Synology camera
+# snapshots with _ts= parameters) change on every getter poll; without a
+# maxsize the cache would grow by one full RGBA frame every 2 seconds.
+_REMOTE_IMAGE_CACHE_MAXSIZE: int = 32
+_remote_image_cache: collections.OrderedDict[str, Image.Image] = (
+    collections.OrderedDict()
+)
 # Source retry cache for failed image loads (disk missing / remote errors).
 _image_retry_after: dict[str, float] = {}
 _IMAGE_RETRY_BACKOFF_SEC = 5.0
@@ -152,8 +162,11 @@ def _load_image(source_ref: str) -> Image.Image | None:
         return None
 
     if source_ref.startswith(("http://", "https://")):
-        cached_remote = _image_cache.get(source_ref)
+        # Route remote URLs through the bounded LRU cache so dynamic URLs
+        # (e.g. Synology _ts= snapshots) cannot cause unbounded memory growth.
+        cached_remote = _remote_image_cache.get(source_ref)
         if cached_remote is not None:
+            _remote_image_cache.move_to_end(source_ref)  # refresh LRU position
             return cached_remote
         loaded = _load_remote_image(source_ref)
     else:
@@ -212,7 +225,12 @@ def _load_remote_image(url: str) -> Image.Image | None:
         _log.warning("Image widget: cannot decode remote image '%s': %s", url, exc)
         return None
 
-    _image_cache[url] = loaded
+    # Store in bounded LRU cache and evict the least-recently-used entry when
+    # over the limit.  This prevents dynamic URLs (e.g. camera snapshots with
+    # per-second timestamps) from accumulating hundreds of full RGBA frames.
+    _remote_image_cache[url] = loaded
+    while len(_remote_image_cache) > _REMOTE_IMAGE_CACHE_MAXSIZE:
+        _remote_image_cache.popitem(last=False)
     return loaded
 
 
@@ -318,17 +336,19 @@ class ImageWidget(BaseWidget):
             _log.warning("Image widget has no 'path' or populated 'source' configured.")
             return
 
-        source = _load_image_with_fallback(active_path, cfg.path)
-        if source is None:
-            self._draw_no_camera_placeholder(img, rect, cfg)
-            return
-
+        # Check the per-widget scaled-image cache BEFORE calling _load_image so
+        # that _load_image (and any module-level cache lookups) is only invoked
+        # when the source URL/path actually changes, not on every rendered frame.
         cache_key = (active_path, rect.w, rect.h, cfg.scale.value)
         cached_key = _state.get("scaled_key")
         cached_img = _state.get("scaled_img")
         if cached_key == cache_key and isinstance(cached_img, Image.Image):
             scaled = cached_img
         else:
+            source = _load_image_with_fallback(active_path, cfg.path)
+            if source is None:
+                self._draw_no_camera_placeholder(img, rect, cfg)
+                return
             scaled = _scale_image(source, rect.w, rect.h, cfg.scale)
             _state["scaled_key"] = cache_key
             _state["scaled_img"] = scaled

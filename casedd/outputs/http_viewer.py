@@ -106,6 +106,11 @@ class _RateLimiter:
                 return False
             timestamps.append(now)
             self._windows[client_ip] = timestamps
+            # Evict completely-drained entries to prevent the dict from
+            # accumulating a permanent key for every unique IP that ever
+            # connected (important under load-test or port-scan conditions).
+            if not timestamps:
+                self._windows.pop(client_ip, None)
         return True
 
 
