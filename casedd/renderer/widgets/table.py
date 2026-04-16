@@ -305,7 +305,8 @@ class TableWidget(BaseWidget):
         left_x = inner.x + 1
         right_x = inner.x + inner.w - 2
 
-        muted_suffix_color = (75, 80, 88)
+        # Amber-gold: visible on dark backgrounds, signals "deferred/held" without alarm.
+        phasing_color = (180, 148, 72)
         for row in prepared.rows:
             left_bb = draw.textbbox((0, 0), row.left, font=prepared.font)
             left_y = y - int(left_bb[1])
@@ -326,7 +327,7 @@ class TableWidget(BaseWidget):
                 draw.text(
                     (right_origin_x + main_w, right_y),
                     right_suffix,
-                    fill=muted_suffix_color,
+                    fill=phasing_color,
                     font=prepared.font,
                 )
             else:
