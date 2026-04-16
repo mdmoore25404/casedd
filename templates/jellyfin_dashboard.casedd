@@ -1,0 +1,196 @@
+# jellyfin_dashboard.casedd — Jellyfin server health and active sessions
+
+name: jellyfin_dashboard
+description: Jellyfin server health, active sessions, and library statistics.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0b1018"
+refresh_rate: 5.0
+
+grid:
+  template_areas: |
+    "header header"
+    "sessions library"
+  columns: "1.2fr 1fr"
+  rows: "0.28fr 0.72fr"
+
+widgets:
+  header:
+    type: panel
+    background: "#10181e"
+    padding: 6
+    grid:
+      template_areas: |
+        "logo active transcode direct users"
+      columns: "1.2fr 1fr 1fr 1fr 1fr"
+      rows: "1fr"
+    children_named:
+      logo:
+        type: text
+        content: "Jellyfin"
+        color: "#00a4dc"
+        font_size: auto
+      active:
+        type: value
+        source: jellyfin.sessions.active_count
+        label: "Active"
+        color: "#74d680"
+        font_size: auto
+      transcode:
+        type: value
+        source: jellyfin.sessions.transcoding_count
+        label: "Transcode"
+        color: "#ff9f6f"
+        font_size: auto
+      direct:
+        type: value
+        source: jellyfin.sessions.direct_play_count
+        label: "Direct"
+        color: "#89b7ff"
+        font_size: auto
+      users:
+        type: value
+        source: jellyfin.users.active_count
+        label: "Users"
+        color: "#c4a8ff"
+        font_size: auto
+
+  sessions:
+    type: panel
+    background: "#0f1820"
+    padding: 6
+    grid:
+      template_areas: |
+        "s1"
+        "s2"
+        "s3"
+      columns: "1fr"
+      rows: "1fr 1fr 1fr"
+    children_named:
+      s1:
+        type: panel
+        background: "#121e28"
+        padding: 4
+        grid:
+          template_areas: |
+            "user title prog"
+          columns: "0.5fr 1fr 0.4fr"
+          rows: "1fr"
+        children_named:
+          user:
+            type: text
+            source: jellyfin.session_1.user
+            color: "#89b7ff"
+            font_size: auto
+          title:
+            type: text
+            source: jellyfin.session_1.title
+            color: "#dfe7ef"
+            font_size: auto
+          prog:
+            type: bar
+            source: jellyfin.session_1.progress_percent
+            label: "%"
+            color: "#60e6a5"
+            font_size: auto
+      s2:
+        type: panel
+        background: "#121e28"
+        padding: 4
+        grid:
+          template_areas: |
+            "user title prog"
+          columns: "0.5fr 1fr 0.4fr"
+          rows: "1fr"
+        children_named:
+          user:
+            type: text
+            source: jellyfin.session_2.user
+            color: "#89b7ff"
+            font_size: auto
+          title:
+            type: text
+            source: jellyfin.session_2.title
+            color: "#dfe7ef"
+            font_size: auto
+          prog:
+            type: bar
+            source: jellyfin.session_2.progress_percent
+            label: "%"
+            color: "#60e6a5"
+            font_size: auto
+      s3:
+        type: panel
+        background: "#121e28"
+        padding: 4
+        grid:
+          template_areas: |
+            "user title prog"
+          columns: "0.5fr 1fr 0.4fr"
+          rows: "1fr"
+        children_named:
+          user:
+            type: text
+            source: jellyfin.session_3.user
+            color: "#89b7ff"
+            font_size: auto
+          title:
+            type: text
+            source: jellyfin.session_3.title
+            color: "#dfe7ef"
+            font_size: auto
+          prog:
+            type: bar
+            source: jellyfin.session_3.progress_percent
+            label: "%"
+            color: "#60e6a5"
+            font_size: auto
+
+  library:
+    type: panel
+    background: "#0f1820"
+    padding: 6
+    grid:
+      template_areas: |
+        "movies series"
+        "episodes albums"
+        "version reachable"
+      columns: "1fr 1fr"
+      rows: "1fr 1fr 1fr"
+    children_named:
+      movies:
+        type: value
+        source: jellyfin.library.movies_count
+        label: "Movies"
+        color: "#f5a623"
+        font_size: auto
+      series:
+        type: value
+        source: jellyfin.library.series_count
+        label: "Series"
+        color: "#ff9f6f"
+        font_size: auto
+      episodes:
+        type: value
+        source: jellyfin.library.episodes_count
+        label: "Episodes"
+        color: "#89b7ff"
+        font_size: auto
+      albums:
+        type: value
+        source: jellyfin.library.music_albums_count
+        label: "Albums"
+        color: "#c4a8ff"
+        font_size: auto
+      version:
+        type: text
+        source: jellyfin.server.version
+        label: "Version"
+        color: "#666e7a"
+        font_size: auto
+      reachable:
+        type: value
+        source: jellyfin.server.reachable
+        label: "Reachable"
+        color: "#74d680"
+        font_size: auto
