@@ -3,6 +3,7 @@ import { marked } from "marked";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBolt,
+  faBug,
   faCirclePlay,
   faCircleQuestion,
   faDatabase,
@@ -24,6 +25,7 @@ import {
 import {
   exportTemplateFile,
   fetchDataStore,
+  fetchDiagnostics,
   fetchFixture,
   fetchFixtures,
   fetchRotation,
@@ -471,6 +473,8 @@ export function App() {
   const [rotationDocsHtml, setRotationDocsHtml] = useState("");
   const [dataStore, setDataStore] = useState({ count: 0, data: {} });
   const [dataStoreFilter, setDataStoreFilter] = useState("");
+  const [diagnostics, setDiagnostics] = useState({ getters: [], panels: [] });
+  const [rightTab, setRightTab] = useState("editor");
   const importInputRef = useRef(null);
   const selectedPanelRef = useRef("");
 
@@ -502,10 +506,16 @@ export function App() {
     setDataStore(payload);
   }, []);
 
+  const refreshDiagnostics = useCallback(async () => {
+    const payload = await fetchDiagnostics();
+    setDiagnostics(payload);
+  }, []);
+
   usePolling(refreshPanels, 2000);
   usePolling(refreshStatus, 1500);
   usePolling(refreshTemplates, 5000);
   usePolling(refreshDataStore, 3000);
+  usePolling(refreshDiagnostics, 5000);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -1297,11 +1307,169 @@ export function App() {
         </div>
 
         <div className="col-12 col-lg-7 col-xl-8">
-          <div className="card border-secondary bg-dark-subtle mb-3">
-            <div className="card-body">
-              <h5 className="card-title d-flex align-items-center gap-2">
-                <FontAwesomeIcon icon={faTableCells} /> Layout + Live Preview
-              </h5>
+          <ul className="nav nav-tabs mb-3">
+            <li className="nav-item">
+              <button
+                className={`nav-link${rightTab === "editor" ? " active" : ""}`}
+                onClick={() => setRightTab("editor")}
+              >
+                <FontAwesomeIcon icon={faPenRuler} className="me-1" /> Editor
+              </button>
+            </li>
+            <li className="nav-item">
+              <button
+                className={`nav-link${rightTab === "diagnostics" ? " active" : ""}`}
+                onClick={() => setRightTab("diagnostics")}
+              >
+                <FontAwesomeIcon icon={faBug} className="me-1" /> Diagnostics
+                {diagnostics.getters.some((g) => g.status === "error") && (
+                  <span className="badge bg-danger ms-2">!</span>
+                )}
+              </button>
+            </li>
+          </ul>
+
+          {rightTab === "diagnostics" && (
+            <div className="diagnostics-tab">
+              <div className="card border-secondary bg-dark-subtle mb-3">
+                <div className="card-body">
+                  <h5 className="card-title d-flex align-items-center gap-2">
+                    <FontAwesomeIcon icon={faBug} /> Getter Health
+                    <span className="badge bg-secondary ms-auto">
+                      {diagnostics.getters.filter((g) => g.status === "ok").length}/
+                      {diagnostics.getters.length} OK
+                    </span>
+                  </h5>
+                  <p className="small text-body-secondary mb-2">
+                    Auto-refreshes every 5 s. Error count resets on daemon restart.
+                  </p>
+                  {diagnostics.getters.length === 0 ? (
+                    <div className="small text-body-secondary">No getter data yet.</div>
+                  ) : (
+                    <div style={{ overflowX: "auto" }}>
+                      <table className="table table-sm table-dark table-hover mb-0">
+                        <thead>
+                          <tr>
+                            <th>Getter</th>
+                            <th>Status</th>
+                            <th>Errors</th>
+                            <th>Last Error</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {diagnostics.getters.map((g) => (
+                            <tr key={g.name}>
+                              <td className="font-monospace small">{g.name}</td>
+                              <td>
+                                <span
+                                  className={`badge ${
+                                    g.status === "ok"
+                                      ? "bg-success"
+                                      : g.status === "error"
+                                        ? "bg-danger"
+                                        : g.status === "starting"
+                                          ? "bg-warning text-dark"
+                                          : "bg-secondary"
+                                  }`}
+                                >
+                                  {g.status}
+                                </span>
+                              </td>
+                              <td className="small">{g.error_count ?? 0}</td>
+                              <td
+                                className="small text-warning font-monospace"
+                                style={{ maxWidth: "280px", wordBreak: "break-word" }}
+                              >
+                                {g.last_error_msg ?? "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {diagnostics.panels.map((panel) => (
+                <div key={panel.name} className="card border-secondary bg-dark-subtle mb-3">
+                  <div className="card-body">
+                    <h5 className="card-title d-flex align-items-center gap-2">
+                      <FontAwesomeIcon icon={faTableCells} /> {panel.name}
+                      {panel.current_template && (
+                        <span className="badge bg-secondary">
+                          {panel.current_template}
+                        </span>
+                      )}
+                      {(panel.missing_sources ?? []).length > 0 && (
+                        <span className="badge bg-warning text-dark ms-auto">
+                          {(panel.missing_sources ?? []).length} missing
+                        </span>
+                      )}
+                    </h5>
+
+                    {panel.load_error && (
+                      <div className="alert alert-danger py-2 small mb-2">
+                        <strong>Template load error:</strong> {panel.load_error}
+                      </div>
+                    )}
+
+                    {!panel.current_template && !panel.load_error && (
+                      <div className="small text-body-secondary">No active template.</div>
+                    )}
+
+                    {(panel.missing_sources ?? []).length === 0 && panel.current_template && !panel.load_error && (
+                      <div className="small text-success">
+                        All widget sources are present in the data store.
+                      </div>
+                    )}
+
+                    {(panel.missing_sources ?? []).length > 0 && (
+                      <>
+                        <p className="small text-body-secondary mb-2">
+                          The following sources are referenced in the template but not
+                          yet in the data store. This usually means the corresponding
+                          getter has not run yet, is disabled, or is in an error state.
+                        </p>
+                        <div style={{ overflowX: "auto" }}>
+                          <table className="table table-sm table-dark table-hover mb-0">
+                            <thead>
+                              <tr>
+                                <th>Widget</th>
+                                <th>Source key</th>
+                                <th>Hint</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {(panel.missing_sources ?? []).map((item) => (
+                                <tr key={item.source}>
+                                  <td className="font-monospace small">{item.widget}</td>
+                                  <td className="font-monospace small text-warning">
+                                    {item.source}
+                                  </td>
+                                  <td className="small text-body-secondary">
+                                    {item.hint}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {rightTab === "editor" && (
+            <>
+            <div className="card border-secondary bg-dark-subtle mb-3">
+              <div className="card-body">
+                <h5 className="card-title d-flex align-items-center gap-2">
+                  <FontAwesomeIcon icon={faTableCells} /> Layout + Live Preview
+                </h5>
               <div className="row g-3">
                 <div className="col-12 col-xl-7">
                   <div className="preview-wrap mb-2">
@@ -1819,6 +1987,8 @@ export function App() {
           </div>
 
           <div className="alert alert-secondary mt-3 mb-0 py-2 small">{status}</div>
+          </>
+          )}
         </div>
       </div>
 
