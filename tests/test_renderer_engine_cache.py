@@ -203,3 +203,75 @@ def test_render_engine_rect_and_plan_caches_evict_stale_on_id_reuse(monkeypatch)
     assert refreshed is not None
     assert refreshed[0] is template
 
+
+def test_render_engine_widget_state_survives_template_rotation(monkeypatch) -> None:
+    """Per-widget state (e.g. sparkline history deques) must survive template rotation.
+
+    When the active template changes and then returns to a previous template, any
+    state accumulated in _widget_states for a widget name must still be present.
+    This closes issue #31 acceptance criterion: 'Buffer survives template rotation'.
+
+    Uses HISTOGRAM widgets (intrinsically dynamic, never patch-cached) so draw() is
+    invoked on every render call — matching the real sparkline/histogram code path.
+    """
+    drawn_states: dict[str, list[dict[str, object]]] = {"wgt_a": [], "wgt_b": []}
+
+    class _StatefulWidget(BaseWidget):
+        """Records a growing counter in state on each draw call."""
+
+        def draw(
+            self,
+            img: Image.Image,
+            rect: Rect,
+            cfg: WidgetConfig,
+            data: DataStore,
+            state: dict[str, object],
+        ) -> None:
+            widget_name = cfg.source or "?"
+            state["counter"] = int(state.get("counter", 0)) + 1  # type: ignore[arg-type]
+            drawn_states[widget_name].append(dict(state))
+
+    template_a = Template(
+        name="template-a",
+        grid=GridConfig(
+            template_areas='"wgt_a"',
+            columns="1fr",
+            rows="1fr",
+        ),
+        # HISTOGRAM is intrinsically dynamic and not patch-cacheable — draw() is
+        # always called, which exercises the state-persistence code path.
+        widgets={"wgt_a": WidgetConfig(type=WidgetType.HISTOGRAM, source="wgt_a")},
+    )
+    template_b = Template(
+        name="template-b",
+        grid=GridConfig(
+            template_areas='"wgt_b"',
+            columns="1fr",
+            rows="1fr",
+        ),
+        widgets={"wgt_b": WidgetConfig(type=WidgetType.HISTOGRAM, source="wgt_b")},
+    )
+
+    stateful = _StatefulWidget()
+    monkeypatch.setattr("casedd.renderer.engine.get_widget_renderer", lambda _: stateful)
+
+    engine = RenderEngine(200, 100)
+    store = DataStore()
+
+    # First render of template A — wgt_a counter starts at 1.
+    engine.render(template_a, store)
+    assert drawn_states["wgt_a"][-1]["counter"] == 1
+
+    # Switch to template B — wgt_a state is not touched.
+    engine.render(template_b, store)
+    assert drawn_states["wgt_b"][-1]["counter"] == 1
+    assert drawn_states["wgt_a"][-1]["counter"] == 1, "wgt_a state must be unchanged"
+
+    # Return to template A — wgt_a picks up from where it left off (counter = 2).
+    engine.render(template_a, store)
+    assert drawn_states["wgt_a"][-1]["counter"] == 2, (
+        "wgt_a counter should continue accumulating after returning to template A"
+    )
+
+
+

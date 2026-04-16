@@ -231,9 +231,14 @@ async def test_os_updates_getter_inactive_without_supported_manager(monkeypatch)
 async def test_os_updates_getter_all_phased_has_no_actionable(monkeypatch) -> None:
     """When every pending update is held for phasing, actionable_count must be 0.
 
-    This is the key invariant for skip_if: a template can safely skip on
-    ``os_updates.actionable_count == 0`` so that phasing-only queues do not
-    trigger unnecessary template display.
+    has_updates must remain 1 so that template rotation skip_if rules based on
+    ``has_updates == 0`` still show the template — the user wants to SEE phased
+    packages even though they cannot be immediately installed.
+
+    Regression guard: the skip_if condition must use ``has_updates``, NOT
+    ``actionable_count``.  Using ``actionable_count == 0`` as the skip trigger
+    causes the os_updates template to be invisible when all pending updates are
+    phasing-held (e.g. ``ovmf``, ``rsyslog`` on Ubuntu Noble).
     """
 
     def _which(name: str) -> str | None:
