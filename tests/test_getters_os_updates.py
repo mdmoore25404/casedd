@@ -231,14 +231,15 @@ async def test_os_updates_getter_inactive_without_supported_manager(monkeypatch)
 async def test_os_updates_getter_all_phased_has_no_actionable(monkeypatch) -> None:
     """When every pending update is held for phasing, actionable_count must be 0.
 
-    has_updates must remain 1 so that template rotation skip_if rules based on
-    ``has_updates == 0`` still show the template — the user wants to SEE phased
-    packages even though they cannot be immediately installed.
+    Rotation skip_if for os_updates uses ``actionable_count == 0`` so the
+    template is suppressed when every pending package is phasing-held.  This
+    matches the design intent: only show os_updates in the rotation when there
+    is at least one package the user can actually act on.
 
-    Regression guard: the skip_if condition must use ``has_updates``, NOT
-    ``actionable_count``.  Using ``actionable_count == 0`` as the skip trigger
-    causes the os_updates template to be invisible when all pending updates are
-    phasing-held (e.g. ``ovmf``, ``rsyslog`` on Ubuntu Noble).
+    has_updates remains 1 (there ARE updates; they are just held back), but
+    the template should still be skipped in the rotation until a non-phased
+    update appears.  The display correctly shows phased packages (with amber
+    suffix) when the template IS showing — e.g. if mixed phased+actionable.
     """
 
     def _which(name: str) -> str | None:
