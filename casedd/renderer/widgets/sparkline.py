@@ -35,6 +35,11 @@ from casedd.renderer.widgets.base import (
 from casedd.template.grid import Rect
 from casedd.template.models import WidgetConfig
 
+# Absolute upper bound on history deque length regardless of per-widget cfg.samples.
+# Prevents runaway memory growth if a template configures an unreasonably large
+# samples value and the daemon runs for hours without restart.
+_MAX_HISTORY_SAMPLES: int = 600  # 5 min at the default 2 Hz render rate
+
 _AREA_ALPHA = 60   # alpha of the filled area under the line (0-255)
 _SERIES_FALLBACK = (
     (34, 204, 136),
@@ -172,7 +177,9 @@ class SparklineWidget(BaseWidget):
 
         buf_key = "buf"
         if buf_key not in state:
-            state[buf_key] = deque[tuple[float, float]]()
+            # maxlen caps absolute memory usage; _update_buffer still trims
+            # to cfg.samples for display resolution.
+            state[buf_key] = deque[tuple[float, float]](maxlen=_MAX_HISTORY_SAMPLES)
         buf: deque[tuple[float, float]] = state[buf_key]  # type: ignore[assignment]
 
         raw = resolve_value(cfg, data)
@@ -238,11 +245,17 @@ class SparklineWidget(BaseWidget):
         """Render multiple source series as overlaid spark lines."""
         key = "multi_buf"
         if key not in state:
-            state[key] = {source: deque[tuple[float, float]]() for source in cfg.sources}
+            state[key] = {
+                source: deque[tuple[float, float]](maxlen=_MAX_HISTORY_SAMPLES)
+                for source in cfg.sources
+            }
 
         raw_buffers = state[key]
         if not isinstance(raw_buffers, dict):
-            raw_buffers = {source: deque[tuple[float, float]]() for source in cfg.sources}
+            raw_buffers = {
+                source: deque[tuple[float, float]](maxlen=_MAX_HISTORY_SAMPLES)
+                for source in cfg.sources
+            }
             state[key] = raw_buffers
 
         buffers: dict[str, deque[tuple[float, float]]] = {}
@@ -252,7 +265,7 @@ class SparklineWidget(BaseWidget):
         for source in cfg.sources:
             buf = raw_buffers.get(source)
             if not isinstance(buf, deque):
-                buf = deque[tuple[float, float]]()
+                buf = deque[tuple[float, float]](maxlen=_MAX_HISTORY_SAMPLES)
                 raw_buffers[source] = buf
             buffers[source] = buf
 

@@ -93,6 +93,62 @@ Use this section as a pre-flight checklist during implementation, not only at cl
 - **Do not fetch logos or other static assets during frame rendering.** Resolve/download
   brand assets ahead of time (install/build/getter phase), store local paths in config/store,
   and rely on widget/engine caching and static-layer pre-rendering to avoid per-frame I/O.
+
+### Memory safety rules (daemon runs indefinitely — leaks are fatal)
+
+CASEDD is a long-running daemon. Any data structure that grows without bound will
+eventually exhaust RAM. Every cache, buffer, or collection added must have a defined
+maximum size and an eviction strategy. Review this checklist before introducing any
+new in-memory collection:
+
+- **Always bound every cache.** Use `collections.OrderedDict` with explicit LRU
+  eviction (`move_to_end` + pop when `len > maxsize`) rather than a plain `dict`.
+  Define the maxsize as a named module-level constant (e.g. `_FOO_CACHE_MAXSIZE: int = 32`)
+  so it is visible, testable, and adjustable. Never use an unbounded `dict` or `list`
+  as a persistent cache.
+
+- **Never key a cache on `id(obj)` without identity validation.** Python reuses memory
+  addresses after objects are freed. A cache entry keyed by `id(x)` may silently serve
+  stale data when a new object lands at the same address. Store the object itself
+  (or a weak reference when hashable) alongside the cached value and validate
+  `stored_obj is current_obj` on each access; evict and rebuild on mismatch.
+
+- **Separate remote-URL caches from local-file caches.** Remote URLs that embed
+  timestamps or query strings (e.g. `?_ts=<unix>`) generate a new unique key on
+  every request and will fill an unbounded local-file cache in minutes. Remote URLs
+  must go into their own bounded LRU structure.
+
+- **Check per-widget state caches before calling loaders.** If a widget stores a
+  previously scaled/decoded result in its per-frame state dict, check that cache
+  *first* — before calling any image loader or network fetch — to avoid work on
+  every render frame when the source hasn't changed.
+
+- **Evict empty entries from dicts used as keyed buckets.** Any `dict[key, list]`
+  or `dict[key, deque]` pattern (e.g. rate-limiter windows, per-source ring buffers)
+  must delete the key when the inner collection becomes empty, not just clear it.
+  Otherwise one entry per unique key accumulates indefinitely.
+
+- **PIL `Image` objects are expensive.** An 800×480 RGBA image is ~1.5 MB. A
+  1024×600 RGB image is ~1.8 MB. Never hold more live `Image` objects than the
+  display pipeline requires. Close/free intermediate images promptly; do not cache
+  PIL images in lists or plain dicts without a bounded eviction policy.
+
+- **Use `asyncio.to_thread` for blocking I/O in getters, not background threads.**
+  Threads leak OS resources if not joined. `asyncio.to_thread` uses the default
+  executor which caps thread count and reuses threads. Never spawn raw `threading.Thread`
+  objects in getters or renderers.
+
+- **Rolling history buffers must be fixed-size.** Any buffer that accumulates samples
+  over time (sparklines, histograms, trend data) must use `collections.deque(maxlen=N)`
+  or a pre-allocated ring buffer. Never append to an unbound list and slice it later —
+  that still allocates a growing list in memory.
+
+- **Write a leak regression test for every new cache.** At minimum, verify:
+  1. The cache never exceeds its declared maxsize under N > maxsize insertions.
+  2. The oldest entry is evicted (not a random one) when the cache is full.
+  Use the existing tests in `tests/test_renderer_engine_cache.py` and
+  `tests/test_renderer_image_widget.py` as templates.
+
 ### Self-learning anti-pattern protocol
 
 When the agent encounters a new ruff or mypy violation during an implementation session

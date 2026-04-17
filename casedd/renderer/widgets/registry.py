@@ -22,6 +22,7 @@ from casedd.renderer.widgets.gauge import GaugeWidget
 from casedd.renderer.widgets.histogram import HistogramWidget
 from casedd.renderer.widgets.htop import HtopWidget
 from casedd.renderer.widgets.image import ImageWidget
+from casedd.renderer.widgets.jellyfin_now_playing import JellyfinNowPlayingWidget
 from casedd.renderer.widgets.net_ports import NetPortsWidget
 from casedd.renderer.widgets.ollama import OllamaWidget
 from casedd.renderer.widgets.plex_now_playing import PlexNowPlayingWidget
@@ -66,6 +67,7 @@ _REGISTRY: dict[WidgetType, BaseWidget] = {
     WidgetType.WEATHER_RADAR: WeatherRadarWidget(),
     WidgetType.PLEX_NOW_PLAYING: PlexNowPlayingWidget(),
     WidgetType.PLEX_RECENTLY_ADDED: PlexRecentlyAddedWidget(),
+    WidgetType.JELLYFIN_NOW_PLAYING: JellyfinNowPlayingWidget(),
     WidgetType.OLLAMA: OllamaWidget(),
 }
 

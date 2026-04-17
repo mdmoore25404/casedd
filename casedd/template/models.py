@@ -52,6 +52,7 @@ class WidgetType(StrEnum):
     WEATHER_RADAR = "weather_radar"
     PLEX_NOW_PLAYING = "plex_now_playing"
     PLEX_RECENTLY_ADDED = "plex_recently_added"
+    JELLYFIN_NOW_PLAYING = "jellyfin_now_playing"
     OLLAMA = "ollama"
 
 

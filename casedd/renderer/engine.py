@@ -14,6 +14,7 @@ Public API:
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Mapping
 from dataclasses import dataclass
 import logging
@@ -33,6 +34,12 @@ _log = logging.getLogger(__name__)
 
 # Re-export so external code (panel.py historically) can import from here
 __all__ = ["RenderEngine", "get_widget_renderer"]
+
+# Maximum number of distinct (template x size) pairs kept in render caches.
+# Bounds memory when templates are hot-reloaded: each reload creates a new
+# Template object (new Python id), adding a cache entry.  Oldest entries are
+# evicted via LRU once this limit is reached, freeing the associated PIL Images.
+_RENDER_CACHE_MAXSIZE: int = 64
 
 _INTRINSIC_DYNAMIC_WIDGET_TYPES: set[WidgetType] = {
     WidgetType.CLOCK,
@@ -186,9 +193,21 @@ class RenderEngine:
         self._widget_states: dict[str, dict[str, object]] = {}
         self._state_lock = threading.Lock()
         self._frame_count = 0
-        self._plan_cache: dict[int, tuple[tuple[str, ...], tuple[str, ...]]] = {}
-        self._rect_cache: dict[tuple[int, int, int], dict[str, Rect]] = {}
-        self._static_layer_cache: dict[tuple[int, int, int], Image.Image] = {}
+        # Render caches keyed by (id(template), w, h) or id(template).
+        # Storing the Template object alongside each entry (strong ref) lets
+        # us detect Python id-reuse: if a new object lands at the same address
+        # as a freed template, the stale entry is evicted on the next access.
+        # LRU eviction via OrderedDict caps memory at _RENDER_CACHE_MAXSIZE
+        # PIL Images regardless of how many hot-reloads have occurred.
+        self._plan_cache: OrderedDict[
+            int, tuple[Template, tuple[tuple[str, ...], tuple[str, ...]]]
+        ] = OrderedDict()
+        self._rect_cache: OrderedDict[
+            tuple[int, int, int], tuple[Template, dict[str, Rect]]
+        ] = OrderedDict()
+        self._static_layer_cache: OrderedDict[
+            tuple[int, int, int], tuple[Template, Image.Image]
+        ] = OrderedDict()
         self._last_render_stats: dict[str, object] = {
             "layout_cache_hit": False,
             "static_cache_hit": False,
@@ -227,11 +246,15 @@ class RenderEngine:
         h: int,
     ) -> tuple[dict[str, Rect], bool]:
         """Resolve and cache top-level widget rectangles for one template size."""
-        template_key = id(template)
-        cache_key = (template_key, w, h)
-        cached_rects = self._rect_cache.get(cache_key)
-        if cached_rects is not None:
-            return cached_rects, True
+        cache_key = (id(template), w, h)
+        entry = self._rect_cache.get(cache_key)
+        if entry is not None:
+            stored_template, cached_rects = entry
+            if stored_template is template:
+                self._rect_cache.move_to_end(cache_key)
+                return cached_rects, True
+            # Python reused the same id for a different template; evict.
+            del self._rect_cache[cache_key]
 
         viewport = self._resolve_viewport(template, w, h)
         local_rects = resolve_grid(
@@ -250,15 +273,23 @@ class RenderEngine:
             )
             for name, rect in local_rects.items()
         }
-        self._rect_cache[cache_key] = absolute_rects
+        self._rect_cache[cache_key] = (template, absolute_rects)
+        self._rect_cache.move_to_end(cache_key)
+        while len(self._rect_cache) > _RENDER_CACHE_MAXSIZE:
+            self._rect_cache.popitem(last=False)
         return absolute_rects, False
 
     def _resolve_plan(self, template: Template) -> tuple[tuple[str, ...], tuple[str, ...]]:
         """Return cached split of static and dynamic top-level widget names."""
-        template_key = id(template)
-        plan = self._plan_cache.get(template_key)
-        if plan is not None:
-            return plan
+        plan_key = id(template)
+        plan_entry = self._plan_cache.get(plan_key)
+        if plan_entry is not None:
+            stored_template, plan = plan_entry
+            if stored_template is template:
+                self._plan_cache.move_to_end(plan_key)
+                return plan
+            # id reused by a different template; evict and recompute.
+            del self._plan_cache[plan_key]
 
         static_widgets: list[str] = []
         dynamic_widgets: list[str] = []
@@ -269,7 +300,10 @@ class RenderEngine:
                 dynamic_widgets.append(name)
 
         resolved = (tuple(static_widgets), tuple(dynamic_widgets))
-        self._plan_cache[template_key] = resolved
+        self._plan_cache[plan_key] = (template, resolved)
+        self._plan_cache.move_to_end(plan_key)
+        while len(self._plan_cache) > _RENDER_CACHE_MAXSIZE:
+            self._plan_cache.popitem(last=False)
         return resolved
 
     def _build_static_layer(
@@ -281,7 +315,6 @@ class RenderEngine:
     ) -> Image.Image:
         """Create and cache the static frame background and static widgets."""
         w, h = size
-        static_key = (id(template), w, h)
         bg_rgb = parse_color(template.background, fallback=(0, 0, 0))
         image = Image.new("RGB", (w, h), bg_rgb)
 
@@ -299,7 +332,11 @@ class RenderEngine:
             except Exception:
                 _log.exception("Widget '%s' (%s) raised during static render:", name, cfg.type)
 
-        self._static_layer_cache[static_key] = image
+        static_key = (id(template), w, h)
+        self._static_layer_cache[static_key] = (template, image)
+        self._static_layer_cache.move_to_end(static_key)
+        while len(self._static_layer_cache) > _RENDER_CACHE_MAXSIZE:
+            self._static_layer_cache.popitem(last=False)
         return image
 
     def _get_static_layer(
@@ -312,8 +349,18 @@ class RenderEngine:
         """Return cached static layer and build timing metadata."""
         started = time.perf_counter()
         static_key = (id(template), size[0], size[1])
-        static_layer = self._static_layer_cache.get(static_key)
-        static_cache_hit = static_layer is not None
+        static_cache_hit = False
+        static_layer: Image.Image | None = None
+        entry = self._static_layer_cache.get(static_key)
+        if entry is not None:
+            stored_template, cached_image = entry
+            if stored_template is template:
+                static_cache_hit = True
+                static_layer = cached_image
+                self._static_layer_cache.move_to_end(static_key)
+            else:
+                # id reused by a different template; evict stale entry.
+                del self._static_layer_cache[static_key]
         if static_layer is None:
             static_layer = self._build_static_layer(template, rects, static_widgets, size)
         elapsed_ms = (time.perf_counter() - started) * 1000.0

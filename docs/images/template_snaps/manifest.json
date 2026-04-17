@@ -1,13 +1,37 @@
 {
-  "generated_at": "2026-04-09 19:50 UTC",
+  "generated_at": "2026-04-17 01:22 UTC",
   "templates": [
     {
-      "name": "system_stats",
-      "image": "images/template_snaps/system_stats.png"
+      "name": "apod",
+      "image": "images/template_snaps/apod.png"
+    },
+    {
+      "name": "close_splash",
+      "image": "images/template_snaps/close_splash.png"
+    },
+    {
+      "name": "docker_dashboard",
+      "image": "images/template_snaps/docker_dashboard.png"
     },
     {
       "name": "invokeai",
       "image": "images/template_snaps/invokeai_demo.jpg"
+    },
+    {
+      "name": "jellyfin_dashboard",
+      "image": "images/template_snaps/jellyfin_dashboard_demo.png"
+    },
+    {
+      "name": "kvm_vms",
+      "image": "images/template_snaps/kvm_vms.png"
+    },
+    {
+      "name": "net_ports",
+      "image": "images/template_snaps/net_ports.jpg"
+    },
+    {
+      "name": "nvidia_detail",
+      "image": "images/template_snaps/nvidia_detail.jpg"
     },
     {
       "name": "nzbget_dashboard",
@@ -18,6 +42,14 @@
       "image": "images/template_snaps/nzbget_queue_demo.jpg"
     },
     {
+      "name": "ollama_host",
+      "image": "images/template_snaps/ollama_host.png"
+    },
+    {
+      "name": "os_updates",
+      "image": "images/template_snaps/os_updates.png"
+    },
+    {
       "name": "pihole",
       "image": "images/template_snaps/pihole_demo.jpg"
     },
@@ -26,8 +58,20 @@
       "image": "images/template_snaps/plex_dashboard_demo.jpg"
     },
     {
+      "name": "sabnzbd_dashboard",
+      "image": "images/template_snaps/sabnzbd_dashboard_demo.png"
+    },
+    {
       "name": "servarr_dashboard",
       "image": "images/template_snaps/servarr_dashboard_demo.jpg"
+    },
+    {
+      "name": "speedtest",
+      "image": "images/template_snaps/speedtest.png"
+    },
+    {
+      "name": "startup_splash",
+      "image": "images/template_snaps/startup_splash.png"
     },
     {
       "name": "synology_dashboard",
@@ -36,6 +80,14 @@
     {
       "name": "synology_surveillance",
       "image": "images/template_snaps/synology_surveillance_demo.png"
+    },
+    {
+      "name": "sysinfo",
+      "image": "images/template_snaps/sysinfo.jpg"
+    },
+    {
+      "name": "system_stats",
+      "image": "images/template_snaps/system_stats.png"
     },
     {
       "name": "truenas_dashboard",
@@ -56,50 +108,6 @@
     {
       "name": "tuya_sensors",
       "image": "images/template_snaps/tuya_sensors_demo.jpg"
-    },
-    {
-      "name": "apod",
-      "image": "images/template_snaps/apod.png"
-    },
-    {
-      "name": "close_splash",
-      "image": "images/template_snaps/close_splash.png"
-    },
-    {
-      "name": "docker_dashboard",
-      "image": "images/template_snaps/docker_dashboard.png"
-    },
-    {
-      "name": "kvm_vms",
-      "image": "images/template_snaps/kvm_vms.png"
-    },
-    {
-      "name": "net_ports",
-      "image": "images/template_snaps/net_ports.jpg"
-    },
-    {
-      "name": "nvidia_detail",
-      "image": "images/template_snaps/nvidia_detail.jpg"
-    },
-    {
-      "name": "ollama_host",
-      "image": "images/template_snaps/ollama_host.png"
-    },
-    {
-      "name": "os_updates",
-      "image": "images/template_snaps/os_updates.png"
-    },
-    {
-      "name": "speedtest",
-      "image": "images/template_snaps/speedtest.png"
-    },
-    {
-      "name": "startup_splash",
-      "image": "images/template_snaps/startup_splash.png"
-    },
-    {
-      "name": "sysinfo",
-      "image": "images/template_snaps/sysinfo.jpg"
     },
     {
       "name": "ups_status",

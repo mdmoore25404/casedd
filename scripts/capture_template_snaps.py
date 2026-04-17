@@ -180,27 +180,34 @@ def _capture_image(base_url: str, panel_name: str, output_path: Path) -> None:
 def _write_manifest(output_dir: Path, templates: Sequence[str] | None = None) -> None:
     """Write the gallery manifest consumed by the landing page."""
     rules = _load_snapshot_gitignore_rules(output_dir)
+
+    # Collect all image files (PNG and JPG) that pass the gitignore rules.
+    all_images: dict[str, Path] = {}
+    for ext in ("*.png", "*.jpg", "*.jpeg"):
+        for path in sorted(output_dir.glob(ext)):
+            if _should_include_manifest_image(path.name, rules):
+                # First match wins; prefer png over jpg when both exist.
+                if path.stem not in all_images:
+                    all_images[path.stem] = path
+
     if templates is not None:
-        manifest_templates = [
-            template_name
-            for template_name in templates
-            if _should_include_manifest_image(f"{template_name}.png", rules)
+        manifest_entries = [
+            all_images[t]
+            for t in templates
+            if t in all_images
         ]
     else:
-        manifest_templates = [
-            path.stem
-            for path in sorted(output_dir.glob("*.png"))
-            if _should_include_manifest_image(path.name, rules)
-        ]
+        manifest_entries = sorted(all_images.values(), key=lambda p: p.stem)
+
     manifest = {
         "generated_at": datetime.now(tz=UTC).strftime("%Y-%m-%d %H:%M UTC"),
         "templates": [
             {
                 # Strip _demo suffix so gallery shows the canonical template name.
-                "name": template_name.removesuffix("_demo"),
-                "image": f"images/template_snaps/{template_name}.png",
+                "name": img.stem.removesuffix("_demo"),
+                "image": f"images/template_snaps/{img.name}",
             }
-            for template_name in manifest_templates
+            for img in manifest_entries
         ],
     }
     (output_dir / "manifest.json").write_text(

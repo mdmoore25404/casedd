@@ -177,3 +177,8 @@ export async function updateRotation(
   );
   return readJson(response);
 }
+
+export async function fetchDiagnostics() {
+  const response = await fetch(`${API_ROOT}/api/diagnostics`, { cache: "no-store" });
+  return readJson(response);
+}

@@ -11,6 +11,7 @@ Available getters:
     - :mod:`casedd.getters.gpu` — NVIDIA GPU stats via ``nvidia-smi``
     - :mod:`casedd.getters.htop` — htop-style process list by CPU usage
     - :mod:`casedd.getters.invokeai` — InvokeAI queue/runtime telemetry
+    - :mod:`casedd.getters.jellyfin` — Jellyfin server/session/library telemetry
     - :mod:`casedd.getters.memory` — RAM usage
     - :mod:`casedd.getters.disk` — Disk usage
     - :mod:`casedd.getters.network` — Network byte rates
@@ -19,6 +20,7 @@ Available getters:
     - :mod:`casedd.getters.ollama` — Ollama API runtime state
     - :mod:`casedd.getters.pihole` — Pi-hole DNS filtering/query telemetry
     - :mod:`casedd.getters.plex` — Plex server/session/library telemetry
+    - :mod:`casedd.getters.sabnzbd` — SABnzbd downloader queue and history
     - :mod:`casedd.getters.servarr` — Radarr/Sonarr queue/health/disk telemetry
     - :mod:`casedd.getters.speedtest` — Ookla speed test sampling
     - :mod:`casedd.getters.synology` — Synology DSM/storage/surveillance telemetry

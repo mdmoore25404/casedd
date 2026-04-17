@@ -15,6 +15,7 @@ Provides:
 - Render buffer inspection endpoint ``GET /api/debug/render-state``
 - Rotation documentation endpoint ``GET /api/docs/rotation``
 - Health/metrics endpoints ``GET /api/health``, ``GET /api/metrics``
+- Diagnostics endpoint ``GET /api/diagnostics``
 """
 
 from __future__ import annotations
@@ -49,7 +50,7 @@ from casedd.config import RotationEntry
 from casedd.data_store import DataStore, StoreValue
 from casedd.speedtest_fields import enrich_speedtest_timestamp_fields
 from casedd.template.loader import TemplateError, load_template
-from casedd.template.models import Template
+from casedd.template.models import Template, WidgetConfig
 
 _log = logging.getLogger(__name__)
 
@@ -63,6 +64,29 @@ _DOCS_DIR = Path("docs")
 
 # Window size for IP-based rate limiting (seconds).
 _RATE_LIMIT_WINDOW_SEC: float = 60.0
+
+
+def _walk_widget_sources(name: str, cfg: WidgetConfig) -> list[dict[str, str]]:
+    """Recursively collect all data-store source keys used by a widget tree.
+
+    Args:
+        name: Widget name used as display label in diagnostics output.
+        cfg: Widget configuration node to inspect.
+
+    Returns:
+        List of ``{"widget": name, "source": key}`` dicts for every source key
+        referenced directly or via any nested panel children.
+    """
+    result: list[dict[str, str]] = []
+    if cfg.source:
+        result.append({"widget": name, "source": cfg.source})
+    for src in cfg.sources:
+        result.append({"widget": name, "source": src})
+    for idx, child in enumerate(cfg.children):
+        result.extend(_walk_widget_sources(f"{name}.children[{idx}]", child))
+    for child_key, child in cfg.children_named.items():
+        result.extend(_walk_widget_sources(f"{name}.{child_key}", child))
+    return result
 
 
 class _RateLimiter:
@@ -106,6 +130,11 @@ class _RateLimiter:
                 return False
             timestamps.append(now)
             self._windows[client_ip] = timestamps
+            # Evict completely-drained entries to prevent the dict from
+            # accumulating a permanent key for every unique IP that ever
+            # connected (important under load-test or port-scan conditions).
+            if not timestamps:
+                self._windows.pop(client_ip, None)
         return True
 
 
@@ -1188,6 +1217,70 @@ def _build_app(  # noqa: PLR0913,PLR0915 -- explicit app wiring keeps routes dis
             k: v for k, v in raw.items() if not prefix or k.startswith(prefix)
         }
         return {"count": len(data), "data": data}
+
+    @app.get("/api/diagnostics", summary="Getter health and missing data-source diagnostics")
+    async def get_diagnostics() -> dict[str, object]:
+        """Return getter errors and per-panel missing data-store source keys.
+
+        For each active template, compares every widget's ``source`` key against
+        the live data store. Missing keys indicate a getter that has not yet run
+        or is in an error state.
+
+        Returns:
+            Dict with ``getters`` (list of getter health records) and ``panels``
+            (per-panel list of ``missing_sources`` entries with widget name,
+            source key, and a human-readable hint).
+        """
+        store_keys = set(store.snapshot().keys())
+        getter_list: list[object] = []
+        if health_provider is not None:
+            health_data = health_provider()
+            raw_getters = health_data.get("getters")
+            if isinstance(raw_getters, list):
+                getter_list = raw_getters
+
+        panel_diagnostics: list[dict[str, object]] = []
+        for panel in panels:
+            panel_name = str(panel["name"])
+            current_template = str(
+                store.get(f"{_TEMPLATE_CURRENT_PREFIX}{panel_name}", "") or ""
+            )
+            panel_info: dict[str, object] = {
+                "name": panel_name,
+                "current_template": current_template,
+                "missing_sources": [],
+                "load_error": None,
+            }
+            if current_template:
+                try:
+                    template = load_template(_template_path(current_template))
+                    all_sources: list[dict[str, str]] = []
+                    for wname, wcfg in template.widgets.items():
+                        all_sources.extend(_walk_widget_sources(wname, wcfg))
+                    # Deduplicate by source key while preserving first-seen widget name.
+                    seen_sources: set[str] = set()
+                    missing: list[dict[str, object]] = []
+                    for item in all_sources:
+                        src = item["source"]
+                        if src in store_keys or src in seen_sources:
+                            continue
+                        seen_sources.add(src)
+                        namespace = src.split(".")[0] if "." in src else src
+                        hint = (
+                            f"Key '{src}' not in data store — "
+                            f"check the getter for '{namespace}.*' sources"
+                        )
+                        missing.append({
+                            "widget": item["widget"],
+                            "source": src,
+                            "hint": hint,
+                        })
+                    panel_info["missing_sources"] = missing
+                except Exception as exc:  # best-effort; surface any load failure
+                    panel_info["load_error"] = str(exc)
+            panel_diagnostics.append(panel_info)
+
+        return {"getters": getter_list, "panels": panel_diagnostics}
 
     @app.get("/api/debug/render-state", summary="Inspect renderer history buffers")
     async def debug_render_state() -> dict[str, object]:

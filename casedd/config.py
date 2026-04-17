@@ -519,6 +519,20 @@ class Config:
         nzbget_password: Optional password for NZBGet RPC authentication.
         nzbget_interval: NZBGet polling interval in seconds.
         nzbget_timeout: NZBGet HTTP request timeout in seconds.
+        sabnzbd_base_url: SABnzbd server base URL.  Leave empty to disable
+            the getter entirely.
+        sabnzbd_api_key: SABnzbd API key for authentication.
+        sabnzbd_interval: SABnzbd polling interval in seconds.
+        sabnzbd_timeout: SABnzbd HTTP request timeout in seconds.
+        sabnzbd_verify_tls: Verify TLS certificates for HTTPS SABnzbd URLs.
+        sabnzbd_max_slots: Maximum active queue slot rows to flatten.
+        jellyfin_base_url: Jellyfin server base URL.  Leave empty to disable
+            the getter entirely.
+        jellyfin_api_key: Jellyfin API key (Dashboard → API Keys).
+        jellyfin_interval: Jellyfin polling interval in seconds.
+        jellyfin_timeout: Jellyfin HTTP request timeout in seconds.
+        jellyfin_verify_tls: Verify TLS certificates for HTTPS Jellyfin URLs.
+        jellyfin_max_sessions: Maximum active session rows to flatten.
         template_rotation: Additional templates to cycle through. Accepts
             either template names or :class:`RotationEntry` objects with
             per-template dwell times.
@@ -712,6 +726,18 @@ class Config:
     nzbget_interval: float = Field(default=5.0)
     nzbget_timeout: float = Field(default=3.0)
     nzbget_category_filter_regex: str | None = Field(default=None)
+    sabnzbd_base_url: str = Field(default="")
+    sabnzbd_api_key: str | None = Field(default=None, repr=False)
+    sabnzbd_interval: float = Field(default=5.0)
+    sabnzbd_timeout: float = Field(default=4.0)
+    sabnzbd_verify_tls: bool = Field(default=True)
+    sabnzbd_max_slots: int = Field(default=6, ge=1, le=20)
+    jellyfin_base_url: str = Field(default="")
+    jellyfin_api_key: str | None = Field(default=None, repr=False)
+    jellyfin_interval: float = Field(default=5.0)
+    jellyfin_timeout: float = Field(default=4.0)
+    jellyfin_verify_tls: bool = Field(default=True)
+    jellyfin_max_sessions: int = Field(default=6, ge=1, le=20)
     nasa_api_key: str | None = Field(default=None, repr=False)
     apod_interval: float = Field(default=14400.0, gt=0)
     apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data
@@ -1846,6 +1872,34 @@ def load_config() -> Config:
                 "",
             )
         ).strip() or None,
+        sabnzbd_base_url=str(
+            _get("CASEDD_SABNZBD_BASE_URL", "sabnzbd_base_url", "")
+        ).strip(),
+        sabnzbd_api_key=str(
+            _get("CASEDD_SABNZBD_API_KEY", "sabnzbd_api_key", "")
+        ).strip() or None,
+        sabnzbd_interval=float(str(_get("CASEDD_SABNZBD_INTERVAL", "sabnzbd_interval", 5.0))),
+        sabnzbd_timeout=float(str(_get("CASEDD_SABNZBD_TIMEOUT", "sabnzbd_timeout", 4.0))),
+        sabnzbd_verify_tls=str(
+            _get("CASEDD_SABNZBD_VERIFY_TLS", "sabnzbd_verify_tls", "true")
+        ) not in {"0", "false", "False", ""},
+        sabnzbd_max_slots=int(str(_get("CASEDD_SABNZBD_MAX_SLOTS", "sabnzbd_max_slots", 6))),
+        jellyfin_base_url=str(
+            _get("CASEDD_JELLYFIN_BASE_URL", "jellyfin_base_url", "")
+        ).strip(),
+        jellyfin_api_key=str(
+            _get("CASEDD_JELLYFIN_API_KEY", "jellyfin_api_key", "")
+        ).strip() or None,
+        jellyfin_interval=float(
+            str(_get("CASEDD_JELLYFIN_INTERVAL", "jellyfin_interval", 5.0))
+        ),
+        jellyfin_timeout=float(str(_get("CASEDD_JELLYFIN_TIMEOUT", "jellyfin_timeout", 4.0))),
+        jellyfin_verify_tls=str(
+            _get("CASEDD_JELLYFIN_VERIFY_TLS", "jellyfin_verify_tls", "true")
+        ) not in {"0", "false", "False", ""},
+        jellyfin_max_sessions=int(
+            str(_get("CASEDD_JELLYFIN_MAX_SESSIONS", "jellyfin_max_sessions", 6))
+        ),
         nasa_api_key=str(_get("CASEDD_NASA_API_KEY", "nasa_api_key", "")).strip() or None,
         apod_interval=float(str(_get("CASEDD_APOD_INTERVAL", "apod_interval", 3600.0))),
         apod_cache_dir=str(_get("CASEDD_APOD_CACHE_DIR", "apod_cache_dir", "/tmp/casedd-apod")),  # noqa: S108

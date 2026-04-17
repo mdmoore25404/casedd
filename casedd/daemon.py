@@ -54,6 +54,7 @@ from casedd.getters.fans import FanGetter
 from casedd.getters.gpu import GpuGetter
 from casedd.getters.htop import HtopGetter
 from casedd.getters.invokeai import InvokeAIGetter
+from casedd.getters.jellyfin import JellyfinGetter
 from casedd.getters.memory import MemoryGetter
 from casedd.getters.net_ports import NetPortsGetter
 from casedd.getters.network import NetworkGetter
@@ -62,6 +63,7 @@ from casedd.getters.ollama import OllamaDetailOptions, OllamaGetter
 from casedd.getters.os_updates import OsUpdatesGetter
 from casedd.getters.pihole import PiHoleGetter
 from casedd.getters.plex import PlexGetter
+from casedd.getters.sabnzbd import SABnzbdGetter
 from casedd.getters.servarr import RadarrGetter, ServarrAggregateGetter, SonarrGetter
 from casedd.getters.speedtest import SpeedtestGetter
 from casedd.getters.synology import SynologyGetter
@@ -1704,6 +1706,24 @@ class Daemon:
                 timeout=self._cfg.nzbget_timeout,
                 category_filter_regex=self._cfg.nzbget_category_filter_regex,
             ),
+            SABnzbdGetter(
+                self._store,
+                base_url=self._cfg.sabnzbd_base_url,
+                api_key=self._cfg.sabnzbd_api_key,
+                interval=self._cfg.sabnzbd_interval,
+                timeout=self._cfg.sabnzbd_timeout,
+                verify_tls=self._cfg.sabnzbd_verify_tls,
+                max_slots=self._cfg.sabnzbd_max_slots,
+            ),
+            JellyfinGetter(
+                self._store,
+                base_url=self._cfg.jellyfin_base_url,
+                api_key=self._cfg.jellyfin_api_key,
+                interval=self._cfg.jellyfin_interval,
+                timeout=self._cfg.jellyfin_timeout,
+                verify_tls=self._cfg.jellyfin_verify_tls,
+                max_sessions=self._cfg.jellyfin_max_sessions,
+            ),
             WeatherGetter(
                 self._store,
                 provider=self._cfg.weather_provider,
@@ -1844,6 +1864,8 @@ class Daemon:
             ("htop.", "HtopGetter"),
             ("plex.", "PlexGetter"),
             ("nzbget.", "NZBGetGetter"),
+            ("sabnzbd.", "SABnzbdGetter"),
+            ("jellyfin.", "JellyfinGetter"),
             ("weather.", "WeatherGetter"),
             ("os_updates.", "OsUpdatesGetter"),
             ("apod.", "ApodGetter"),

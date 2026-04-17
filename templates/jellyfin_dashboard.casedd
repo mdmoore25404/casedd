@@ -1,0 +1,129 @@
+# jellyfin_dashboard.casedd — Jellyfin server health and active sessions
+#
+# Layout mirrors plex_dashboard: full-width header bar + now-playing table
+# on the left and library stats on the right.
+
+name: jellyfin_dashboard
+description: Jellyfin server health, active sessions, and library statistics.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0b1018"
+refresh_rate: 2.0
+skip_if:
+  - source: jellyfin.sessions.active_count
+    operator: lte
+    value: 0
+  - source: jellyfin.server.reachable
+    operator: lte
+    value: 0
+
+grid:
+  template_areas: |
+    "server server"
+    "now    library"
+  columns: "1fr 1fr"
+  rows: "0.28fr 0.72fr"
+
+widgets:
+  server:
+    type: panel
+    background: "#10181e"
+    padding: 8
+    grid:
+      template_areas: |
+        "brand active transcode direct users"
+      columns: "1.5fr 1fr 1fr 1fr 1fr"
+      rows: "1fr"
+    children_named:
+      brand:
+        type: image
+        path: assets/jellyfin/jellyfin-logo.png
+        scale: fit
+      active:
+        type: value
+        source: jellyfin.sessions.active_count
+        label: "Active"
+        color: "#74d680"
+        font_size: auto
+      transcode:
+        type: value
+        source: jellyfin.sessions.transcoding_count
+        label: "Transcoding"
+        color: "#ff9f6f"
+        font_size: auto
+      direct:
+        type: value
+        source: jellyfin.sessions.direct_play_count
+        label: "Direct Play"
+        color: "#6fa8ff"
+        font_size: auto
+      users:
+        type: value
+        source: jellyfin.users.active_count
+        label: "Users"
+        color: "#c4a8ff"
+        font_size: auto
+
+  now:
+    type: jellyfin_now_playing
+    label: "Now Playing"
+    source: jellyfin.sessions.rows
+    color: "#00a4dc"
+    background: "#0f1820"
+    padding: 6
+    max_items: 6
+
+  library:
+    type: panel
+    background: "#0f1820"
+    padding: 6
+    grid:
+      template_areas: |
+        "label  label"
+        "movies series"
+        "episodes albums"
+        "version reachable"
+      columns: "1fr 1fr"
+      rows: "0.5fr 1fr 1fr 1fr"
+    children_named:
+      label:
+        type: text
+        content: "Library"
+        color: "#96a0aa"
+        font_size: auto
+      movies:
+        type: value
+        source: jellyfin.library.movies_count
+        label: "Movies"
+        color: "#f5a623"
+        font_size: auto
+      series:
+        type: value
+        source: jellyfin.library.series_count
+        label: "Series"
+        color: "#ff9f6f"
+        font_size: auto
+      episodes:
+        type: value
+        source: jellyfin.library.episodes_count
+        label: "Episodes"
+        color: "#89b7ff"
+        font_size: auto
+      albums:
+        type: value
+        source: jellyfin.library.music_albums_count
+        label: "Albums"
+        color: "#c4a8ff"
+        font_size: auto
+      version:
+        type: text
+        source: jellyfin.server.version
+        label: "Version"
+        color: "#555d66"
+        font_size: auto
+      reachable:
+        type: value
+        source: jellyfin.server.reachable
+        label: "Reachable"
+        color: "#74d680"
+        font_size: auto

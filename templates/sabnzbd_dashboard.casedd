@@ -1,0 +1,188 @@
+# sabnzbd_dashboard.casedd — SABnzbd downloader status dashboard
+
+name: sabnzbd_dashboard
+description: SABnzbd queue depth, speed, ETA, disk space, and active slots.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0b1118"
+refresh_rate: 5.0
+
+grid:
+  template_areas: |
+    "header header"
+    "summary slots"
+  columns: "1fr 1.2fr"
+  rows: "0.28fr 0.72fr"
+
+widgets:
+  header:
+    type: panel
+    background: "#101822"
+    padding: 6
+    grid:
+      template_areas: |
+        "logo queue active speed eta"
+      columns: "0.9fr 0.9fr 0.9fr 1fr 1fr"
+      rows: "1fr"
+    children_named:
+      logo:
+        type: image
+        path: assets/sabnzbd/sabnzbd-logo.png
+        scale: fit
+        tiers:
+          - path: assets/sabnzbd/sabnzbd-logo-muted.png
+            when:
+              - source: sabnzbd.status.paused
+                operator: eq
+                value: 1
+      queue:
+        type: value
+        source: sabnzbd.queue.total
+        label: "Queue"
+        color: "#89b7ff"
+        font_size: auto
+      active:
+        type: value
+        source: sabnzbd.queue.active_count
+        label: "Active"
+        color: "#74d680"
+        font_size: auto
+      speed:
+        type: value
+        source: sabnzbd.rate.mbps
+        label: "Mb/s"
+        precision: 1
+        color: "#ff9f6f"
+        font_size: auto
+      eta:
+        type: value
+        source: sabnzbd.eta_hms
+        label: "ETA"
+        color: "#6fa8ff"
+        font_size: auto
+
+  summary:
+    type: panel
+    background: "#0f1a24"
+    padding: 6
+    grid:
+      template_areas: |
+        "remaining disk"
+        "success failed"
+        "paused version"
+      columns: "1fr 1fr"
+      rows: "1fr 1fr 1fr"
+    children_named:
+      remaining:
+        type: text
+        source: sabnzbd.queue.remaining_size
+        label: "Remaining"
+        color: "#dfe7ef"
+        font_size: auto
+      disk:
+        type: value
+        source: sabnzbd.disk.free_gb
+        label: "Disk Free GB"
+        precision: 1
+        color: "#a0c8ff"
+        font_size: auto
+      success:
+        type: value
+        source: sabnzbd.history.success_count
+        label: "Completed"
+        color: "#74d680"
+        font_size: auto
+      failed:
+        type: value
+        source: sabnzbd.history.failed_count
+        label: "Failed"
+        color: "#ff7070"
+        font_size: auto
+      paused:
+        type: value
+        source: sabnzbd.status.paused
+        label: "Paused"
+        color: "#aaaaaa"
+        font_size: auto
+      version:
+        type: text
+        source: sabnzbd.version
+        label: "Version"
+        color: "#666e7a"
+        font_size: auto
+
+  slots:
+    type: panel
+    background: "#0f1a24"
+    padding: 6
+    grid:
+      template_areas: |
+        "slot1"
+        "slot2"
+        "slot3"
+      columns: "1fr"
+      rows: "1fr 1fr 1fr"
+    children_named:
+      slot1:
+        type: panel
+        background: "#111c28"
+        padding: 4
+        grid:
+          template_areas: |
+            "name bar"
+          columns: "1fr 0.45fr"
+          rows: "1fr"
+        children_named:
+          name:
+            type: text
+            source: sabnzbd.slot_1.name
+            color: "#dfe7ef"
+            font_size: auto
+          bar:
+            type: bar
+            source: sabnzbd.slot_1.progress_percent
+            label: "%"
+            color: "#60e6a5"
+            font_size: auto
+      slot2:
+        type: panel
+        background: "#111c28"
+        padding: 4
+        grid:
+          template_areas: |
+            "name bar"
+          columns: "1fr 0.45fr"
+          rows: "1fr"
+        children_named:
+          name:
+            type: text
+            source: sabnzbd.slot_2.name
+            color: "#dfe7ef"
+            font_size: auto
+          bar:
+            type: bar
+            source: sabnzbd.slot_2.progress_percent
+            label: "%"
+            color: "#60e6a5"
+            font_size: auto
+      slot3:
+        type: panel
+        background: "#111c28"
+        padding: 4
+        grid:
+          template_areas: |
+            "name bar"
+          columns: "1fr 0.45fr"
+          rows: "1fr"
+        children_named:
+          name:
+            type: text
+            source: sabnzbd.slot_3.name
+            color: "#dfe7ef"
+            font_size: auto
+          bar:
+            type: bar
+            source: sabnzbd.slot_3.progress_percent
+            label: "%"
+            color: "#60e6a5"
+            font_size: auto
