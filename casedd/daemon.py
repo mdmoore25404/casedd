@@ -66,6 +66,7 @@ from casedd.getters.plex import PlexGetter
 from casedd.getters.sabnzbd import SABnzbdGetter
 from casedd.getters.servarr import RadarrGetter, ServarrAggregateGetter, SonarrGetter
 from casedd.getters.speedtest import SpeedtestGetter
+from casedd.getters.sports import SportsGetter, _SportsCfg
 from casedd.getters.synology import SynologyGetter
 from casedd.getters.sysinfo import SysinfoGetter
 from casedd.getters.system import SystemGetter
@@ -1723,6 +1724,19 @@ class Daemon:
                 timeout=self._cfg.jellyfin_timeout,
                 verify_tls=self._cfg.jellyfin_verify_tls,
                 max_sessions=self._cfg.jellyfin_max_sessions,
+            ),
+            SportsGetter(
+                self._store,
+                teams=list(self._cfg.sports_followed_teams)
+                if self._cfg.sports_enabled
+                else [],
+                cfg=_SportsCfg(
+                    api_key=self._cfg.sports_api_key,
+                    timeout=self._cfg.sports_timeout,
+                    max_teams=self._cfg.sports_max_teams,
+                    recent_window_hours=self._cfg.sports_recent_window_hours,
+                ),
+                interval=self._cfg.sports_interval,
             ),
             WeatherGetter(
                 self._store,

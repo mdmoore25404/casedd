@@ -23,6 +23,7 @@ Available getters:
     - :mod:`casedd.getters.sabnzbd` — SABnzbd downloader queue and history
     - :mod:`casedd.getters.servarr` — Radarr/Sonarr queue/health/disk telemetry
     - :mod:`casedd.getters.speedtest` — Ookla speed test sampling
+    - :mod:`casedd.getters.sports` — sports scores/schedule via TheSportsDB API
     - :mod:`casedd.getters.synology` — Synology DSM/storage/surveillance telemetry
     - :mod:`casedd.getters.system` — Hostname, uptime, load average
     - :mod:`casedd.getters.truenas` — TrueNAS storage/pool/disk/service telemetry

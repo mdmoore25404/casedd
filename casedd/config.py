@@ -25,6 +25,24 @@ import yaml
 _HHMM_PATTERN = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 
+class SportsTeamConfig(BaseModel):
+    """One followed sports team entry.
+
+    Attributes:
+        team: Team name as it appears in TheSportsDB (e.g. ``"Los Angeles Lakers"``).
+            Must match the TheSportsDB search results closely.  Use the name
+            returned by ``searchteams.php`` when unsure.
+        sport: Optional sport hint for disambiguation (e.g. ``"NBA"``,
+            ``"American Football"``).  Required when a team name matches
+            entries across multiple sports (e.g. ``"West Virginia"``).
+    """
+
+    model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
+
+    team: str
+    sport: str = ""
+
+
 class TemplateScheduleRule(BaseModel):
     """Time-window rule for template selection.
 
@@ -533,6 +551,16 @@ class Config:
         jellyfin_timeout: Jellyfin HTTP request timeout in seconds.
         jellyfin_verify_tls: Verify TLS certificates for HTTPS Jellyfin URLs.
         jellyfin_max_sessions: Maximum active session rows to flatten.
+        sports_enabled: Enable the sports scores getter (TheSportsDB API).
+        sports_api_key: TheSportsDB API key.  The public free key ``"123"``
+            requires no registration.  Premium keys available at
+            https://www.thesportsdb.com/pricing.
+        sports_interval: Sports data polling interval in seconds (default: 300).
+        sports_timeout: HTTP request timeout in seconds.
+        sports_max_teams: Maximum followed-team slots indexed (default: 10).
+        sports_recent_window_hours: Window in hours for showing recent results.
+        sports_followed_teams: Teams to follow.  Each entry has a ``team``
+            name and optional ``sport`` hint for disambiguation.
         template_rotation: Additional templates to cycle through. Accepts
             either template names or :class:`RotationEntry` objects with
             per-template dwell times.
@@ -738,6 +766,13 @@ class Config:
     jellyfin_timeout: float = Field(default=4.0)
     jellyfin_verify_tls: bool = Field(default=True)
     jellyfin_max_sessions: int = Field(default=6, ge=1, le=20)
+    sports_enabled: bool = Field(default=False)
+    sports_api_key: str = Field(default="123")
+    sports_interval: float = Field(default=300.0, gt=0)
+    sports_timeout: float = Field(default=5.0, gt=0)
+    sports_max_teams: int = Field(default=10, ge=1, le=50)
+    sports_recent_window_hours: int = Field(default=48, ge=1)
+    sports_followed_teams: list[SportsTeamConfig] = Field(default_factory=list)
     nasa_api_key: str | None = Field(default=None, repr=False)
     apod_interval: float = Field(default=14400.0, gt=0)
     apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data
@@ -1899,6 +1934,24 @@ def load_config() -> Config:
         ) not in {"0", "false", "False", ""},
         jellyfin_max_sessions=int(
             str(_get("CASEDD_JELLYFIN_MAX_SESSIONS", "jellyfin_max_sessions", 6))
+        ),
+        sports_enabled=str(
+            _get("CASEDD_SPORTS_ENABLED", "sports_enabled", "false")
+        ) not in {"0", "false", "False", ""},
+        sports_api_key=str(
+            _get("CASEDD_SPORTS_API_KEY", "sports_api_key", "123")
+        ).strip() or "123",
+        sports_interval=float(
+            str(_get("CASEDD_SPORTS_INTERVAL", "sports_interval", 300.0))
+        ),
+        sports_timeout=float(str(_get("CASEDD_SPORTS_TIMEOUT", "sports_timeout", 5.0))),
+        sports_max_teams=int(str(_get("CASEDD_SPORTS_MAX_TEAMS", "sports_max_teams", 10))),
+        sports_recent_window_hours=int(
+            str(_get("CASEDD_SPORTS_RECENT_WINDOW_HOURS", "sports_recent_window_hours", 48))
+        ),
+        sports_followed_teams=cast(
+            "list[SportsTeamConfig]",
+            _get_yaml_list("sports_followed_teams"),
         ),
         nasa_api_key=str(_get("CASEDD_NASA_API_KEY", "nasa_api_key", "")).strip() or None,
         apod_interval=float(str(_get("CASEDD_APOD_INTERVAL", "apod_interval", 3600.0))),
