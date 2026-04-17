@@ -1,0 +1,62 @@
+# sports_today.casedd — Today's games for followed teams
+#
+# Shows only games scheduled for today across all followed sports teams.
+# When there are no games today the template is skipped via skip_if.
+# Powered by TheSportsDB (free, no API key required for basic use).
+
+name: sports_today
+description: Today's games for all followed teams — show only on game days.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0c100d"
+refresh_rate: 5.0
+skip_if:
+  - source: sports.today_count
+    operator: lte
+    value: 0
+
+grid:
+  template_areas: |
+    "header"
+    "schedule"
+  columns: "1fr"
+  rows: "0.25fr 0.75fr"
+
+widgets:
+  header:
+    type: panel
+    background: "#0f1a10"
+    padding: 8
+    grid:
+      template_areas: |
+        "title count reachable"
+      columns: "1.6fr 1fr 1fr"
+      rows: "1fr"
+    children_named:
+      title:
+        type: text
+        content: "Today's Games"
+        color: "#e8edf5"
+        font_size: auto
+      count:
+        type: value
+        source: sports.today_count
+        label: "Games"
+        precision: 0
+        color: "#74d680"
+        font_size: auto
+      reachable:
+        type: boolean
+        source: sports.reachable
+        label: "API"
+        color: "#74d680"
+        font_size: auto
+
+  schedule:
+    type: table
+    label: "Today's Schedule"
+    source: sports.today_rows
+    color: "#b8f0c8"
+    background: "#0d1510"
+    padding: 6
+    font_size: auto

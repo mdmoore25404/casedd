@@ -834,6 +834,57 @@ Notes:
 - `synology.services.rows` includes state for common packages
   (File Station, SMB, Synology Drive, Hyper Backup, Surveillance Station, Active Backup).
 
+## Sports getter
+
+Module: `casedd/getters/sports.py`
+
+Polls [TheSportsDB](https://www.thesportsdb.com/) v1 API for upcoming games and recent
+results for each configured followed team.  The free API key `123` is the default and
+requires no registration.  A premium key unlocks more event history and higher rate limits.
+
+**Configuration env vars:**
+
+- `CASEDD_SPORTS_ENABLED` — `1` to enable (default: `0`)
+- `CASEDD_SPORTS_API_KEY` — TheSportsDB API key (default: `123`)
+- `CASEDD_SPORTS_INTERVAL` — poll interval in seconds (default: `300.0`)
+- `CASEDD_SPORTS_TIMEOUT` — HTTP timeout per request (default: `5.0`)
+- `CASEDD_SPORTS_MAX_TEAMS` — maximum number of followed teams (default: `10`)
+- `CASEDD_SPORTS_RECENT_WINDOW_HOURS` — hours to look back for recent results (default: `48`)
+- `sports_followed_teams` (YAML only) — list of `{ team: "...", sport: "..." }` entries
+
+**Team name matching:** Team names must match TheSportsDB exactly (e.g. `"Los Angeles Lakers"`,
+not `"Lakers"`).  Use the optional `sport` field to disambiguate when a search returns multiple
+teams for the same name (e.g. `"West Virginia"` matches NCAA Football and NCAA Basketball).
+
+Emits:
+- sports.reachable
+- sports.followed_count
+- sports.today_count
+- sports.upcoming\_rows — pipe-delimited table rows: `TEAM (SPORT)|DATE TIME vs OPPONENT (H/A)`
+- sports.recent\_rows — pipe-delimited table rows: `TEAM (SPORT)|W/L SCORE vs OPPONENT`
+- sports.today\_rows — pipe-delimited table rows: `TEAM vs OPPONENT|TIME (H/A)`
+- sports.team\_N.name (N = 1..max\_teams)
+- sports.team\_N.short\_name
+- sports.team\_N.sport
+- sports.team\_N.league
+- sports.team\_N.next.date
+- sports.team\_N.next.days\_until
+- sports.team\_N.next.time
+- sports.team\_N.next.opponent
+- sports.team\_N.next.home\_away
+- sports.team\_N.last.date
+- sports.team\_N.last.opponent
+- sports.team\_N.last.home\_away
+- sports.team\_N.last.score
+- sports.team\_N.last.result
+
+Notes:
+- The free API key `123` returns at most 2 search results per team and 1 event per
+  `eventsnext`/`eventslast` call.  A premium key lifts these limits.
+- Team IDs are resolved at first poll and cached for the lifetime of the process.
+- Use templates `sports_scores.casedd` (upcoming + recent results) and `sports_today.casedd`
+  (today-only schedule, automatically skipped when `sports.today_count == 0`).
+
 ## Template-aware polling
 
 CASEDD runs getters required by templates that can become active under policy
