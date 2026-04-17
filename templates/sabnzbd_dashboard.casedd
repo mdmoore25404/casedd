@@ -26,10 +26,15 @@ widgets:
       rows: "1fr"
     children_named:
       logo:
-        type: text
-        content: "SABnzbd"
-        color: "#f5a623"
-        font_size: auto
+        type: image
+        path: assets/sabnzbd/sabnzbd-logo.png
+        scale: fit
+        tiers:
+          - path: assets/sabnzbd/sabnzbd-logo-muted.png
+            when:
+              - source: sabnzbd.status.paused
+                operator: eq
+                value: 1
       queue:
         type: value
         source: sabnzbd.queue.total

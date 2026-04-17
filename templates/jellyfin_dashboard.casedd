@@ -26,10 +26,9 @@ widgets:
       rows: "1fr"
     children_named:
       logo:
-        type: text
-        content: "Jellyfin"
-        color: "#00a4dc"
-        font_size: auto
+        type: image
+        path: assets/jellyfin/jellyfin-logo.png
+        scale: fit
       active:
         type: value
         source: jellyfin.sessions.active_count
