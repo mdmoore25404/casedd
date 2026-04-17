@@ -6,6 +6,8 @@
 *servarr*.png
 *synology*.png
 *truenas*.png
+*sabnzbd*.png
+*jellyfin*.png
 
 # Allow sanitized demo snapshots to be committed.
 !*_demo*.png

@@ -1,0 +1,31 @@
+[
+  {
+    "at_ms": 0,
+    "update": {
+      "sabnzbd.version": "4.3.2",
+      "sabnzbd.status.paused": 0,
+      "sabnzbd.queue.total": 7,
+      "sabnzbd.queue.active_count": 3,
+      "sabnzbd.queue.remaining_mb": 22528,
+      "sabnzbd.queue.remaining_size": "22.0 GB",
+      "sabnzbd.rate.mbps": 78.6,
+      "sabnzbd.eta_seconds": 2349,
+      "sabnzbd.eta_hms": "00:39:09",
+      "sabnzbd.disk.free_gb": 843.4,
+      "sabnzbd.history.success_count": 312,
+      "sabnzbd.history.failed_count": 2,
+      "sabnzbd.slot_1.name": "The.Bear.S04E01.1080p.WEB-DL",
+      "sabnzbd.slot_1.category": "tv",
+      "sabnzbd.slot_1.progress_percent": 71.8,
+      "sabnzbd.slot_1.timeleft_seconds": 623,
+      "sabnzbd.slot_2.name": "Dune.Part.Three.2025.2160p.UHD.BluRay",
+      "sabnzbd.slot_2.category": "movies",
+      "sabnzbd.slot_2.progress_percent": 44.2,
+      "sabnzbd.slot_2.timeleft_seconds": 1104,
+      "sabnzbd.slot_3.name": "Silo.S02E08.2160p.APPLETV.WEB-DL",
+      "sabnzbd.slot_3.category": "tv",
+      "sabnzbd.slot_3.progress_percent": 19.5,
+      "sabnzbd.slot_3.timeleft_seconds": 1818
+    }
+  }
+]
