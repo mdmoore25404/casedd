@@ -33,10 +33,11 @@ import asyncio
 from dataclasses import dataclass
 import json
 import logging
+import socket
 import ssl
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse, urlunparse
 from urllib.request import Request, urlopen
 
 from casedd.data_store import DataStore, StoreValue
@@ -152,6 +153,41 @@ class _SlotRow:
     progress_percent: float
     timeleft_seconds: int
 
+def _resolve_hostname_to_ip(base_url: str) -> str:
+    """Rewrite a URL so its hostname is replaced with the resolved IP address.
+
+    SABnzbd's CSRF hostname-verification rejects requests where the ``Host``
+    header contains a non-whitelisted DNS name.  IP addresses are always
+    accepted.  Resolving the hostname once at startup avoids adding every
+    consumer's server name to SABnzbd's ``host_whitelist``.
+
+    Args:
+        base_url: Original base URL (e.g. ``http://ut2:8080``).
+
+    Returns:
+        URL with the hostname replaced by its resolved IPv4 address, or the
+        original URL unchanged when the hostname is already an IP, when
+        resolution fails, or when the URL has no hostname.
+    """
+    parsed = urlparse(base_url)
+    hostname = parsed.hostname
+    if not hostname:
+        return base_url
+    # Check whether the hostname is already an IP address.
+    try:
+        socket.inet_aton(hostname)  # raises OSError if not IPv4
+        return base_url
+    except OSError:
+        pass
+    try:
+        ip = socket.gethostbyname(hostname)
+    except socket.gaierror:
+        _log.debug("SABnzbd: could not resolve %r to IP; using hostname as-is", hostname)
+        return base_url
+    # Rebuild the netloc with the resolved IP, preserving any explicit port.
+    netloc = f"{ip}:{parsed.port}" if parsed.port else ip
+    return urlunparse(parsed._replace(netloc=netloc))
+
 
 class SABnzbdGetter(BaseGetter):
     """Getter for SABnzbd downloader queue, status, and history.
@@ -185,7 +221,8 @@ class SABnzbdGetter(BaseGetter):
     ) -> None:
         """Initialise the SABnzbdGetter."""
         super().__init__(store, interval)
-        self._base_url = base_url.rstrip("/")
+        # Resolve hostname → IP so SABnzbd's hostname-verification always passes.
+        self._base_url = _resolve_hostname_to_ip(base_url.rstrip("/"))
         self._api_key = api_key.strip() if isinstance(api_key, str) else ""
         self._timeout = timeout
         self._max_slots = max(1, max_slots)

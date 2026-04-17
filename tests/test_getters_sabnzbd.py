@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from io import BytesIO
 import json
+import socket
 from typing import Any
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError, URLError
@@ -16,6 +17,7 @@ from casedd.getters.sabnzbd import (
     _format_size_mb,
     _parse_speed_mbps,
     _parse_timeleft_seconds,
+    _resolve_hostname_to_ip,
     _seconds_to_hms,
 )
 
@@ -74,6 +76,46 @@ def _history_payload(
 # ---------------------------------------------------------------------------
 # Unit tests — pure helper functions
 # ---------------------------------------------------------------------------
+
+
+class TestResolveHostnameToIp:
+    """Tests for :func:`_resolve_hostname_to_ip`."""
+
+    def test_already_ip_unchanged(self) -> None:
+        """URLs with IP-address hosts must be returned unchanged."""
+        url = "http://192.168.1.100:8080"
+        assert _resolve_hostname_to_ip(url) == url
+
+    def test_localhost_unchanged(self) -> None:
+        """``localhost`` resolves to ``127.0.0.1``, which is an IP — result differs."""
+        result = _resolve_hostname_to_ip("http://localhost:8080")
+        # localhost resolves to an IP; the netloc should use the IP form
+        assert "localhost" not in result or result.startswith("http://127.")
+
+    def test_empty_url_unchanged(self) -> None:
+        """Empty string must be returned unchanged without raising."""
+        assert _resolve_hostname_to_ip("") == ""
+
+    def test_unresolvable_hostname_unchanged(self) -> None:
+        """An unresolvable hostname must be returned unchanged (graceful fallback)."""
+        url = "http://this-host-does-not-exist.invalid:9090"
+        with patch("casedd.getters.sabnzbd.socket.gethostbyname", side_effect=socket.gaierror), \
+             patch("casedd.getters.sabnzbd.socket.inet_aton", side_effect=OSError):
+            assert _resolve_hostname_to_ip(url) == url
+
+    def test_hostname_replaced_with_ip(self) -> None:
+        """A resolvable hostname must be replaced with its IPv4 address."""
+        with patch("casedd.getters.sabnzbd.socket.gethostbyname", return_value="10.0.0.5"), \
+             patch("casedd.getters.sabnzbd.socket.inet_aton", side_effect=OSError):
+            result = _resolve_hostname_to_ip("http://myserver:42069")
+        assert result == "http://10.0.0.5:42069"
+
+    def test_port_preserved(self) -> None:
+        """The original port must be preserved after hostname resolution."""
+        with patch("casedd.getters.sabnzbd.socket.gethostbyname", return_value="10.0.0.5"), \
+             patch("casedd.getters.sabnzbd.socket.inet_aton", side_effect=OSError):
+            result = _resolve_hostname_to_ip("http://myserver:12345")
+        assert ":12345" in result
 
 
 class TestParseSpeedMbps:
