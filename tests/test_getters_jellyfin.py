@@ -192,6 +192,15 @@ class TestJellyfinGetter:
         assert result["jellyfin.library.music_albums_count"] == 5
         assert result["jellyfin.session_1.user"] == "alice"
         assert result["jellyfin.session_2.title"] == "Expanse — Episode 1"
+        # sessions.rows: pipe-delimited string readable by jellyfin_now_playing
+        rows_str = str(result["jellyfin.sessions.rows"])
+        rows = [line for line in rows_str.splitlines() if line]
+        assert len(rows) == 2
+        parts0 = rows[0].split("|")
+        assert parts0[0] == "alice"
+        assert parts0[4] == "direct play"
+        # is_transcoding per slot
+        assert result["jellyfin.session_1.is_transcoding"] == 0
 
     async def test_zero_sessions(self, store: DataStore) -> None:
         """Zero active sessions produces zero-state counts without errors."""
@@ -212,7 +221,7 @@ class TestJellyfinGetter:
         assert result["jellyfin.session_1.title"] == ""
 
     async def test_transcoding_count(self, store: DataStore) -> None:
-        """Transcoding sessions are counted correctly."""
+        """Transcoding sessions are counted correctly and reflected in rows decision."""
         getter = JellyfinGetter(store, base_url="http://localhost:8096", api_key="key")
         sessions = [
             _session_payload("alice", "Movie", transcoding=True),
@@ -231,6 +240,14 @@ class TestJellyfinGetter:
 
         assert result["jellyfin.sessions.transcoding_count"] == 1
         assert result["jellyfin.sessions.direct_play_count"] == 1
+        # rows string should label alice as transcode, bob as direct play
+        rows_str = str(result["jellyfin.sessions.rows"])
+        row_lines = [r for r in rows_str.splitlines() if r]
+        assert row_lines[0].endswith("|transcode")
+        assert row_lines[1].endswith("|direct play")
+        # per-slot is_transcoding flag
+        assert result["jellyfin.session_1.is_transcoding"] == 1
+        assert result["jellyfin.session_2.is_transcoding"] == 0
 
     async def test_auth_failure(self, store: DataStore) -> None:
         """HTTP 401 is wrapped in RuntimeError."""

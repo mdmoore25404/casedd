@@ -16,11 +16,14 @@ Store keys written:
     - ``jellyfin.library.series_count``
     - ``jellyfin.library.episodes_count``
     - ``jellyfin.library.music_albums_count``
+    - ``jellyfin.sessions.rows``  — newline-delimited pipe-separated rows:
+      ``USER|TITLE|MEDIA_TYPE|PROGRESS_PERCENT|transcode|direct play``
     - ``jellyfin.session_1.user`` ... ``jellyfin.session_N.*``
     - ``jellyfin.session_1.title``
     - ``jellyfin.session_1.media_type``
     - ``jellyfin.session_1.device_name``
     - ``jellyfin.session_1.progress_percent``
+    - ``jellyfin.session_1.is_transcoding``
 
 Per-session rows are expanded into numbered keys up to ``max_sessions``:
     - ``jellyfin.session_1.*`` ... ``jellyfin.session_N.*``
@@ -316,6 +319,16 @@ class JellyfinGetter(BaseGetter):
             "jellyfin.users.active_count": len(active_users),
         }
 
+        # Build pipe-delimited rows string (same format as plex.sessions.rows).
+        row_lines: list[str] = []
+        for sess in active:
+            decision = "transcode" if sess.is_transcoding else "direct play"
+            row_lines.append(
+                f"{sess.user}|{sess.title}|{sess.media_type}"
+                f"|{sess.progress_percent:.1f}|{decision}"
+            )
+        updates["jellyfin.sessions.rows"] = "\n".join(row_lines)
+
         # Always write all session slots so stale rows clear when sessions end.
         for idx in range(1, self._max_sessions + 1):
             pfx = f"jellyfin.session_{idx}"
@@ -324,6 +337,7 @@ class JellyfinGetter(BaseGetter):
             updates[f"{pfx}.media_type"] = ""
             updates[f"{pfx}.device_name"] = ""
             updates[f"{pfx}.progress_percent"] = 0.0
+            updates[f"{pfx}.is_transcoding"] = 0
 
         for idx, sess in enumerate(active, start=1):
             pfx = f"jellyfin.session_{idx}"
@@ -332,6 +346,7 @@ class JellyfinGetter(BaseGetter):
             updates[f"{pfx}.media_type"] = sess.media_type
             updates[f"{pfx}.device_name"] = sess.device_name
             updates[f"{pfx}.progress_percent"] = sess.progress_percent
+            updates[f"{pfx}.is_transcoding"] = 1 if sess.is_transcoding else 0
 
         return updates
 
