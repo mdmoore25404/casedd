@@ -1,7 +1,7 @@
 # Runtime dependencies — installed in venv for production and dev
 fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
-Pillow>=10.4.0
+Pillow>=12.2.0
 psutil>=6.0.0
 PyYAML>=6.0.1
 pydantic>=2.8.0
