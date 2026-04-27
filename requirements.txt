@@ -7,4 +7,4 @@ PyYAML>=6.0.1
 pydantic>=2.8.0
 websockets>=13.0
 watchfiles>=0.22.0
-tinytuya>=1.13.0
+tinytuya>=1.18.0
