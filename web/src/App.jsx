@@ -28,7 +28,6 @@ import {
   fetchDiagnostics,
   fetchFixture,
   fetchFixtures,
-  fetchRotation,
   fetchTemplate,
   fetchTemplates,
   fetchPanels,
