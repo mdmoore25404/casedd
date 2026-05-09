@@ -474,6 +474,14 @@ cmd_lint() {
     ruff check .
     echo "==> mypy --strict casedd/"
     mypy --strict casedd/
+    echo "==> eslint src/ (frontend security scan)"
+    if [[ -d "$WEB_DIR" ]] && command -v npm >/dev/null 2>&1; then
+        (cd "$WEB_DIR" && npx eslint src/)
+        echo "==> npm audit --audit-level=high"
+        (cd "$WEB_DIR" && npm audit --audit-level=high)
+    else
+        echo "WARNING: web/ dir or npm not found; skipping frontend security scan." >&2
+    fi
     echo "Lint passed."
 }
 
