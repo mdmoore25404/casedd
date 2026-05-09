@@ -10,6 +10,39 @@ Stack: Python 3.12, FastAPI, uvicorn, Pillow (PIL), Pydantic v2 strict, psutil, 
 
 ---
 
+## Reusable Workflow Patterns
+
+### Dependabot PR Consolidation
+
+When asked to consolidate Dependabot PRs, follow this pattern:
+
+1. **Discover open PRs:** `gh pr list --author "app/dependabot" --json number,title,headRefName`
+2. **Create a consolidation branch** from `main` named `chore/consolidate-dependabot-updates-<lowest-pr>-<highest-pr>` (e.g. `chore/consolidate-dependabot-updates-129-138`).
+3. **Apply all changes in a single commit** by directly editing the dependency files (`requirements.txt`, `requirements-dev.txt`, `package.json`, `go.mod`, `Gemfile`, etc.) with the version bumps from each PR. Do not cherry-pick individual PR branches — read each PR's diff and apply the net changes to the files manually.
+4. **Commit message format:**
+   ```
+   chore(deps): consolidate dependabot updates (PRs #N–#M)
+
+   - package-a: >=old to >=new
+   - package-b: >=old to >=new
+   ...
+
+   Closes #N, #N+1, ..., #M
+
+   Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+   ```
+5. **Open a single PR** to `main` referencing all closed PR numbers in the body.
+6. **After the consolidation PR merges**, close each individual Dependabot PR with a comment:
+   ```
+   gh pr comment <N> --body "Closed in favor of consolidated PR #<consolidation-pr>."
+   gh pr close <N>
+   ```
+7. **No GitHub Actions workflow needed** — the closing step is done interactively after merge.
+
+This pattern works identically across Python (`requirements.txt`), Node (`package.json`), Ruby (`Gemfile`), and Go (`go.mod`).
+
+---
+
 ## Mandatory coding rules
 
 ### General
