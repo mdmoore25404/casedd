@@ -50,6 +50,7 @@ from casedd.getters.base import BaseGetter
 from casedd.getters.containers import ContainersGetter
 from casedd.getters.cpu import CpuGetter
 from casedd.getters.disk import DiskGetter
+from casedd.getters.espn_sports import EspnSportsGetter
 from casedd.getters.fans import FanGetter
 from casedd.getters.gpu import GpuGetter
 from casedd.getters.htop import HtopGetter
@@ -1737,6 +1738,14 @@ class Daemon:
                     recent_window_hours=self._cfg.sports_recent_window_hours,
                 ),
                 interval=self._cfg.sports_interval,
+            ),
+            EspnSportsGetter(
+                self._store,
+                leagues=self._cfg.espn_leagues
+                if self._cfg.espn_sports_enabled
+                else [],
+                logo_cache_dir=self._cfg.espn_logo_cache_dir,
+                timeout=self._cfg.espn_timeout,
             ),
             WeatherGetter(
                 self._store,

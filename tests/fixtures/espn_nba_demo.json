@@ -1,0 +1,177 @@
+{
+  "events": [
+    {
+      "id": "401669800",
+      "name": "New York Knicks at Philadelphia 76ers",
+      "date": "2025-05-14T23:00Z",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "away",
+              "team": {
+                "abbreviation": "NYK",
+                "displayName": "New York Knicks",
+                "color": "006BB6",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/ny.png"
+              },
+              "score": "108",
+              "records": [{"type": "total", "summary": "51-31"}]
+            },
+            {
+              "homeAway": "home",
+              "team": {
+                "abbreviation": "PHI",
+                "displayName": "Philadelphia 76ers",
+                "color": "006BB6",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/phi.png"
+              },
+              "score": "94",
+              "records": [{"type": "total", "summary": "24-58"}]
+            }
+          ],
+          "status": {
+            "type": {
+              "state": "post",
+              "shortDetail": "Final"
+            },
+            "period": 4,
+            "displayClock": "0:00"
+          },
+          "series": {
+            "summary": "NY leads series 4-0"
+          }
+        }
+      ]
+    },
+    {
+      "id": "401669801",
+      "name": "Sacramento Kings at Minnesota Timberwolves",
+      "date": "2025-05-15T01:30Z",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "away",
+              "team": {
+                "abbreviation": "SAC",
+                "displayName": "Sacramento Kings",
+                "color": "5A2D81",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/sac.png"
+              },
+              "score": "78",
+              "records": [{"type": "total", "summary": "46-36"}]
+            },
+            {
+              "homeAway": "home",
+              "team": {
+                "abbreviation": "MIN",
+                "displayName": "Minnesota Timberwolves",
+                "color": "236192",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/min.png"
+              },
+              "score": "83",
+              "records": [{"type": "total", "summary": "56-26"}]
+            }
+          ],
+          "status": {
+            "type": {
+              "state": "in",
+              "shortDetail": "End of Q3"
+            },
+            "period": 3,
+            "displayClock": "0:00"
+          },
+          "series": {
+            "summary": "MIN leads series 2-1"
+          }
+        }
+      ]
+    },
+    {
+      "id": "401669802",
+      "name": "Boston Celtics at Miami Heat",
+      "date": "2025-05-15T19:30Z",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "away",
+              "team": {
+                "abbreviation": "BOS",
+                "displayName": "Boston Celtics",
+                "color": "008348",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/bos.png"
+              },
+              "score": "56",
+              "records": [{"type": "total", "summary": "61-21"}]
+            },
+            {
+              "homeAway": "home",
+              "team": {
+                "abbreviation": "MIA",
+                "displayName": "Miami Heat",
+                "color": "98002E",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/mia.png"
+              },
+              "score": "52",
+              "records": [{"type": "total", "summary": "36-46"}]
+            }
+          ],
+          "status": {
+            "type": {
+              "state": "in",
+              "shortDetail": "Halftime"
+            },
+            "period": 2,
+            "displayClock": "0:00"
+          },
+          "series": {
+            "summary": "BOS leads series 3-0"
+          }
+        }
+      ]
+    },
+    {
+      "id": "401669803",
+      "name": "Oklahoma City Thunder at Dallas Mavericks",
+      "date": "2025-05-16T00:30Z",
+      "competitions": [
+        {
+          "competitors": [
+            {
+              "homeAway": "away",
+              "team": {
+                "abbreviation": "OKC",
+                "displayName": "Oklahoma City Thunder",
+                "color": "007DC5",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/okc.png"
+              },
+              "score": "0",
+              "records": [{"type": "total", "summary": "68-14"}]
+            },
+            {
+              "homeAway": "home",
+              "team": {
+                "abbreviation": "DAL",
+                "displayName": "Dallas Mavericks",
+                "color": "00538C",
+                "logo": "https://a.espncdn.com/i/teamlogos/nba/500/scoreboard/dal.png"
+              },
+              "score": "0",
+              "records": [{"type": "total", "summary": "39-43"}]
+            }
+          ],
+          "status": {
+            "type": {
+              "state": "pre",
+              "shortDetail": "8:30 PM ET"
+            },
+            "period": 0,
+            "displayClock": "0:00"
+          }
+        }
+      ]
+    }
+  ]
+}

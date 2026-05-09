@@ -29,18 +29,28 @@ class SportsTeamConfig(BaseModel):
     """One followed sports team entry.
 
     Attributes:
-        team: Team name as it appears in TheSportsDB (e.g. ``"Los Angeles Lakers"``).
-            Must match the TheSportsDB search results closely.  Use the name
-            returned by ``searchteams.php`` when unsure.
-        sport: Optional sport hint for disambiguation (e.g. ``"NBA"``,
-            ``"American Football"``).  Required when a team name matches
-            entries across multiple sports (e.g. ``"West Virginia"``).
+        team: Team name.  For TheSportsDB backends this must match the name
+            returned by ``searchteams.php``; for the sportsipy backend this is
+            used as a display label and the ``abbreviation`` field is used to
+            query the schedule.
+        sport: Optional sport hint for disambiguation when using a TheSportsDB
+            backend (e.g. ``"NBA"``, ``"American Football"``).  Required when
+            a team name matches entries across multiple sports.
+        league: League code for the **sportsipy** backend.  One of ``"nba"``,
+            ``"nfl"``, ``"mlb"``, ``"nhl"``, ``"ncaab"``, ``"ncaaf"``.
+            Ignored by TheSportsDB backends.
+        abbreviation: Team abbreviation or slug used by the **sportsipy**
+            backend to fetch the season schedule (e.g. ``"LAL"`` for the
+            Lakers, ``"purdue"`` for Purdue NCAAB).  Ignored by TheSportsDB
+            backends.
     """
 
     model_config = ConfigDict(strict=True, frozen=True, extra="forbid")
 
     team: str
     sport: str = ""
+    league: str = ""
+    abbreviation: str = ""
 
 
 class TemplateScheduleRule(BaseModel):
@@ -551,16 +561,29 @@ class Config:
         jellyfin_timeout: Jellyfin HTTP request timeout in seconds.
         jellyfin_verify_tls: Verify TLS certificates for HTTPS Jellyfin URLs.
         jellyfin_max_sessions: Maximum active session rows to flatten.
-        sports_enabled: Enable the sports scores getter (TheSportsDB API).
+        sports_enabled: Enable the sports scores getter.
+        sports_backend: Backend to use for sports data.  One of
+            ``"sportsipy"`` (default — scrapes sports-reference.com, no API
+            key required), ``"thesportsdb_v1"`` (free TheSportsDB v1 API,
+            default key ``"123"``), or ``"thesportsdb_v2"`` (premium
+            TheSportsDB v2 API, requires ``sports_api_key``).
         sports_api_key: TheSportsDB API key.  The public free key ``"123"``
-            requires no registration.  Premium keys available at
-            https://www.thesportsdb.com/pricing.
+            requires no registration and works with ``thesportsdb_v1``.
+            For ``thesportsdb_v2`` set this to your premium key (see
+            https://www.thesportsdb.com/pricing).
         sports_interval: Sports data polling interval in seconds (default: 300).
         sports_timeout: HTTP request timeout in seconds.
+        espn_sports_enabled: Enable the ESPN live scoreboard getter.
+        espn_leagues: List of leagues to poll via ESPN (default: ``["nba", "wnba"]``).
+        espn_logo_cache_dir: Directory for cached ESPN team logo PNG files.
+        espn_timeout: HTTP request timeout for ESPN API calls in seconds.
         sports_max_teams: Maximum followed-team slots indexed (default: 10).
         sports_recent_window_hours: Window in hours for showing recent results.
-        sports_followed_teams: Teams to follow.  Each entry has a ``team``
-            name and optional ``sport`` hint for disambiguation.
+        sports_followed_teams: Teams to follow.  For the ``sportsipy`` backend
+            each entry should include ``league`` (e.g. ``"nba"``) and
+            ``abbreviation`` (e.g. ``"LAL"``).  For TheSportsDB backends the
+            ``team`` name must match TheSportsDB; ``sport`` provides
+            disambiguation when needed.
         template_rotation: Additional templates to cycle through. Accepts
             either template names or :class:`RotationEntry` objects with
             per-template dwell times.
@@ -767,12 +790,17 @@ class Config:
     jellyfin_verify_tls: bool = Field(default=True)
     jellyfin_max_sessions: int = Field(default=6, ge=1, le=20)
     sports_enabled: bool = Field(default=False)
+    sports_backend: str = Field(default="sportsipy")
     sports_api_key: str = Field(default="123")
     sports_interval: float = Field(default=300.0, gt=0)
     sports_timeout: float = Field(default=5.0, gt=0)
     sports_max_teams: int = Field(default=10, ge=1, le=50)
     sports_recent_window_hours: int = Field(default=48, ge=1)
     sports_followed_teams: list[SportsTeamConfig] = Field(default_factory=list)
+    espn_sports_enabled: bool = Field(default=False)
+    espn_leagues: list[str] = Field(default_factory=lambda: ["nba", "wnba"])
+    espn_logo_cache_dir: str = Field(default="/tmp/casedd-espn-logos")  # noqa: S108
+    espn_timeout: float = Field(default=5.0, gt=0)
     nasa_api_key: str | None = Field(default=None, repr=False)
     apod_interval: float = Field(default=14400.0, gt=0)
     apod_cache_dir: str = Field(default="/tmp/casedd-apod")  # noqa: S108  # intentional: cache non-repo data
@@ -1938,6 +1966,9 @@ def load_config() -> Config:
         sports_enabled=str(
             _get("CASEDD_SPORTS_ENABLED", "sports_enabled", "false")
         ) not in {"0", "false", "False", ""},
+        sports_backend=str(
+            _get("CASEDD_SPORTS_BACKEND", "sports_backend", "sportsipy")
+        ).strip() or "sportsipy",
         sports_api_key=str(
             _get("CASEDD_SPORTS_API_KEY", "sports_api_key", "123")
         ).strip() or "123",
@@ -1953,6 +1984,17 @@ def load_config() -> Config:
             "list[SportsTeamConfig]",
             _get_yaml_list("sports_followed_teams"),
         ),
+        espn_sports_enabled=str(
+            _get("CASEDD_ESPN_SPORTS_ENABLED", "espn_sports_enabled", "false")
+        ) not in {"0", "false", "False", ""},
+        espn_leagues=cast(
+            "list[str]",
+            _get_yaml_list("espn_leagues") or ["nba", "wnba"],
+        ),
+        espn_logo_cache_dir=str(
+            _get("CASEDD_ESPN_LOGO_CACHE_DIR", "espn_logo_cache_dir", "/tmp/casedd-espn-logos")  # noqa: S108
+        ).strip() or "/tmp/casedd-espn-logos",  # noqa: S108
+        espn_timeout=float(str(_get("CASEDD_ESPN_TIMEOUT", "espn_timeout", 5.0))),
         nasa_api_key=str(_get("CASEDD_NASA_API_KEY", "nasa_api_key", "")).strip() or None,
         apod_interval=float(str(_get("CASEDD_APOD_INTERVAL", "apod_interval", 3600.0))),
         apod_cache_dir=str(_get("CASEDD_APOD_CACHE_DIR", "apod_cache_dir", "/tmp/casedd-apod")),  # noqa: S108
