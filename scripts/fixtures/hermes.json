@@ -1,0 +1,28 @@
+[
+  {
+    "at_ms": 0,
+    "update": {
+      "hermes.gateway_up": true,
+      "hermes.sessions_active": 7.0,
+      "hermes.sessions_total": 42.0,
+      "hermes.model": "Ollama / banditchat",
+      "hermes.latest_model": "xAI / grok-4.5",
+      "hermes.last_activity": "1D 5H 6M",
+      "hermes.skills_count": 18.0,
+      "hermes.platforms_connected": 2.0,
+      "hermes.platforms_total": 3.0,
+      "hermes.platforms_summary": "2/3 connected (discord:connected, slack:connected, signal:error)",
+      "hermes.active_agents": 3.0,
+      "hermes.delivery_pending": 4.0,
+      "hermes.delivery_total": 19.0,
+      "hermes.delivery_summary": "4/19",
+      "hermes.delegations_pending": 2.0,
+      "hermes.delegations_active": 5.0,
+      "hermes.delegations_total": 11.0,
+      "hermes.delegations_summary": "2 pending / 5 active / 11 total",
+      "hermes.compression_locks": 1.0,
+      "hermes.compaction_busy": true,
+      "hermes.provider_drift": true
+    }
+  }
+]

@@ -9,6 +9,7 @@ Available getters:
     - :mod:`casedd.getters.cpu` — CPU usage, temperature, fan RPM
     - :mod:`casedd.getters.fans` — system/CPU/GPU fan telemetry
     - :mod:`casedd.getters.gpu` — NVIDIA GPU stats via ``nvidia-smi``
+    - :mod:`casedd.getters.hermes` — local Hermes agent/gateway/session status
     - :mod:`casedd.getters.htop` — htop-style process list by CPU usage
     - :mod:`casedd.getters.invokeai` — InvokeAI queue/runtime telemetry
     - :mod:`casedd.getters.jellyfin` — Jellyfin server/session/library telemetry
