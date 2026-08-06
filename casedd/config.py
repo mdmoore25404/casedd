@@ -464,6 +464,8 @@ class Config:
         invokeai_interval: InvokeAI polling interval in seconds.
         invokeai_timeout: InvokeAI HTTP request timeout in seconds.
         invokeai_verify_tls: Verify InvokeAI HTTPS certificates when true.
+        hermes_home: Hermes data directory.
+        hermes_interval: Hermes polling interval in seconds.
         ollama_api_base: Base URL for Ollama HTTP API.
         ollama_interval: Ollama polling interval in seconds.
         ollama_timeout: Ollama request timeout in seconds.
@@ -643,6 +645,8 @@ class Config:
     invokeai_interval: float = Field(default=5.0)
     invokeai_timeout: float = Field(default=4.0)
     invokeai_verify_tls: bool = Field(default=True)
+    hermes_home: Path = Field(default=Path("~/.hermes"))
+    hermes_interval: float = Field(default=15.0)
     ollama_api_base: str = Field(default="http://localhost:11434")
     ollama_interval: float = Field(default=10.0)
     ollama_timeout: float = Field(default=3.0)
@@ -977,6 +981,15 @@ class Config:
         """
         if not (1.0 <= v <= 3600.0):
             msg = f"ollama_interval must be between 1 and 3600 seconds, got {v}"
+            raise ValueError(msg)
+        return v
+
+    @field_validator("hermes_interval")
+    @classmethod
+    def _validate_hermes_interval(cls, v: float) -> float:
+        """Ensure Hermes polling interval is positive and practical."""
+        if not (1.0 <= v <= 3600.0):
+            msg = f"hermes_interval must be between 1 and 3600 seconds, got {v}"
             raise ValueError(msg)
         return v
 
@@ -1655,6 +1668,8 @@ def load_config() -> Config:
         invokeai_timeout=float(str(_get("CASEDD_INVOKEAI_TIMEOUT", "invokeai_timeout", 4.0))),
         invokeai_verify_tls=str(_get("CASEDD_INVOKEAI_VERIFY_TLS", "invokeai_verify_tls", "1"))
         not in {"0", "false", "False", ""},
+        hermes_home=Path(str(_get("CASEDD_HERMES_HOME", "hermes_home", "~/.hermes"))).expanduser(),
+        hermes_interval=float(str(_get("CASEDD_HERMES_INTERVAL", "hermes_interval", 15.0))),
         ollama_api_base=str(_get("CASEDD_OLLAMA_API_BASE", "ollama_api_base", "http://localhost:11434")),
         ollama_interval=float(str(_get("CASEDD_OLLAMA_INTERVAL", "ollama_interval", 10.0))),
         ollama_timeout=float(str(_get("CASEDD_OLLAMA_TIMEOUT", "ollama_timeout", 3.0))),

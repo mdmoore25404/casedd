@@ -1,0 +1,136 @@
+name: hermes
+description: Local Hermes gateway and session status
+background: "#10151b"
+refresh_rate: 1.0
+
+grid:
+  template_areas: |
+    logo     gateway model      model      activity
+    logo     sessions sessions  queue      queue
+    platforms platforms agents  delegation drift
+    skills   skills   latest    compression compression
+  columns: 0.95fr 0.95fr 1.2fr 1.15fr 1.15fr
+  rows: 0.95fr 1fr 1fr 1fr
+
+widgets:
+  logo:
+    type: image
+    path: assets/hermes/hermes.png
+    scale: fit
+    background: transparent
+    padding: [8, 10]
+
+  gateway:
+    type: boolean
+    label: Gateway
+    source: hermes.gateway_up
+    color: "#4cc46b"
+    padding: [8, 10]
+
+  model:
+    type: value
+    label: Model
+    source: hermes.model
+    color: "#cfd8e3"
+    padding: [8, 10]
+
+  sessions:
+    type: panel
+    direction: column
+    gap: 6
+    padding: [8, 10]
+    children:
+      - type: value
+        label: Active Sessions
+        source: hermes.sessions_active
+        precision: 0
+        color: "#91d2ff"
+      - type: value
+        label: Total Sessions
+        source: hermes.sessions_total
+        precision: 0
+        color: "#b8c9dc"
+
+  activity:
+    type: text
+    source: hermes.last_activity
+    label: Last Activity
+    color: "#d6dee8"
+    padding: [8, 10]
+
+  queue:
+    type: panel
+    direction: column
+    gap: 6
+    padding: [8, 10]
+    children:
+      - type: value
+        label: Delivery Pending
+        source: hermes.delivery_pending
+        precision: 0
+        color: "#ffd38a"
+      - type: value
+        label: Delivery Total
+        source: hermes.delivery_total
+        precision: 0
+        color: "#b8c9dc"
+
+  platforms:
+    type: value
+    label: Platforms
+    source: hermes.platforms_summary
+    color: "#9fd8ff"
+    padding: [8, 10]
+
+  agents:
+    type: value
+    label: Active Agents
+    source: hermes.active_agents
+    precision: 0
+    color: "#9ee6c8"
+    padding: [8, 10]
+
+  delegation:
+    type: value
+    label: Delegations
+    source: hermes.delegations_summary
+    color: "#d6dee8"
+    padding: [8, 10]
+
+  drift:
+    type: boolean
+    label: Provider Match
+    source: hermes.provider_aligned
+    color: "#4cc46b"
+    padding: [8, 10]
+
+  skills:
+    type: value
+    label: Skill Files
+    source: hermes.skills_count
+    precision: 0
+    color: "#f0c674"
+    padding: [8, 10]
+
+  latest:
+    type: value
+    label: Latest Model
+    source: hermes.latest_model
+    color: "#b8c9dc"
+    padding: [8, 10]
+
+  compression:
+    type: panel
+    direction: row
+    gap: 8
+    padding: [8, 10]
+    children:
+      - type: value
+        label: Compression Locks
+        source: hermes.compression_locks
+        precision: 0
+        color: "#d7b8ff"
+      - type: boolean
+        label: Busy
+        source: hermes.compaction_busy
+        color: "#d7b8ff"

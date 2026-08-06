@@ -123,8 +123,10 @@ function stringifyTemplateAreas(areaRows) {
 
 const WIDGET_TYPES = [
   "panel",
+  "boolean",
   "value",
   "text",
+  "table",
   "bar",
   "gauge",
   "histogram",
@@ -141,6 +143,10 @@ const WIDGET_TYPES = [
   "weather_forecast",
   "weather_alerts",
   "weather_radar",
+  "plex_now_playing",
+  "plex_recently_added",
+  "jellyfin_now_playing",
+  "ollama",
 ];
 
 function prettyJson(value) {

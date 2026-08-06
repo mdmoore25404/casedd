@@ -52,6 +52,7 @@ from casedd.getters.cpu import CpuGetter
 from casedd.getters.disk import DiskGetter
 from casedd.getters.fans import FanGetter
 from casedd.getters.gpu import GpuGetter
+from casedd.getters.hermes import HermesGetter
 from casedd.getters.htop import HtopGetter
 from casedd.getters.invokeai import InvokeAIGetter
 from casedd.getters.jellyfin import JellyfinGetter
@@ -1585,6 +1586,11 @@ class Daemon:
                 timeout=self._cfg.invokeai_timeout,
                 verify_tls=self._cfg.invokeai_verify_tls,
             ),
+            HermesGetter(
+                self._store,
+                hermes_home=self._cfg.hermes_home,
+                interval=self._cfg.hermes_interval,
+            ),
             OllamaGetter(
                 self._store,
                 base_url=self._cfg.ollama_api_base,
@@ -1852,6 +1858,7 @@ class Daemon:
             ("containers.", "ContainersGetter"),
             ("speedtest.", "SpeedtestGetter"),
             ("invokeai.", "InvokeAIGetter"),
+            ("hermes.", "HermesGetter"),
             ("ollama.", "OllamaGetter"),
             ("ups.", "UpsGetter"),
             ("vms.", "VmGetter"),

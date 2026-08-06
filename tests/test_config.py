@@ -312,6 +312,19 @@ def test_invokeai_env_settings_parse(monkeypatch: object, tmp_path: Path) -> Non
         assert cfg.invokeai_verify_tls is False
 
 
+def test_hermes_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
+        """Hermes env vars should map into typed config fields."""
+        monkeypatch_obj = monkeypatch
+        monkeypatch_obj.setenv("CASEDD_CONFIG", str(tmp_path / "missing.yaml"))
+        monkeypatch_obj.setenv("CASEDD_HERMES_HOME", str(tmp_path / "hermes-home"))
+        monkeypatch_obj.setenv("CASEDD_HERMES_INTERVAL", "21")
+
+        cfg = load_config()
+
+        assert cfg.hermes_home == tmp_path / "hermes-home"
+        assert cfg.hermes_interval == 21.0
+
+
 def test_os_updates_env_settings_parse(monkeypatch: object, tmp_path: Path) -> None:
         """OS updates env vars should map into typed config fields."""
         monkeypatch_obj = monkeypatch

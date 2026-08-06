@@ -108,6 +108,11 @@ def test_getter_name_for_source_includes_invokeai() -> None:
     assert Daemon._getter_name_for_source("invokeai.queue.pending_count") == "InvokeAIGetter"
 
 
+def test_getter_name_for_source_includes_hermes() -> None:
+    """Hermes namespace should resolve to HermesGetter."""
+    assert Daemon._getter_name_for_source("hermes.sessions_total") == "HermesGetter"
+
+
 def test_getter_name_for_source_includes_os_updates() -> None:
     """os_updates namespace should resolve to OsUpdatesGetter."""
     assert Daemon._getter_name_for_source("os_updates.has_updates") == "OsUpdatesGetter"
