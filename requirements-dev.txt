@@ -1,7 +1,7 @@
 # Development-only dependencies
 -r requirements.txt
 
-ruff>=0.15.12
+ruff>=0.15.20
 mypy>=1.11.0
 types-PyYAML>=6.0.12
 types-psutil>=7.2.2.20260408
