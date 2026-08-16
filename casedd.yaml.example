@@ -40,6 +40,34 @@ refresh_rate: 2.0
 # os_updates_interval: 900.0
 # os_updates_manager: auto
 
+# Sports scores and schedules from TheSportsDB (free, no registration needed).
+# The free API key "123" allows basic queries; register at thesportsdb.com for
+# premium access (more event history, higher rate limits).
+# Team names must match TheSportsDB exactly (e.g. "Los Angeles Lakers", not "Lakers").
+# Use the sport field to disambiguate when a search returns multiple teams
+# (e.g. "West Virginia" matches both NCAA Football and NCAA Basketball).
+#
+# Enable templates sports_scores.casedd and sports_today.casedd once configured.
+# sports_enabled: false
+# sports_api_key: "123"              # CASEDD_SPORTS_API_KEY
+# sports_interval: 300.0             # CASEDD_SPORTS_INTERVAL  (poll every 5 min)
+# sports_timeout: 5.0                # CASEDD_SPORTS_TIMEOUT
+# sports_max_teams: 10               # CASEDD_SPORTS_MAX_TEAMS
+# sports_recent_window_hours: 48     # CASEDD_SPORTS_RECENT_WINDOW_HOURS
+# sports_followed_teams:
+#   - team: "Los Angeles Lakers"
+#     sport: "Basketball"            # Optional: helps when search returns multiple teams
+#   - team: "Washington Capitals"
+#     sport: "Ice Hockey"
+#   - team: "Washington Nationals"
+#     sport: "Baseball"
+#   - team: "Washington Commanders"
+#     sport: "American Football"
+#   - team: "West Virginia"
+#     sport: "Basketball"            # NCAA Basketball
+#   - team: "West Virginia"
+#     sport: "American Football"     # NCAA Football
+
 # Servarr polling configuration (Radarr/Sonarr).
 # One-app setup: configure only Radarr or only Sonarr fields.
 # Two-app setup: configure both pairs of base URL + API key.

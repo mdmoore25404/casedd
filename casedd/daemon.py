@@ -50,6 +50,7 @@ from casedd.getters.base import BaseGetter
 from casedd.getters.containers import ContainersGetter
 from casedd.getters.cpu import CpuGetter
 from casedd.getters.disk import DiskGetter
+from casedd.getters.espn_sports import EspnSportsGetter
 from casedd.getters.fans import FanGetter
 from casedd.getters.gpu import GpuGetter
 from casedd.getters.hermes import HermesGetter
@@ -67,6 +68,7 @@ from casedd.getters.plex import PlexGetter
 from casedd.getters.sabnzbd import SABnzbdGetter
 from casedd.getters.servarr import RadarrGetter, ServarrAggregateGetter, SonarrGetter
 from casedd.getters.speedtest import SpeedtestGetter
+from casedd.getters.sports import SportsGetter, _SportsCfg
 from casedd.getters.synology import SynologyGetter
 from casedd.getters.sysinfo import SysinfoGetter
 from casedd.getters.system import SystemGetter
@@ -1729,6 +1731,27 @@ class Daemon:
                 timeout=self._cfg.jellyfin_timeout,
                 verify_tls=self._cfg.jellyfin_verify_tls,
                 max_sessions=self._cfg.jellyfin_max_sessions,
+            ),
+            SportsGetter(
+                self._store,
+                teams=list(self._cfg.sports_followed_teams)
+                if self._cfg.sports_enabled
+                else [],
+                cfg=_SportsCfg(
+                    api_key=self._cfg.sports_api_key,
+                    timeout=self._cfg.sports_timeout,
+                    max_teams=self._cfg.sports_max_teams,
+                    recent_window_hours=self._cfg.sports_recent_window_hours,
+                ),
+                interval=self._cfg.sports_interval,
+            ),
+            EspnSportsGetter(
+                self._store,
+                leagues=self._cfg.espn_leagues
+                if self._cfg.espn_sports_enabled
+                else [],
+                logo_cache_dir=self._cfg.espn_logo_cache_dir,
+                timeout=self._cfg.espn_timeout,
             ),
             WeatherGetter(
                 self._store,

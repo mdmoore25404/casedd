@@ -1,0 +1,78 @@
+# sports_scores.casedd — Sports scores and schedules dashboard
+#
+# Shows followed teams' next upcoming game and most recent result.
+# Powered by TheSportsDB (free, no API key required for basic use).
+# Configure teams in casedd.yaml under sports_followed_teams.
+
+name: sports_scores
+description: Followed teams — upcoming games and recent results from TheSportsDB.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0c0f14"
+refresh_rate: 5.0
+skip_if:
+  - source: sports.followed_count
+    operator: lte
+    value: 0
+
+grid:
+  template_areas: |
+    "header  header"
+    "upcoming recent"
+  columns: "1fr 1fr"
+  rows: "0.25fr 0.75fr"
+
+widgets:
+  header:
+    type: panel
+    background: "#111722"
+    padding: 8
+    grid:
+      template_areas: |
+        "title teams today reachable"
+      columns: "1.6fr 1fr 1fr 1fr"
+      rows: "1fr"
+    children_named:
+      title:
+        type: text
+        content: "Sports Scores"
+        color: "#e8edf5"
+        font_size: auto
+      teams:
+        type: value
+        source: sports.followed_count
+        label: "Teams"
+        precision: 0
+        color: "#89b7ff"
+        font_size: auto
+      today:
+        type: value
+        source: sports.today_count
+        label: "Today"
+        precision: 0
+        color: "#74d680"
+        font_size: auto
+      reachable:
+        type: boolean
+        source: sports.reachable
+        label: "API"
+        color: "#74d680"
+        font_size: auto
+
+  upcoming:
+    type: table
+    label: "Upcoming Games"
+    source: sports.upcoming_rows
+    color: "#9bd6ff"
+    background: "#0f1820"
+    padding: 6
+    font_size: auto
+
+  recent:
+    type: table
+    label: "Recent Results"
+    source: sports.recent_rows
+    color: "#d4f0b8"
+    background: "#0f1820"
+    padding: 6
+    font_size: auto

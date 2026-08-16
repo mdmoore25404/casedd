@@ -1,0 +1,552 @@
+# nba_wnba_scoreboard.casedd — Live NBA and WNBA scoreboard
+#
+# Shows up to 4 NBA games (top half) and 4 WNBA games (bottom half).
+# Each game card displays: team logos, names, scores, period/clock,
+# series standing (playoffs), and tipoff countdown (pre-game).
+# Requires espn_sports_enabled: true in casedd.yaml.
+
+name: nba_wnba_scoreboard
+description: Live NBA and WNBA scores with logos, period/clock, series info, and tipoff countdown.
+aspect_ratio: "5:3"
+layout_mode: fit
+background: "#0a0a0f"
+refresh_rate: 5.0
+
+grid:
+  template_areas: |
+    nba_header  nba_header  nba_header  nba_header
+    nba_game_0  nba_game_1  nba_game_2  nba_game_3
+    wnba_header wnba_header wnba_header wnba_header
+    wnba_game_0 wnba_game_1 wnba_game_2 wnba_game_3
+  columns: 1fr 1fr 1fr 1fr
+  rows: 0.18fr 1fr 0.18fr 1fr
+
+widgets:
+  nba_header:
+    type: text
+    content: "NBA"
+    font_size: auto
+    color: "#c9a227"
+    background: "#1a1a2e"
+    padding: 4
+    align: center
+    valign: middle
+
+  wnba_header:
+    type: text
+    content: "WNBA"
+    font_size: auto
+    color: "#e97314"
+    background: "#1a1a2e"
+    padding: 4
+    align: center
+    valign: middle
+
+  # ── NBA game cards ──────────────────────────────────────────────────────
+
+  nba_game_0:
+    type: panel
+    background: "#12121c"
+    padding: [4, 2]
+    grid:
+      template_areas: |
+        "away_logo status home_logo"
+        "away_name score  home_name"
+        "series    series series"
+      columns: 1fr 1.4fr 1fr
+      rows: 1.2fr 0.8fr 0.4fr
+    children_named:
+      away_logo:
+        type: image
+        source: espn_nba.game_0.away_logo
+        scale: fit
+        padding: 4
+      home_logo:
+        type: image
+        source: espn_nba.game_0.home_logo
+        scale: fit
+        padding: 4
+      status:
+        type: text
+        source: espn_nba.game_0.detail
+        font_size: auto
+        color: "#cccccc"
+        align: center
+        valign: middle
+        padding: 2
+      away_name:
+        type: text
+        source: espn_nba.game_0.away_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      home_name:
+        type: text
+        source: espn_nba.game_0.home_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      score:
+        type: text
+        source: espn_nba.game_0.away_score
+        font_size: auto
+        color: "#f0f0f0"
+        align: center
+        valign: middle
+        format: "{away} – {home}"
+        sources:
+          away: espn_nba.game_0.away_score
+          home: espn_nba.game_0.home_score
+      series:
+        type: text
+        source: espn_nba.game_0.series
+        font_size: auto
+        color: "#aaaaaa"
+        align: center
+        valign: middle
+        padding: 1
+
+  nba_game_1:
+    type: panel
+    background: "#12121c"
+    padding: [4, 2]
+    grid:
+      template_areas: |
+        "away_logo status home_logo"
+        "away_name score  home_name"
+        "series    series series"
+      columns: 1fr 1.4fr 1fr
+      rows: 1.2fr 0.8fr 0.4fr
+    children_named:
+      away_logo:
+        type: image
+        source: espn_nba.game_1.away_logo
+        scale: fit
+        padding: 4
+      home_logo:
+        type: image
+        source: espn_nba.game_1.home_logo
+        scale: fit
+        padding: 4
+      status:
+        type: text
+        source: espn_nba.game_1.detail
+        font_size: auto
+        color: "#cccccc"
+        align: center
+        valign: middle
+        padding: 2
+      away_name:
+        type: text
+        source: espn_nba.game_1.away_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      home_name:
+        type: text
+        source: espn_nba.game_1.home_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      score:
+        type: text
+        sources:
+          away: espn_nba.game_1.away_score
+          home: espn_nba.game_1.home_score
+        format: "{away} – {home}"
+        font_size: auto
+        color: "#f0f0f0"
+        align: center
+        valign: middle
+      series:
+        type: text
+        source: espn_nba.game_1.series
+        font_size: auto
+        color: "#aaaaaa"
+        align: center
+        valign: middle
+        padding: 1
+
+  nba_game_2:
+    type: panel
+    background: "#12121c"
+    padding: [4, 2]
+    grid:
+      template_areas: |
+        "away_logo status home_logo"
+        "away_name score  home_name"
+        "series    series series"
+      columns: 1fr 1.4fr 1fr
+      rows: 1.2fr 0.8fr 0.4fr
+    children_named:
+      away_logo:
+        type: image
+        source: espn_nba.game_2.away_logo
+        scale: fit
+        padding: 4
+      home_logo:
+        type: image
+        source: espn_nba.game_2.home_logo
+        scale: fit
+        padding: 4
+      status:
+        type: text
+        source: espn_nba.game_2.detail
+        font_size: auto
+        color: "#cccccc"
+        align: center
+        valign: middle
+        padding: 2
+      away_name:
+        type: text
+        source: espn_nba.game_2.away_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      home_name:
+        type: text
+        source: espn_nba.game_2.home_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      score:
+        type: text
+        sources:
+          away: espn_nba.game_2.away_score
+          home: espn_nba.game_2.home_score
+        format: "{away} – {home}"
+        font_size: auto
+        color: "#f0f0f0"
+        align: center
+        valign: middle
+      series:
+        type: text
+        source: espn_nba.game_2.series
+        font_size: auto
+        color: "#aaaaaa"
+        align: center
+        valign: middle
+        padding: 1
+
+  nba_game_3:
+    type: panel
+    background: "#12121c"
+    padding: [4, 2]
+    grid:
+      template_areas: |
+        "away_logo status home_logo"
+        "away_name score  home_name"
+        "series    series series"
+      columns: 1fr 1.4fr 1fr
+      rows: 1.2fr 0.8fr 0.4fr
+    children_named:
+      away_logo:
+        type: image
+        source: espn_nba.game_3.away_logo
+        scale: fit
+        padding: 4
+      home_logo:
+        type: image
+        source: espn_nba.game_3.home_logo
+        scale: fit
+        padding: 4
+      status:
+        type: text
+        source: espn_nba.game_3.detail
+        font_size: auto
+        color: "#cccccc"
+        align: center
+        valign: middle
+        padding: 2
+      away_name:
+        type: text
+        source: espn_nba.game_3.away_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      home_name:
+        type: text
+        source: espn_nba.game_3.home_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      score:
+        type: text
+        sources:
+          away: espn_nba.game_3.away_score
+          home: espn_nba.game_3.home_score
+        format: "{away} – {home}"
+        font_size: auto
+        color: "#f0f0f0"
+        align: center
+        valign: middle
+      series:
+        type: text
+        source: espn_nba.game_3.series
+        font_size: auto
+        color: "#aaaaaa"
+        align: center
+        valign: middle
+        padding: 1
+
+  # ── WNBA game cards ─────────────────────────────────────────────────────
+
+  wnba_game_0:
+    type: panel
+    background: "#1c1212"
+    padding: [4, 2]
+    grid:
+      template_areas: |
+        "away_logo status home_logo"
+        "away_name score  home_name"
+        "series    series series"
+      columns: 1fr 1.4fr 1fr
+      rows: 1.2fr 0.8fr 0.4fr
+    children_named:
+      away_logo:
+        type: image
+        source: espn_wnba.game_0.away_logo
+        scale: fit
+        padding: 4
+      home_logo:
+        type: image
+        source: espn_wnba.game_0.home_logo
+        scale: fit
+        padding: 4
+      status:
+        type: text
+        source: espn_wnba.game_0.detail
+        font_size: auto
+        color: "#cccccc"
+        align: center
+        valign: middle
+        padding: 2
+      away_name:
+        type: text
+        source: espn_wnba.game_0.away_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      home_name:
+        type: text
+        source: espn_wnba.game_0.home_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      score:
+        type: text
+        sources:
+          away: espn_wnba.game_0.away_score
+          home: espn_wnba.game_0.home_score
+        format: "{away} – {home}"
+        font_size: auto
+        color: "#f0f0f0"
+        align: center
+        valign: middle
+      series:
+        type: text
+        source: espn_wnba.game_0.series
+        font_size: auto
+        color: "#aaaaaa"
+        align: center
+        valign: middle
+        padding: 1
+
+  wnba_game_1:
+    type: panel
+    background: "#1c1212"
+    padding: [4, 2]
+    grid:
+      template_areas: |
+        "away_logo status home_logo"
+        "away_name score  home_name"
+        "series    series series"
+      columns: 1fr 1.4fr 1fr
+      rows: 1.2fr 0.8fr 0.4fr
+    children_named:
+      away_logo:
+        type: image
+        source: espn_wnba.game_1.away_logo
+        scale: fit
+        padding: 4
+      home_logo:
+        type: image
+        source: espn_wnba.game_1.home_logo
+        scale: fit
+        padding: 4
+      status:
+        type: text
+        source: espn_wnba.game_1.detail
+        font_size: auto
+        color: "#cccccc"
+        align: center
+        valign: middle
+        padding: 2
+      away_name:
+        type: text
+        source: espn_wnba.game_1.away_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      home_name:
+        type: text
+        source: espn_wnba.game_1.home_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      score:
+        type: text
+        sources:
+          away: espn_wnba.game_1.away_score
+          home: espn_wnba.game_1.home_score
+        format: "{away} – {home}"
+        font_size: auto
+        color: "#f0f0f0"
+        align: center
+        valign: middle
+      series:
+        type: text
+        source: espn_wnba.game_1.series
+        font_size: auto
+        color: "#aaaaaa"
+        align: center
+        valign: middle
+        padding: 1
+
+  wnba_game_2:
+    type: panel
+    background: "#1c1212"
+    padding: [4, 2]
+    grid:
+      template_areas: |
+        "away_logo status home_logo"
+        "away_name score  home_name"
+        "series    series series"
+      columns: 1fr 1.4fr 1fr
+      rows: 1.2fr 0.8fr 0.4fr
+    children_named:
+      away_logo:
+        type: image
+        source: espn_wnba.game_2.away_logo
+        scale: fit
+        padding: 4
+      home_logo:
+        type: image
+        source: espn_wnba.game_2.home_logo
+        scale: fit
+        padding: 4
+      status:
+        type: text
+        source: espn_wnba.game_2.detail
+        font_size: auto
+        color: "#cccccc"
+        align: center
+        valign: middle
+        padding: 2
+      away_name:
+        type: text
+        source: espn_wnba.game_2.away_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      home_name:
+        type: text
+        source: espn_wnba.game_2.home_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      score:
+        type: text
+        sources:
+          away: espn_wnba.game_2.away_score
+          home: espn_wnba.game_2.home_score
+        format: "{away} – {home}"
+        font_size: auto
+        color: "#f0f0f0"
+        align: center
+        valign: middle
+      series:
+        type: text
+        source: espn_wnba.game_2.series
+        font_size: auto
+        color: "#aaaaaa"
+        align: center
+        valign: middle
+        padding: 1
+
+  wnba_game_3:
+    type: panel
+    background: "#1c1212"
+    padding: [4, 2]
+    grid:
+      template_areas: |
+        "away_logo status home_logo"
+        "away_name score  home_name"
+        "series    series series"
+      columns: 1fr 1.4fr 1fr
+      rows: 1.2fr 0.8fr 0.4fr
+    children_named:
+      away_logo:
+        type: image
+        source: espn_wnba.game_3.away_logo
+        scale: fit
+        padding: 4
+      home_logo:
+        type: image
+        source: espn_wnba.game_3.home_logo
+        scale: fit
+        padding: 4
+      status:
+        type: text
+        source: espn_wnba.game_3.detail
+        font_size: auto
+        color: "#cccccc"
+        align: center
+        valign: middle
+        padding: 2
+      away_name:
+        type: text
+        source: espn_wnba.game_3.away_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      home_name:
+        type: text
+        source: espn_wnba.game_3.home_abbr
+        font_size: auto
+        color: "#ffffff"
+        align: center
+        valign: middle
+      score:
+        type: text
+        sources:
+          away: espn_wnba.game_3.away_score
+          home: espn_wnba.game_3.home_score
+        format: "{away} – {home}"
+        font_size: auto
+        color: "#f0f0f0"
+        align: center
+        valign: middle
+      series:
+        type: text
+        source: espn_wnba.game_3.series
+        font_size: auto
+        color: "#aaaaaa"
+        align: center
+        valign: middle
+        padding: 1
