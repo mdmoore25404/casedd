@@ -42,7 +42,7 @@ DEV_CONFIG_FILE=""
 _activate_venv() {
     if [[ ! -f "$VENV/bin/activate" ]]; then
         echo "ERROR: venv not found at $VENV" >&2
-        echo "Run: python3.12 -m venv .venv && pip install -r requirements.txt" >&2
+        echo "Run: python3 -m venv .venv && pip install -r requirements.txt" >&2
         exit 1
     fi
     # shellcheck source=/dev/null
@@ -385,6 +385,11 @@ cmd_start_fb() {
     fi
 
     _ensure_dirs
+    if _is_running; then
+        echo "Restarting casedd to enable framebuffer output"
+        cmd_stop
+        sleep 1
+    fi
     _save_fb_pref
     export CASEDD_DEV_NO_FB=0
     echo "Production service is not active; starting dev mode with framebuffer enabled"

@@ -75,6 +75,10 @@ Use this section as a pre-flight checklist during implementation, not only at cl
   dispatch table or loop can express the flow more cleanly.
 - **Do not create argument-heavy private helpers** (Ruff `PLR0913`) in render paths
   unless unavoidable. Prefer a small context object/dataclass, or keep helper logic local.
+- **Do not exceed the positional-argument limit** (Ruff `PLR0917`). Prefer keyword-only
+  configuration parameters or a typed configuration object for functions with many inputs.
+- **Parenthesize adjacent strings inside collections** (Ruff `ISC004`). Use explicit
+  parentheses around multiline implicit concatenations so item boundaries remain clear.
 - **Do not add blanket `# noqa` / `# type: ignore`.** If suppression is truly needed,
   use the narrowest code and include a reason on the same line.
 - **Do not over-constrain update payload models** when payload normalization is expected.

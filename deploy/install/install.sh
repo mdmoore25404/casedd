@@ -38,6 +38,8 @@ Notes:
     it is backed up and replaced with the symlink.
   - casedd.yaml is read directly from the repository working tree via the
     service WorkingDirectory; it is not copied into /etc/casedd.
+  - The service and installer users are added to the video group for
+    framebuffer access.
   - Installer prompts to enable /dev/input/event* read access for ESC/Q
     emergency-exit support. Skipping this leaves ESC/Q exit unavailable.
     - Installer also prompts to configure container runtime socket access
@@ -265,6 +267,28 @@ ensure_service_user() {
     fail "Selected service user '${service_user}' does not exist. Set CASEDD_SERVICE_USER explicitly."
 }
 
+ensure_framebuffer_access() {
+    local service_user="$1"
+    local installer_user="${SUDO_USER:-}"
+
+    if ! getent group video >/dev/null 2>&1; then
+        fail "Required framebuffer group 'video' does not exist."
+    fi
+
+    if ! user_in_group "${service_user}" video; then
+        log "Adding ${service_user} to group 'video' for framebuffer access"
+        run_cmd usermod -aG video "${service_user}"
+    else
+        log "Service user ${service_user} is already in group 'video'"
+    fi
+
+    if [[ -n "${installer_user}" && "${installer_user}" != "root" ]] \
+        && ! user_in_group "${installer_user}" video; then
+        log "Adding ${installer_user} to group 'video' for framebuffer development"
+        run_cmd usermod -aG video "${installer_user}"
+    fi
+}
+
 validate_repo() {
     [[ -f "${REPO_ROOT}/pyproject.toml" ]] || fail "Repository root looks wrong: ${REPO_ROOT}"
     [[ -f "${REPO_ROOT}/${UNIT_TEMPLATE}" ]] || fail "Missing unit template: ${UNIT_TEMPLATE}"
@@ -346,7 +370,7 @@ install_env_file() {
 
 install_venv() {
     log "Creating or updating virtual environment in ${VENV_DIR}"
-    run_cmd python3.12 -m venv "${VENV_DIR}"
+    run_cmd python3 -m venv "${VENV_DIR}"
     run_cmd "${VENV_DIR}/bin/pip" install --quiet --upgrade pip
     run_cmd "${VENV_DIR}/bin/pip" install --quiet -r "${REPO_ROOT}/requirements.txt"
 }
@@ -380,6 +404,7 @@ install_service() {
     service_user="$(detect_service_user)"
     validate_repo
     ensure_service_user "${service_user}"
+    ensure_framebuffer_access "${service_user}"
 
     log "Installing CASEDD from ${REPO_ROOT}"
     log "Service user: ${service_user}"
