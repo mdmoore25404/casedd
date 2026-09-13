@@ -27,6 +27,18 @@ from casedd.getters.base import BaseGetter
 
 _log = logging.getLogger(__name__)
 
+# tinytuya defaults to a 5s socket timeout with 5 retries and a 5s delay
+# between retries (up to ~50s per connection attempt), and _poll_device tries
+# up to 3 protocol versions serially. An unreachable device could therefore
+# block this getter's worker thread for minutes. Because asyncio.to_thread
+# cannot cancel an already-running thread, a stuck call here also blocks the
+# asyncio default executor's shutdown, which in turn blocks daemon exit and
+# host reboot/shutdown. Keep these tight so an offline device fails fast —
+# the next poll cycle (interval seconds later) retries anyway.
+_TUYA_SOCKET_TIMEOUT_SECONDS: float = 3.0
+_TUYA_SOCKET_RETRY_LIMIT: int = 1
+_TUYA_SOCKET_RETRY_DELAY_SECONDS: float = 0.0
+
 
 @dataclass(frozen=True)
 class TuyaCloudSettings:
@@ -321,6 +333,12 @@ class TuyaGetter(BaseGetter):
             address=device.ip_address or "",
             local_key=device.local_key,
         )
+        # Bound connection attempts so an unreachable device fails fast
+        # instead of blocking the polling thread for up to ~150s (see
+        # module-level comment on the timeout/retry constants above).
+        handle.set_socketTimeout(_TUYA_SOCKET_TIMEOUT_SECONDS)
+        handle.set_socketRetryLimit(_TUYA_SOCKET_RETRY_LIMIT)
+        handle.set_socketRetryDelay(_TUYA_SOCKET_RETRY_DELAY_SECONDS)
         self._device_handles[device.device_id] = handle
         return handle
 
