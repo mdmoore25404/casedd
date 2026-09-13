@@ -23,6 +23,11 @@ ExecStart=@CASEDD_REPO_ROOT@/.venv/bin/python -m casedd
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=on-failure
 RestartSec=5s
+# Safety net: the daemon's own shutdown sequence bounds slow/unreachable data
+# sources to a few seconds, but cap the systemd-level graceful-stop wait too
+# so a future stuck getter/output can never delay a host reboot or service
+# restart for the 90s systemd default (see docs/RESCUE.md).
+TimeoutStopSec=20s
 
 # Production profile: no runtime logging for maximum performance.
 StandardOutput=null

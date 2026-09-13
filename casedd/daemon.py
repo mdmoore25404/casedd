@@ -104,6 +104,11 @@ _GETTER_SYNC_INTERVAL_SEC = 5.0
 _TEST_MODE_STORE_KEY = "casedd.test_mode"
 _TEMPLATE_FORCE_PREFIX = "casedd.template.force."
 _TEMPLATE_CURRENT_PREFIX = "casedd.template.current."
+# Maximum time to wait for getter tasks to finish during shutdown. Getters run
+# blocking fetches via asyncio.to_thread; a cancelled task only raises
+# CancelledError once its worker thread returns, so this bounds how long a
+# slow/unreachable data source can delay daemon exit.
+_GETTER_SHUTDOWN_TIMEOUT_SECONDS = 10.0
 _SPEEDTEST_KEY_PREFIX = "speedtest."
 
 # Visual indicator painted over trigger-held frames so the viewer knows
@@ -305,7 +310,7 @@ class Daemon:
                 getter.stop()
             for task in getter_tasks.values():
                 task.cancel()
-            await asyncio.gather(*getter_tasks.values(), return_exceptions=True)
+            await self._await_getter_shutdown(getter_tasks)
             if panel_runtimes and ws_output is not None and http_output is not None:
                 await self._show_shutdown_frame(panel_runtimes, ws_output, http_output)
             await unix_ingestion.stop()
@@ -833,6 +838,42 @@ class Daemon:
             await asyncio.wait_for(
                 asyncio.shield(self._shutdown.wait()),
                 timeout=self._cfg.startup_frame_seconds,
+            )
+
+    async def _await_getter_shutdown(
+        self,
+        getter_tasks: dict[str, asyncio.Task[None]],
+        *,
+        timeout_seconds: float = _GETTER_SHUTDOWN_TIMEOUT_SECONDS,
+    ) -> None:
+        """Wait for cancelled getter tasks to finish, with a bounded timeout.
+
+        Getter fetches run in worker threads via ``asyncio.to_thread``, which
+        cannot be interrupted once started — cancelling the wrapping task
+        only raises ``CancelledError`` after the thread call returns. This
+        bounds the wait so one slow/unreachable data source (network device,
+        hung subprocess, etc.) cannot indefinitely delay daemon shutdown
+        (and, when run under systemd, host reboot/poweroff).
+
+        Args:
+            getter_tasks: Mapping of getter name to its (already-cancelled)
+                polling task.
+            timeout_seconds: Maximum seconds to wait. Defaults to the module
+                constant; overridable so tests can exercise the stuck-task
+                path without a real multi-second sleep.
+        """
+        if not getter_tasks:
+            return
+        _, pending = await asyncio.wait(
+            getter_tasks.values(),
+            timeout=timeout_seconds,
+        )
+        if pending:
+            _log.warning(
+                "%d getter task(s) did not stop within %.0fs during shutdown; "
+                "proceeding without waiting further.",
+                len(pending),
+                timeout_seconds,
             )
 
     async def _show_shutdown_frame(
