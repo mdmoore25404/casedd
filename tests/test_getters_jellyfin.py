@@ -7,6 +7,7 @@ import json
 from typing import Any
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError, URLError
+from urllib.request import Request
 
 import pytest
 
@@ -37,6 +38,19 @@ def _make_response(data: Any) -> MagicMock:
     resp.__exit__ = MagicMock(return_value=None)
     resp.read = MagicMock(return_value=body)
     return resp
+
+
+def _urlopen_responses(responses: dict[str, MagicMock | BaseException]) -> object:
+    """Return a thread-order-independent urlopen replacement."""
+
+    def open_url(request: Request, **_kwargs: object) -> MagicMock:
+        path = request.full_url.removeprefix("http://localhost:8096")
+        response = responses[path]
+        if isinstance(response, BaseException):
+            raise response
+        return response
+
+    return open_url
 
 
 def _info_payload(name: str = "My Jellyfin", version: str = "10.9.1") -> dict[str, Any]:
@@ -171,11 +185,15 @@ class TestJellyfinGetter:
 
         with patch(
             "casedd.getters.jellyfin.urlopen",
-            side_effect=[
-                _make_response(_info_payload()),
-                _make_response(sessions),
-                _make_response(_counts_payload(movies=50, series=10, episodes=200, albums=5)),
-            ],
+            side_effect=_urlopen_responses(
+                {
+                    "/System/Info": _make_response(_info_payload()),
+                    "/Sessions": _make_response(sessions),
+                    "/Items/Counts": _make_response(
+                        _counts_payload(movies=50, series=10, episodes=200, albums=5)
+                    ),
+                }
+            ),
         ):
             result = await getter.fetch()
 
@@ -208,11 +226,13 @@ class TestJellyfinGetter:
 
         with patch(
             "casedd.getters.jellyfin.urlopen",
-            side_effect=[
-                _make_response(_info_payload()),
-                _make_response([]),
-                _make_response(_counts_payload()),
-            ],
+            side_effect=_urlopen_responses(
+                {
+                    "/System/Info": _make_response(_info_payload()),
+                    "/Sessions": _make_response([]),
+                    "/Items/Counts": _make_response(_counts_payload()),
+                }
+            ),
         ):
             result = await getter.fetch()
 
@@ -230,11 +250,13 @@ class TestJellyfinGetter:
 
         with patch(
             "casedd.getters.jellyfin.urlopen",
-            side_effect=[
-                _make_response(_info_payload()),
-                _make_response(sessions),
-                _make_response(_counts_payload()),
-            ],
+            side_effect=_urlopen_responses(
+                {
+                    "/System/Info": _make_response(_info_payload()),
+                    "/Sessions": _make_response(sessions),
+                    "/Items/Counts": _make_response(_counts_payload()),
+                }
+            ),
         ):
             result = await getter.fetch()
 
@@ -283,11 +305,13 @@ class TestJellyfinGetter:
 
         with patch(
             "casedd.getters.jellyfin.urlopen",
-            side_effect=[
-                _make_response(_info_payload()),
-                _make_response([]),
-                counts_resp,
-            ],
+            side_effect=_urlopen_responses(
+                {
+                    "/System/Info": _make_response(_info_payload()),
+                    "/Sessions": _make_response([]),
+                    "/Items/Counts": counts_resp,
+                }
+            ),
         ):
             result = await getter.fetch()
 
@@ -303,11 +327,13 @@ class TestJellyfinGetter:
         )
         with patch(
             "casedd.getters.jellyfin.urlopen",
-            side_effect=[
-                _make_response(_info_payload()),
-                _make_response([]),
-                _make_response(_counts_payload()),
-            ],
+            side_effect=_urlopen_responses(
+                {
+                    "/System/Info": _make_response(_info_payload()),
+                    "/Sessions": _make_response([]),
+                    "/Items/Counts": _make_response(_counts_payload()),
+                }
+            ),
         ):
             result = await getter.fetch()
 

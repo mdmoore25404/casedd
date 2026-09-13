@@ -1,5 +1,11 @@
 **Rescue & display policy**
 
+- If the recovered login prompt appears rotated/upside-down or shows a
+  blinking cursor the panel mounting doesn't call for, see
+  [HOST_DISPLAY_SETUP.md](HOST_DISPLAY_SETUP.md) for the host-level
+  `fbcon=rotate:N` / `vt.global_cursor_default=0` kernel settings — these
+  must be reapplied after any fresh OS install.
+
 - Keep local `getty@tty1` enabled so a local keyboard will always provide a login
   console. Masking getty prevents local rescue unless you use GRUB/serial/live media.
 

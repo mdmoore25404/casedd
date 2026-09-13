@@ -15,12 +15,15 @@ from pathlib import Path
 
 try:  # pragma: no cover - runtime dependency
     from evdev import InputDevice
-    from evdev import ecodes as e
+
     _HAVE_EVDEV = True
-except Exception:  # pragma: no cover - runtime dependency
+except ImportError:  # pragma: no cover - runtime dependency
     _HAVE_EVDEV = False
 
 
+_EV_KEY: int = 1
+_EV_REL: int = 2
+_EV_ABS: int = 3
 _KEYBOARD_MARKER_CODES: set[int] = {
     # Typical typing keys to distinguish a real keyboard from devices that
     # only expose a small set of control buttons (e.g. power/video bus).
@@ -106,9 +109,9 @@ def _looks_like_human_input_caps(caps: Mapping[int, object]) -> bool:
     Returns:
         ``True`` for likely keyboard/mouse/touch input devices.
     """
-    key_codes = _extract_codes(caps, e.EV_KEY)
-    rel_codes = _extract_codes(caps, e.EV_REL)
-    abs_codes = _extract_codes(caps, e.EV_ABS)
+    key_codes = _extract_codes(caps, _EV_KEY)
+    rel_codes = _extract_codes(caps, _EV_REL)
+    abs_codes = _extract_codes(caps, _EV_ABS)
 
     has_keyboard = bool(key_codes & _KEYBOARD_MARKER_CODES)
     has_mouse = bool(key_codes & _MOUSE_BUTTON_CODES) and bool(

@@ -106,6 +106,11 @@ reach the password prompt, or switch virtual terminals with Ctrl+Alt+F2 (or
 Ctrl+Alt+F3..F6) to get a login prompt immediately. This avoids running the
 daemon as root while still allowing easy local recovery.
 
+If the panel is mounted rotated, the restored login prompt (and the blinking
+VT cursor) needs its own **host OS** kernel console settings — separate from
+`CASEDD_FB_ROTATION`, which only affects CASEDD's own rendered frames. See
+[docs/HOST_DISPLAY_SETUP.md](docs/HOST_DISPLAY_SETUP.md).
+
 ### Advanced React app (Vite)
 
 `./dev.sh start` already launches the advanced app in Vite development mode for
@@ -567,6 +572,12 @@ Notes:
 - `CASEDD_FB_CLAIM_ON_NO_INPUT=1` enables inputless display takeover behavior.
 - `CASEDD_FB_ROTATION` supports `0`, `90`, `180`, `270`.
 - `CASEDD_STARTUP_FRAME_SECONDS` keeps a startup status frame on screen while getters warm up before live data rendering begins.
+- `CASEDD_FB_ROTATION` only rotates frames CASEDD itself renders. To also
+  rotate the kernel's own console (login prompt, boot messages) on a
+  rotated panel, and to disable the OS-level blinking VT cursor, see
+  [docs/HOST_DISPLAY_SETUP.md](docs/HOST_DISPLAY_SETUP.md) — this is a
+  one-time host OS/bootloader setting that must be reapplied after a fresh
+  OS install.
 
 ## Dev vs production
 

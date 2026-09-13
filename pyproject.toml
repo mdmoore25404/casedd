@@ -83,6 +83,7 @@ show_error_codes = true
 [[tool.mypy.overrides]]
 # Third-party libs without stubs — add as needed
 module = [
+    "evdev.*",
     "PIL.*",
     "uvicorn.*",
 ]

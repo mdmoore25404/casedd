@@ -8,6 +8,12 @@ framebuffer at boot when no local keyboard or mouse is attached. When claimed,
 CASEDD creates the keep-file `/run/casedd/keep-unblank` so the screen stays
 unblanked for CASEDD's frames and external unblanking daemons are not needed.
 
+> If the panel is physically mounted rotated, see
+> [HOST_DISPLAY_SETUP.md](HOST_DISPLAY_SETUP.md) for the host OS/kernel
+> settings needed so the login prompt and console (not just CASEDD's own
+> frames) display right-side up, and so the VT cursor doesn't blink when
+> CASEDD is not the active console.
+
 How it works
 ------------
 - Enable the behaviour by setting the config option `fb_claim_on_no_input` to

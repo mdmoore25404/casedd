@@ -4,11 +4,14 @@
 set -euo pipefail
 
 SERVICE_NAME="casedd"
+FB_UNBLANK_SERVICE_NAME="fb-unblank"
 ENV_DIR="/etc/casedd"
 ENV_FILE="${ENV_DIR}/casedd.env"
 LOG_DIR="/var/log/casedd"
 UNIT_TEMPLATE="deploy/casedd.service"
 UNIT_DEST="/etc/systemd/system/${SERVICE_NAME}.service"
+FB_UNBLANK_UNIT_TEMPLATE="deploy/fb-unblank.service"
+FB_UNBLANK_UNIT_DEST="/etc/systemd/system/${FB_UNBLANK_SERVICE_NAME}.service"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 VENV_DIR="${REPO_ROOT}/.venv"
@@ -38,6 +41,8 @@ Notes:
     it is backed up and replaced with the symlink.
   - casedd.yaml is read directly from the repository working tree via the
     service WorkingDirectory; it is not copied into /etc/casedd.
+  - The service and installer users are added to the video group for
+    framebuffer access.
   - Installer prompts to enable /dev/input/event* read access for ESC/Q
     emergency-exit support. Skipping this leaves ESC/Q exit unavailable.
     - Installer also prompts to configure container runtime socket access
@@ -265,9 +270,33 @@ ensure_service_user() {
     fail "Selected service user '${service_user}' does not exist. Set CASEDD_SERVICE_USER explicitly."
 }
 
+ensure_framebuffer_access() {
+    local service_user="$1"
+    local installer_user="${SUDO_USER:-}"
+
+    if ! getent group video >/dev/null 2>&1; then
+        fail "Required framebuffer group 'video' does not exist."
+    fi
+
+    if ! user_in_group "${service_user}" video; then
+        log "Adding ${service_user} to group 'video' for framebuffer access"
+        run_cmd usermod -aG video "${service_user}"
+    else
+        log "Service user ${service_user} is already in group 'video'"
+    fi
+
+    if [[ -n "${installer_user}" && "${installer_user}" != "root" ]] \
+        && ! user_in_group "${installer_user}" video; then
+        log "Adding ${installer_user} to group 'video' for framebuffer development"
+        run_cmd usermod -aG video "${installer_user}"
+    fi
+}
+
 validate_repo() {
     [[ -f "${REPO_ROOT}/pyproject.toml" ]] || fail "Repository root looks wrong: ${REPO_ROOT}"
     [[ -f "${REPO_ROOT}/${UNIT_TEMPLATE}" ]] || fail "Missing unit template: ${UNIT_TEMPLATE}"
+    [[ -f "${REPO_ROOT}/${FB_UNBLANK_UNIT_TEMPLATE}" ]] \
+        || fail "Missing unit template: ${FB_UNBLANK_UNIT_TEMPLATE}"
     [[ -f "${REPO_ROOT}/requirements.txt" ]] || fail "Missing requirements.txt in ${REPO_ROOT}"
 }
 
@@ -278,6 +307,7 @@ escape_sed() {
 render_unit() {
     local service_user="$1"
     local rendered_path="$2"
+    local template_path="${3:-${UNIT_TEMPLATE}}"
     local escaped_root
     local escaped_user
 
@@ -287,7 +317,7 @@ render_unit() {
     sed \
         -e "s|@CASEDD_REPO_ROOT@|${escaped_root}|g" \
         -e "s|@CASEDD_USER@|${escaped_user}|g" \
-        "${REPO_ROOT}/${UNIT_TEMPLATE}" > "${rendered_path}"
+        "${REPO_ROOT}/${template_path}" > "${rendered_path}"
 }
 
 install_env_file() {
@@ -346,7 +376,7 @@ install_env_file() {
 
 install_venv() {
     log "Creating or updating virtual environment in ${VENV_DIR}"
-    run_cmd python3.12 -m venv "${VENV_DIR}"
+    run_cmd python3 -m venv "${VENV_DIR}"
     run_cmd "${VENV_DIR}/bin/pip" install --quiet --upgrade pip
     run_cmd "${VENV_DIR}/bin/pip" install --quiet -r "${REPO_ROOT}/requirements.txt"
 }
@@ -370,6 +400,26 @@ install_unit() {
     rm -f "${rendered_path}"
 }
 
+install_fb_unblank_unit() {
+    local rendered_path
+
+    rendered_path="$(mktemp)"
+    # fb-unblank runs as root (no @CASEDD_USER@ substitution needed), but
+    # render_unit still requires a service_user argument for the sed pass.
+    render_unit "root" "${rendered_path}" "${FB_UNBLANK_UNIT_TEMPLATE}"
+
+    log "Installing fb-unblank escape-hatch unit from ${REPO_ROOT}"
+    if [[ "${DRY_RUN}" -eq 1 ]]; then
+        echo "DRY-RUN: install -m 0644 ${rendered_path} ${FB_UNBLANK_UNIT_DEST}"
+    else
+        install -m 0644 "${rendered_path}" "${FB_UNBLANK_UNIT_DEST}"
+    fi
+
+    run_cmd systemctl daemon-reload
+    run_cmd systemctl enable --now "${FB_UNBLANK_SERVICE_NAME}.service"
+    rm -f "${rendered_path}"
+}
+
 install_logs_dir() {
     run_cmd mkdir -p "${LOG_DIR}"
 }
@@ -380,6 +430,7 @@ install_service() {
     service_user="$(detect_service_user)"
     validate_repo
     ensure_service_user "${service_user}"
+    ensure_framebuffer_access "${service_user}"
 
     log "Installing CASEDD from ${REPO_ROOT}"
     log "Service user: ${service_user}"
@@ -387,6 +438,7 @@ install_service() {
     install_env_file
     install_logs_dir
     install_unit "${service_user}"
+    install_fb_unblank_unit
     prompt_input_access_setup "${service_user}"
     prompt_container_runtime_access_setup "${service_user}"
 
@@ -394,6 +446,7 @@ install_service() {
     echo "Installation complete."
     echo "  Repo path: ${REPO_ROOT}"
     echo "  Service: ${SERVICE_NAME}.service"
+    echo "  Escape-hatch service: ${FB_UNBLANK_SERVICE_NAME}.service (unblanks display on local input)"
     if [[ -L "${ENV_FILE}" ]]; then
         echo "  Env file: ${ENV_FILE} -> $(readlink "${ENV_FILE}") (symlink)"
     else
@@ -410,6 +463,7 @@ install_service() {
     echo "Useful commands:"
     echo "  sudo systemctl status ${SERVICE_NAME}"
     echo "  sudo journalctl -u ${SERVICE_NAME} -n 100"
+    echo "  sudo systemctl status ${FB_UNBLANK_SERVICE_NAME}"
     if [[ -L "${ENV_FILE}" ]]; then
         echo "  Edit env:  \$EDITOR ${REPO_ROOT}/.env  (symlinked — no sudo needed)"
     else
@@ -429,6 +483,17 @@ uninstall_service() {
     if [[ -f "${UNIT_DEST}" ]]; then
         run_cmd rm -f "${UNIT_DEST}"
     fi
+
+    log "Removing fb-unblank escape-hatch service"
+
+    if systemctl list-unit-files "${FB_UNBLANK_SERVICE_NAME}.service" >/dev/null 2>&1; then
+        run_cmd systemctl disable --now "${FB_UNBLANK_SERVICE_NAME}.service"
+    fi
+
+    if [[ -f "${FB_UNBLANK_UNIT_DEST}" ]]; then
+        run_cmd rm -f "${FB_UNBLANK_UNIT_DEST}"
+    fi
+
     run_cmd systemctl daemon-reload
 
     if [[ "${PURGE_ENV}" -eq 1 && -f "${ENV_FILE}" ]]; then
@@ -458,6 +523,8 @@ uninstall_service() {
 
 show_status() {
     systemctl status "${SERVICE_NAME}.service" --no-pager || true
+    echo
+    systemctl status "${FB_UNBLANK_SERVICE_NAME}.service" --no-pager || true
 }
 
 ACTION="install"
