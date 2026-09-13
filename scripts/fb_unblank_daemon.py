@@ -85,12 +85,24 @@ def _set_console(enable: bool) -> None:
     """Enable or disable the kernel framebuffer console for the fb device.
 
     Writes '1' to the `console` sysfs file to enable, '0' to disable. Best-effort.
+
+    Uses a single unbuffered ``os.write`` rather than ``Path.write_text()``.
+    On this host's ``console`` sysfs attribute, the kernel's raw write()
+    always reports 0 bytes consumed even though the write is otherwise
+    accepted. Python's buffered text I/O (``Path.write_text`` /
+    ``TextIOWrapper``) treats a 0-byte write as "no progress" and retries
+    forever, spinning the daemon at 100% CPU. A raw ``os.write`` call is not
+    retried by the interpreter, so a 0-byte result is simply ignored here.
     """
     try:
         fb_dir = FB_BLANK_PATH.parent
         console_path = fb_dir / "console"
         if console_path.exists():
-            console_path.write_text("1" if enable else "0")
+            fd = os.open(console_path, os.O_WRONLY)
+            try:
+                os.write(fd, b"1" if enable else b"0")
+            finally:
+                os.close(fd)
     except Exception:
         pass
 
