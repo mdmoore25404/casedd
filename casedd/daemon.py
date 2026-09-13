@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 import json
 import logging
+import os
 from pathlib import Path
 import signal
 import time
@@ -908,6 +909,15 @@ class Daemon:
         This helps ensure the host login prompt is redrawn after CASEDD
         releases the framebuffer. Best-effort; failures are logged and
         otherwise ignored.
+
+        Uses a single unbuffered ``os.write`` rather than
+        ``Path.write_text()`` for the console sysfs attribute. On some
+        drivers the kernel's raw write() on this file always reports 0 bytes
+        consumed even though the write is otherwise accepted; Python's
+        buffered text I/O treats a 0-byte write as "no progress" and retries
+        forever, which would hang daemon shutdown (and, under systemd, host
+        reboot/poweroff). A raw ``os.write`` call is not retried by the
+        interpreter, so a 0-byte result is simply ignored here.
         """
         # Try to re-enable kernel framebuffer console for each panel's fb
         for panel in panel_runtimes:
@@ -916,7 +926,11 @@ class Daemon:
                 console_path = fb_sys / "console"
                 if console_path.exists():
                     try:
-                        console_path.write_text("1")
+                        fd = os.open(console_path, os.O_WRONLY)
+                        try:
+                            os.write(fd, b"1")
+                        finally:
+                            os.close(fd)
                         _log.debug("Re-enabled kernel console for %s", panel.fb_device)
                     except Exception:
                         _log.debug("Failed to write kernel console for %s", panel.fb_device)
