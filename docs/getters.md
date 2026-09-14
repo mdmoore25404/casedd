@@ -190,6 +190,8 @@ Display note:
 - Container table rows render `Health <state>`.
 - `Health unknown` means the runtime did not expose an explicit health check state
     for that container.
+- Docker and Podman running-container uptimes use exact start timestamps and compact
+  display text such as `59m`, `1h 15m`, or `2d 3h`.
 
 Runtime selection:
 - auto (default): Docker first, then Podman, then containerd (`ctr`)

@@ -18,7 +18,8 @@ Store keys written:
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
 import logging
 import shutil
 import subprocess
@@ -166,7 +167,26 @@ class ContainersGetter(BaseGetter):
             )
             if text is None:
                 return None
-            return _parse_docker_like_rows(text)
+            rows = _parse_docker_like_rows(text)
+            running_names = [
+                row.name
+                for row in rows[: self._max_items]
+                if row.status.lower() == "running"
+            ]
+            if not running_names:
+                return rows
+            started_text = self._run_command(
+                [
+                    backend.command,
+                    "inspect",
+                    "--format",
+                    "{{.Name}}|{{.State.StartedAt}}",
+                    *running_names,
+                ]
+            )
+            if started_text is None:
+                return rows
+            return _apply_precise_uptimes(rows, started_text)
 
         containers_text = self._run_command([backend.command, "containers", "list"])
         tasks_text = self._run_command([backend.command, "tasks", "list"])
@@ -348,6 +368,49 @@ def _uptime_from_runtime_text(status: str) -> str:
     if lower.startswith("exited") and " ago" in lower:
         return status.strip().split(")", maxsplit=1)[-1].strip()
     return "n/a"
+
+
+def _apply_precise_uptimes(
+    rows: list[_ContainerRow],
+    started_text: str,
+) -> list[_ContainerRow]:
+    """Replace humanized runtime uptime phrases with compact exact durations."""
+    now = datetime.now(tz=UTC)
+    uptimes: dict[str, str] = {}
+    for raw in started_text.splitlines():
+        name, separator, started_at = raw.strip().partition("|")
+        if not separator:
+            continue
+        uptime = _format_started_at_uptime(started_at, now)
+        if uptime is not None:
+            uptimes[name.removeprefix("/")] = uptime
+    return [
+        replace(row, uptime=uptimes[row.name])
+        if row.name in uptimes and row.status.lower() == "running"
+        else row
+        for row in rows
+    ]
+
+
+def _format_started_at_uptime(started_at: str, now: datetime) -> str | None:
+    """Format a container start timestamp as compact elapsed time."""
+    try:
+        started = datetime.fromisoformat(started_at.strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=UTC)
+    elapsed = max(0, int((now - started).total_seconds()))
+    days, remainder = divmod(elapsed, 86_400)
+    hours, remainder = divmod(remainder, 3_600)
+    minutes, seconds = divmod(remainder, 60)
+    if days:
+        return f"{days}d {hours}h"
+    if hours:
+        return f"{hours}h {minutes}m"
+    if minutes:
+        return f"{minutes}m"
+    return f"{seconds}s"
 
 
 def _health_from_runtime_text(status: str) -> str:
