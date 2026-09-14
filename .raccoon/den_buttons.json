@@ -1,0 +1,67 @@
+{
+  "buttons": [
+    {
+      "id": "start",
+      "label": "start",
+      "argv": [
+        "./dev.sh",
+        "start"
+      ],
+      "timeout_s": 60.0
+    },
+    {
+      "id": "start-with-fb",
+      "label": "start (with fb)",
+      "argv": [
+        "./dev.sh",
+        "start-fb"
+      ],
+      "timeout_s": 60.0
+    },
+    {
+      "id": "stop",
+      "label": "stop",
+      "argv": [
+        "./dev.sh",
+        "stop"
+      ],
+      "timeout_s": 60.0
+    },
+    {
+      "id": "restart",
+      "label": "restart",
+      "argv": [
+        "./dev.sh",
+        "restart"
+      ],
+      "timeout_s": 60.0
+    },
+    {
+      "id": "lint",
+      "label": "lint",
+      "argv": [
+        "./dev.sh",
+        "lint"
+      ],
+      "timeout_s": 60.0
+    },
+    {
+      "id": "test",
+      "label": "test",
+      "argv": [
+        "./dev.sh",
+        "test"
+      ],
+      "timeout_s": 60.0
+    },
+    {
+      "id": "status",
+      "label": "status",
+      "argv": [
+        "./dev.sh",
+        "status"
+      ],
+      "timeout_s": 60.0
+    }
+  ]
+}
