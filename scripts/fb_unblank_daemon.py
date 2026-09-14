@@ -1,17 +1,34 @@
 #!/usr/bin/env python3
-"""FB unblank daemon: unblanks on local input and re-blanks after idle.
+"""FB escape-hatch daemon: shows the kernel console on local input.
 
 Usage: run as root (recommended via systemd). Environment vars:
 - FB_BLANK_PATH: sysfs blank file (default: /sys/class/graphics/fb0/blank)
-- IDLE_SECONDS: seconds of inactivity before re-blank (default: 60)
+- IDLE_SECONDS: seconds of inactivity before hiding the console again
+  (default: 60)
 - INPUT_GLOB: glob for input devices (default: /dev/input/event*)
+- FB_BLANK_ON_IDLE: legacy opt-in (default: off, see below)
 
-The daemon watches matching input event devices and writes '0' to
-`FB_BLANK_PATH` on genuine keyboard/pointer activity, and writes '1' after
-the configured idle period elapses. Devices that only expose EV_SW (switch
-sense) capabilities -- e.g. HDMI/DisplayPort audio jack-detect nodes, of
-which multi-GPU hosts can have a dozen or more -- are ignored, since their
-spontaneous switch events are not genuine local user activity.
+CASEDD owns the physical display at all times: the framebuffer panel is
+kept powered on (unblanked) so CASEDD's own rendered frames are always
+visible. This daemon's only job is the "escape hatch" -- on genuine local
+keyboard/mouse/touch activity it enables the kernel framebuffer console
+(sysfs ``console`` attribute) so a human physically at the machine can use
+it as an actual PC (login prompt, etc.), overlaying CASEDD's frames. After
+``IDLE_SECONDS`` of no further activity it disables the console again so
+CASEDD's frames become visible once more.
+
+Devices that only expose EV_SW (switch sense) capabilities -- e.g.
+HDMI/DisplayPort audio jack-detect nodes, of which multi-GPU hosts can have
+a dozen or more -- are ignored, since their spontaneous switch events are
+not genuine local user activity and previously caused the console to flash
+on for no reason.
+
+Legacy full-panel blanking (``FB_BLANK_PATH`` = 1, powering off the panel
+entirely rather than just hiding/showing the console) is disabled by
+default because it hides CASEDD's own display, which is never desired on a
+headless case-display host. Set ``FB_BLANK_ON_IDLE=1`` to opt back into
+that legacy behaviour (the panel will power off after ``IDLE_SECONDS`` and
+require new input to power back on, same as the historical default).
 """
 from __future__ import annotations
 
@@ -41,17 +58,22 @@ POLL_INTERVAL = 1.0
 # HDMI/DisplayPort audio jack-sense pseudo-input device per output (e.g. two
 # GPUs can add a dozen "HDA NVidia HDMI/DP" / "HD-Audio Generic HDMI/DP"
 # devices), and these fire spontaneous switch events whenever a display link
-# renegotiates. Treating those as user activity caused the display to
-# spuriously unblank and show the console login prompt with no one present.
+# renegotiates. Treating those as user activity caused the console to
+# spuriously show with no one present.
 _REAL_INPUT_EVENT_TYPES = ("EV_KEY", "EV_REL", "EV_ABS")
 
-# When true, the daemon will attempt to disable the kernel framebuffer
-# console for the fb device while the display is blanked.
+# When true, the daemon will attempt to enable/disable the kernel framebuffer
+# console for the fb device as the escape hatch toggles.
 FB_DISABLE_CONSOLE = os.environ.get("FB_DISABLE_CONSOLE", "1") not in {"0", "false", "False", ""}
-# When present, this file prevents the daemon from re-blanking the display.
+# When present, this file prevents the daemon from hiding the console again
+# (kept for backward compatibility with manual test workflows).
 FB_KEEP_PATH = Path(os.environ.get("FB_KEEP_PATH", "/run/casedd/keep-unblank"))
+# Legacy opt-in: fully power off the panel on idle instead of merely hiding
+# the kernel console overlay. Default off -- see module docstring.
+FB_BLANK_ON_IDLE = os.environ.get("FB_BLANK_ON_IDLE", "0") not in {"0", "false", "False", ""}
 
 _running = True
+
 
 
 def _set_blank(val: int) -> None:
@@ -164,27 +186,32 @@ def _handle_signals(signum, frame):  # pragma: no cover - signal wiring
 def main() -> int:
     signal.signal(signal.SIGINT, _handle_signals)
     signal.signal(signal.SIGTERM, _handle_signals)
+    return _run()
 
+
+def _run() -> int:
+    """Run the escape-hatch daemon loop (signal-free, for testability).
+
+    Split out from ``main()`` so tests can drive the loop from a background
+    thread without hitting Python's "signal only works in main thread"
+    restriction on ``signal.signal()``.
+    """
     if not FB_BLANK_PATH.exists():
         print(f"FB blank path {FB_BLANK_PATH} not found.", file=sys.stderr)
         return 2
 
-    # Start state: if a keep-file exists (tests or user override), start
-    # unblanked so we don't immediately hide the display. Otherwise start
-    # blanked as before.
-    if FB_KEEP_PATH.exists():
-        _set_blank(0)
-        is_blank = False
-        # Start with VT cursor hidden and kernel console disabled so
-        # rendered frames are not overlaid by the kernel text cursor.
-        _write_vt_cursor(False)
-        if FB_DISABLE_CONSOLE:
-            _set_console(False)
-    else:
-        _set_blank(1)
-        is_blank = True
-        # Hide VT cursor while blanked
-        _write_vt_cursor(False)
+    # CASEDD owns the physical display at all times: always ensure the panel
+    # is powered on (unblanked) at startup, regardless of FB_KEEP_PATH or any
+    # prior state left over from a previous run. Only the kernel console
+    # overlay toggles as the escape hatch; the panel itself is never blanked
+    # unless the operator explicitly opts into legacy FB_BLANK_ON_IDLE.
+    _set_blank(0)
+    # Start with the console overlay hidden and VT cursor hidden so CASEDD's
+    # rendered frames are visible immediately, before any local input.
+    _write_vt_cursor(False)
+    if FB_DISABLE_CONSOLE:
+        _set_console(False)
+    console_active = False
     last_activity = time.time()
 
     devs = _open_input_devices()
@@ -211,15 +238,13 @@ def main() -> int:
             events = poller.poll(int(POLL_INTERVAL * 1000)) if devs else []
             now = time.time()
             if events:
-                # Any input event -> unblank and reset timer
-                if is_blank:
-                    _set_blank(0)
-                    # show VT cursor when display is unblanked
+                # Any genuine input event -> show the escape-hatch console
+                # and reset the idle timer.
+                if not console_active:
                     _write_vt_cursor(True)
-                    # enable kernel console so local login/prompt works
                     if FB_DISABLE_CONSOLE:
                         _set_console(True)
-                    is_blank = False
+                    console_active = True
                 last_activity = now
                 # consume data from fds to clear state
                 for fd, _ev in events:
@@ -228,16 +253,17 @@ def main() -> int:
                     except Exception:
                         pass
 
-            # Idle check: respect a keep-file to prevent re-blanking during tests
-            if not is_blank and (now - last_activity) >= IDLE_SECONDS:
+            # Idle check: hide the console again (and, only if the operator
+            # opted into legacy behaviour, power off the panel) once idle.
+            # Respect a keep-file to prevent hiding during manual tests.
+            if console_active and (now - last_activity) >= IDLE_SECONDS:
                 if not FB_KEEP_PATH.exists():
-                    _set_blank(1)
-                    # hide VT cursor when re-blanking
                     _write_vt_cursor(False)
-                    # optionally disable kernel console if configured
                     if FB_DISABLE_CONSOLE:
                         _set_console(False)
-                    is_blank = True
+                    if FB_BLANK_ON_IDLE:
+                        _set_blank(1)
+                    console_active = False
 
             # periodic device refresh: unregister and reopen any dead fds
             dead_fds: list[int] = [fd for fd, fh in devs.items() if fh.closed]
