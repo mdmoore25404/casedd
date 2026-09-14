@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 import subprocess
 from unittest.mock import patch
 
 from casedd.data_store import DataStore
 from casedd.getters.containers import (
     ContainersGetter,
+    _apply_precise_uptimes,
+    _format_started_at_uptime,
     _parse_containerd_rows,
     _parse_docker_like_rows,
 )
@@ -84,6 +87,37 @@ def test_parse_docker_like_rows_normalizes_status() -> None:
     assert rows[0].status == "Running"
     assert rows[0].health == "healthy"
     assert rows[1].status == "Exited"
+
+
+def test_started_at_uptime_uses_compact_precise_text() -> None:
+    """Exact start timestamps should avoid Docker's overflowing humanized phrases."""
+    now = datetime(2026, 9, 14, 2, 42, tzinfo=UTC)
+
+    assert _format_started_at_uptime("2026-09-14T01:43:00Z", now) == "59m"
+    assert _format_started_at_uptime("2026-09-14T01:27:00Z", now) == "1h 15m"
+    assert _format_started_at_uptime("2026-09-11T23:42:00Z", now) == "2d 3h"
+
+
+def test_precise_uptime_replaces_running_container_text_only() -> None:
+    """Inspect timestamps should update running rows without changing exited rows."""
+    rows = _parse_docker_like_rows(
+        "api|Up About an hour (healthy)|ghcr.io/demo/api:latest\n"
+        "worker|Exited (0) 3 hours ago|ghcr.io/demo/worker:latest"
+    )
+
+    with patch(
+        "casedd.getters.containers.datetime",
+    ) as datetime_mock:
+        datetime_mock.now.return_value = datetime(2026, 9, 14, 2, 42, tzinfo=UTC)
+        datetime_mock.fromisoformat.side_effect = datetime.fromisoformat
+        precise = _apply_precise_uptimes(
+            rows,
+            "/api|2026-09-14T01:43:00Z\n"
+            "/worker|2026-09-13T23:42:00Z",
+        )
+
+    assert precise[0].uptime == "59m"
+    assert precise[1].uptime == "3 hours ago"
 
 
 def test_parse_containerd_rows_merges_tasks_status() -> None:
