@@ -6,9 +6,12 @@ Usage: run as root (recommended via systemd). Environment vars:
 - IDLE_SECONDS: seconds of inactivity before re-blank (default: 60)
 - INPUT_GLOB: glob for input devices (default: /dev/input/event*)
 
-The daemon watches all matching input event devices and writes '0' to
-`FB_BLANK_PATH` on any input activity, and writes '1' after the configured
-idle period elapses.
+The daemon watches matching input event devices and writes '0' to
+`FB_BLANK_PATH` on genuine keyboard/pointer activity, and writes '1' after
+the configured idle period elapses. Devices that only expose EV_SW (switch
+sense) capabilities -- e.g. HDMI/DisplayPort audio jack-detect nodes, of
+which multi-GPU hosts can have a dozen or more -- are ignored, since their
+spontaneous switch events are not genuine local user activity.
 """
 from __future__ import annotations
 
@@ -20,10 +23,27 @@ import signal
 import sys
 import time
 
+try:
+    import evdev
+    from evdev import ecodes as evdev_ecodes
+except Exception:  # pragma: no cover - evdev is a declared dependency but fail open
+    evdev = None  # type: ignore[assignment]
+    evdev_ecodes = None  # type: ignore[assignment]
+
 FB_BLANK_PATH = Path(os.environ.get("FB_BLANK_PATH", "/sys/class/graphics/fb0/blank"))
 IDLE_SECONDS = int(os.environ.get("IDLE_SECONDS", "60"))
 INPUT_GLOB = os.environ.get("INPUT_GLOB", "/dev/input/event*")
 POLL_INTERVAL = 1.0
+
+# Event types considered genuine local-user activity: real keys, mouse/trackpad
+# relative motion, and touchscreen/absolute-pointer motion. Deliberately
+# excludes EV_SW (jack/lid/switch sense) -- multi-GPU hosts expose one
+# HDMI/DisplayPort audio jack-sense pseudo-input device per output (e.g. two
+# GPUs can add a dozen "HDA NVidia HDMI/DP" / "HD-Audio Generic HDMI/DP"
+# devices), and these fire spontaneous switch events whenever a display link
+# renegotiates. Treating those as user activity caused the display to
+# spuriously unblank and show the console login prompt with no one present.
+_REAL_INPUT_EVENT_TYPES = ("EV_KEY", "EV_REL", "EV_ABS")
 
 # When true, the daemon will attempt to disable the kernel framebuffer
 # console for the fb device while the display is blanked.
@@ -41,10 +61,39 @@ def _set_blank(val: int) -> None:
         print(f"Failed to write {FB_BLANK_PATH}: {exc}", file=sys.stderr)
 
 
+def _is_real_input_device(path: str) -> bool:
+    """Return True if `path` reports genuine keyboard/pointer capabilities.
+
+    Excludes pseudo-input devices that only support EV_SW (switch sense),
+    such as HDMI/DisplayPort audio jack-detect nodes -- see the module-level
+    comment above `_REAL_INPUT_EVENT_TYPES` for the full rationale. Fails
+    open (treats the device as real) if capabilities cannot be determined,
+    so a missing/broken evdev never disables the escape hatch entirely.
+    """
+    if evdev is None or evdev_ecodes is None:
+        return True
+    dev = None
+    try:
+        dev = evdev.InputDevice(path)
+        caps = dev.capabilities(verbose=False)
+    except Exception:
+        return True
+    finally:
+        if dev is not None:
+            try:
+                dev.close()
+            except Exception:
+                pass
+    real_type_codes = {getattr(evdev_ecodes, name) for name in _REAL_INPUT_EVENT_TYPES}
+    return any(event_type in caps for event_type in real_type_codes)
+
+
 def _open_input_devices() -> dict[int, object]:
-    """Open input event devices and return mapping fd -> file object."""
+    """Open real keyboard/pointer input devices, skipping jack-sense nodes."""
     devs: dict[int, object] = {}
     for path in glob.glob(INPUT_GLOB):
+        if not _is_real_input_device(path):
+            continue
         try:
             fh = open(path, "rb", buffering=0)
         except OSError:
@@ -203,6 +252,8 @@ def main() -> int:
             current_paths = set(glob.glob(INPUT_GLOB))
             known_paths = {getattr(fh, 'name', '') for fh in devs.values()}
             for p in current_paths - known_paths:
+                if not _is_real_input_device(p):
+                    continue
                 try:
                     fh = open(p, "rb", buffering=0)
                     fd = fh.fileno()

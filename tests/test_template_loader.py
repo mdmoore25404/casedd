@@ -145,7 +145,12 @@ def test_load_nvidia_detail_template_file() -> None:
 
 
 def test_nvidia_detail_template_shows_free_vram_not_duplicate_used() -> None:
-    """nvidia_detail.casedd splits VRAM percent from absolute VRAM values."""
+    """nvidia_detail.casedd splits VRAM percent from absolute VRAM values.
+
+    Also covers the multi-GPU summary column (nvidia.1.*) added for
+    dual-GPU hosts -- see the module docstring in scripts/fb_unblank_daemon.py
+    for the unrelated input-filtering fix from the same investigation.
+    """
     real = Path("templates/nvidia_detail.casedd")
     if not real.exists():
         pytest.skip("templates/nvidia_detail.casedd not present")
@@ -153,25 +158,35 @@ def test_nvidia_detail_template_shows_free_vram_not_duplicate_used() -> None:
     tmpl = load_template(real)
     vram_gauge = tmpl.widgets.get("vram_gauge")
     assert vram_gauge is not None
-    assert vram_gauge.label == "VRAM %"
-    assert vram_gauge.source == "nvidia.memory_percent"
+    assert vram_gauge.label == "GPU0 VRAM %"
+    assert vram_gauge.source == "nvidia.0.memory_percent"
 
-    vram_used_abs = tmpl.widgets.get("vram_used_abs")
-    assert vram_used_abs is not None
-    assert vram_used_abs.label == "VRAM Used"
-    assert vram_used_abs.source == "nvidia.memory_used_mb"
+    vram_used = tmpl.widgets.get("vram_used")
+    assert vram_used is not None
+    assert vram_used.label == "GPU0 VRAM Used"
+    assert vram_used.source == "nvidia.0.memory_used_mb"
 
-    gpu_name = tmpl.widgets.get("gpu_name")
+    gpu_name = tmpl.widgets.get("gpu0_name")
     assert gpu_name is not None
-    assert gpu_name.label == "GPU Model"
-    assert gpu_name.source == "nvidia.name"
+    assert gpu_name.label == "GPU0 Model"
+    assert gpu_name.source == "nvidia.0.name"
+
+    # Second-GPU summary widgets should be present and keyed off nvidia.1.*
+    # so multi-GPU hosts see both GPUs without any template changes needed.
+    gpu1_use = tmpl.widgets.get("gpu1_use")
+    assert gpu1_use is not None
+    assert gpu1_use.source == "nvidia.1.percent"
+
+    gpu1_vram = tmpl.widgets.get("gpu1_vram")
+    assert gpu1_vram is not None
+    assert gpu1_vram.source == "nvidia.1.memory_percent"
 
     assert "power_val" not in tmpl.widgets
 
     vram_free = tmpl.widgets.get("vram_free")
     assert vram_free is not None
-    assert vram_free.label == "VRAM Free"
-    assert vram_free.source == "nvidia.memory_free_mb"
+    assert vram_free.label == "GPU0 VRAM Free"
+    assert vram_free.source == "nvidia.0.memory_free_mb"
 
 
 def test_system_stats_template_uses_host_stats_not_ollama() -> None:

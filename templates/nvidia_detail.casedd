@@ -1,35 +1,41 @@
 # nvidia_detail.casedd — Detailed NVIDIA GPU dashboard
 #
 # Shown automatically when a GPU trigger fires (use, VRAM, or temperature).
-# Displays all nvidia-smi metrics: utilisation, temperature, VRAM, and power.
+# Displays all nvidia-smi metrics for GPU 0 (index 0 — the GPU driving the
+# physical display) plus a summary column for any additional GPUs
+# (nvidia.1.*, nvidia.2.*, ...) reported by nvidia-smi on multi-GPU hosts.
+# On single-GPU hosts the GPU 1 widgets simply show "--" since their source
+# keys are absent from the data store.
 
 name: nvidia_detail
 description: >
-  Full-detail NVIDIA GPU view triggered when GPU is under stress.
-  Shows utilisation, temperature, VRAM usage, and power draw with
-  colour-coded sparklines and gauges.
+  Full-detail NVIDIA GPU view triggered when the primary GPU is under
+  stress. Shows utilisation, temperature, VRAM usage, and power draw with
+  colour-coded sparklines and gauges for GPU 0, plus a compact summary
+  panel for a second GPU when present.
 aspect_ratio: "5:3"
 layout_mode: fit
 refresh_rate: 2.0
 background: "#0a0f14"
 
 grid:
-  # 4 columns, 3 rows:
-  # Row 1 (largest): GPU use sparkline | GPU temp sparkline | VRAM % gauge | Power value
-  # Row 2 (medium):  GPU use history   | GPU temp history  | VRAM used MB | Power sparkline
-  # Row 3 (small):   VRAM free (span 2)                    | VRAM total | GPU count
+  # 6 columns, 4 rows:
+  # Row 1-2 (largest): GPU0 use sparkline | GPU0 temp sparkline | GPU0 VRAM gauge
+  # Row 3:             GPU0 name | GPU0 VRAM used | GPU0 power
+  # Row 4:             GPU0 VRAM free/total/count (left) | GPU1 summary (right)
   template_areas: |
-    gpu_use    gpu_use    gpu_temp      gpu_temp      vram_gauge    gpu_name
-    gpu_use    gpu_use    gpu_temp      gpu_temp      vram_used_abs power_hist
-    vram_free  vram_free  vram_total    vram_total    gpu_count     power_hist
+    gpu0_use     gpu0_use     gpu0_temp    gpu0_temp    vram_gauge   vram_gauge
+    gpu0_use     gpu0_use     gpu0_temp    gpu0_temp    vram_gauge   vram_gauge
+    gpu0_name    vram_used    power_hist   power_hist   gpu1_use     gpu1_use
+    vram_free    vram_total   gpu_count    gpu1_temp    gpu1_vram    gpu1_power
   columns: 1fr 1fr 1fr 1fr 1fr 1fr
-  rows: 1.6fr 1fr 0.8fr
+  rows: 1.3fr 0.9fr 0.8fr 0.7fr
 
 widgets:
-  gpu_use:
+  gpu0_use:
     type: sparkline
-    label: GPU Utilisation (%)
-    source: nvidia.percent
+    label: "GPU0 Use (%)"
+    source: nvidia.0.percent
     padding: [6, 8]
     precision: 1
     unit: "%"
@@ -43,10 +49,10 @@ widgets:
       - [75, "#ff8800"]
       - [90, "#ff2222"]
 
-  gpu_temp:
+  gpu0_temp:
     type: sparkline
-    label: GPU Temp (°C)
-    source: nvidia.temperature
+    label: "GPU0 Temp (°C)"
+    source: nvidia.0.temperature
     padding: [6, 8]
     unit: "°C"
     precision: 1
@@ -62,8 +68,8 @@ widgets:
 
   vram_gauge:
     type: gauge
-    label: VRAM %
-    source: nvidia.memory_percent
+    label: "GPU0 VRAM %"
+    source: nvidia.0.memory_percent
     padding: [6, 4]
     min: 0
     max: 100
@@ -75,18 +81,18 @@ widgets:
       - [70, "#ffcc00"]
       - [90, "#ff2222"]
 
-  gpu_name:
+  gpu0_name:
     type: value
-    label: GPU Model
-    source: nvidia.name
+    label: "GPU0 Model"
+    source: nvidia.0.name
     padding: [4, 6]
     color: "#d7d9ea"
     font_size: auto
 
-  vram_used_abs:
+  vram_used:
     type: value
-    label: VRAM Used
-    source: nvidia.memory_used_mb
+    label: "GPU0 VRAM Used"
+    source: nvidia.0.memory_used_mb
     padding: [4, 8]
     precision: 0
     unit: "MB"
@@ -95,8 +101,8 @@ widgets:
 
   power_hist:
     type: sparkline
-    label: Power (W)
-    source: nvidia.power_w
+    label: "GPU0 Power (W)"
+    source: nvidia.0.power_w
     padding: [4, 8]
     precision: 0
     unit: "W"
@@ -107,8 +113,8 @@ widgets:
 
   vram_free:
     type: value
-    label: VRAM Free
-    source: nvidia.memory_free_mb
+    label: "GPU0 VRAM Free"
+    source: nvidia.0.memory_free_mb
     padding: [2, 8]
     precision: 0
     unit: "MB"
@@ -117,8 +123,8 @@ widgets:
 
   vram_total:
     type: value
-    label: VRAM Total
-    source: nvidia.memory_total_mb
+    label: "GPU0 VRAM Total"
+    source: nvidia.0.memory_total_mb
     padding: [2, 8]
     precision: 0
     unit: "MB"
@@ -127,9 +133,59 @@ widgets:
 
   gpu_count:
     type: value
-    label: GPU Count
+    label: "GPU Count"
     source: nvidia.gpu_count
     padding: [2, 8]
     precision: 0
     color: "#aaaacc"
+    font_size: auto
+
+  # --- Second GPU summary column (nvidia.1.*) ---
+  # Shows "--" gracefully on single-GPU hosts where these keys are absent.
+
+  gpu1_use:
+    type: sparkline
+    label: "GPU1 Use (%)"
+    source: nvidia.1.percent
+    padding: [4, 8]
+    precision: 1
+    unit: "%"
+    min: 0
+    max: 100
+    samples: 90
+    window_seconds: 120
+    color_stops:
+      - [0,  "#22cc44"]
+      - [50, "#ffcc00"]
+      - [75, "#ff8800"]
+      - [90, "#ff2222"]
+
+  gpu1_temp:
+    type: value
+    label: "GPU1 Temp"
+    source: nvidia.1.temperature
+    padding: [2, 8]
+    precision: 1
+    unit: "°C"
+    color: "#5daaff"
+    font_size: auto
+
+  gpu1_vram:
+    type: value
+    label: "GPU1 VRAM"
+    source: nvidia.1.memory_percent
+    padding: [2, 8]
+    precision: 0
+    unit: "%"
+    color: "#ffcc00"
+    font_size: auto
+
+  gpu1_power:
+    type: value
+    label: "GPU1 Power"
+    source: nvidia.1.power_w
+    padding: [2, 8]
+    precision: 0
+    unit: "W"
+    color: "#f0a040"
     font_size: auto
