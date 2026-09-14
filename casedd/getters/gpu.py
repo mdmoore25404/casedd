@@ -7,13 +7,26 @@ If ``nvidia-smi`` is absent or returns an error this getter disables itself
 cleanly — all calls become no-ops. No root or special permissions required.
 
 Store keys written:
-    - ``nvidia.name`` (str) -- Primary GPU model name
-    - ``nvidia.percent`` (float) -- GPU utilisation 0-100
-    - ``nvidia.temperature`` (float) — GPU temperature in °C
-    - ``nvidia.memory_used_mb`` (float) — VRAM used in MB
-    - ``nvidia.memory_free_mb`` (float) — VRAM free in MB
-    - ``nvidia.memory_total_mb`` (float) — VRAM total in MB
-    - ``nvidia.power_w`` (float) — GPU power draw in Watts
+    - ``nvidia.gpu_count`` (float) -- Number of GPUs reported by nvidia-smi
+    - ``nvidia.{idx}.name`` (str) -- Per-GPU model name (idx = nvidia-smi index)
+    - ``nvidia.{idx}.percent`` (float) -- Per-GPU utilisation 0-100
+    - ``nvidia.{idx}.temperature`` (float) -- Per-GPU temperature in °C
+    - ``nvidia.{idx}.memory_used_mb`` (float) -- Per-GPU VRAM used in MB
+    - ``nvidia.{idx}.memory_free_mb`` (float) -- Per-GPU VRAM free in MB
+    - ``nvidia.{idx}.memory_total_mb`` (float) -- Per-GPU VRAM total in MB
+    - ``nvidia.{idx}.memory_percent`` (float) -- Per-GPU VRAM utilisation 0-100
+    - ``nvidia.{idx}.power_w`` (float) -- Per-GPU power draw in Watts
+    - ``nvidia.name`` (str) -- Primary GPU (index 0) model name, back-compat alias
+    - ``nvidia.percent`` (float) -- Primary GPU utilisation 0-100, back-compat alias
+    - ``nvidia.temperature`` (float) — Primary GPU temperature in °C, back-compat alias
+    - ``nvidia.memory_used_mb`` (float) — Primary GPU VRAM used in MB, back-compat alias
+    - ``nvidia.memory_free_mb`` (float) — Primary GPU VRAM free in MB, back-compat alias
+    - ``nvidia.memory_total_mb`` (float) — Primary GPU VRAM total in MB, back-compat alias
+    - ``nvidia.memory_percent`` (float) — Primary GPU VRAM utilisation 0-100, back-compat alias
+    - ``nvidia.power_w`` (float) — Primary GPU power draw in Watts, back-compat alias
+    - ``nvidia.total_memory_used_mb`` (float) -- Summed VRAM used across all GPUs
+    - ``nvidia.total_memory_free_mb`` (float) -- Summed VRAM free across all GPUs
+    - ``nvidia.total_memory_mb`` (float) -- Summed VRAM total across all GPUs
 """
 
 import asyncio
@@ -149,6 +162,12 @@ class GpuGetter(BaseGetter):
             data[f"nvidia.{idx}.memory_free_mb"] = row["memory_free_mb"]
             data[f"nvidia.{idx}.memory_total_mb"] = row["memory_total_mb"]
             data[f"nvidia.{idx}.power_w"] = row["power_w"]
+            # Per-GPU VRAM utilisation % — needed so multi-GPU templates can
+            # show a VRAM gauge/value for any GPU, not just the primary one.
+            if row["memory_total_mb"] > 0:
+                data[f"nvidia.{idx}.memory_percent"] = round(
+                    (row["memory_used_mb"] / row["memory_total_mb"]) * 100.0, 2
+                )
 
         # Backward-compatible primary keys map to GPU index 0 if present,
         # otherwise the first reported GPU.
@@ -165,6 +184,7 @@ class GpuGetter(BaseGetter):
             data["nvidia.memory_percent"] = round(
                 (primary["memory_used_mb"] / primary["memory_total_mb"]) * 100.0, 2
             )
+
 
         data["nvidia.total_memory_used_mb"] = sum(row["memory_used_mb"] for row in gpu_rows)
         data["nvidia.total_memory_free_mb"] = sum(row["memory_free_mb"] for row in gpu_rows)
