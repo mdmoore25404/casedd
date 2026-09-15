@@ -1,17 +1,61 @@
 name: apod
-description: >
-  NASA Astronomy Picture of the Day — fills the entire display with the
-  daily APOD image and overlays the title at the bottom.
-
-background: "#000000"
-
+description: "NASA Astronomy Picture of the Day \u2014 fills the entire display with\
+  \ the daily APOD image and overlays the title at the bottom.\n"
+width: null
+height: null
+aspect_ratio: null
+layout_mode: stretch
+background: '#000000'
+refresh_rate_hz: null
 grid:
   template_areas: '"apod_img"'
   columns: 1fr
   rows: 1fr
-
 widgets:
   apod_img:
     type: apod
     source: apod.image_path
+    content: null
+    label: null
+    unit: null
+    precision: 0
+    color: null
+    background: null
+    font_size: auto
+    max_font_size: null
+    padding: 0
+    min: 0.0
+    max: 100.0
+    color_stops: []
+    path: null
+    tiers: []
     scale: fill
+    zoom: 1.0
+    paths: []
+    interval: 10.0
+    transition: none
+    samples: 60
+    window_seconds: null
+    sources: []
+    series_labels: []
+    series_colors: []
+    format: '%H:%M:%S'
+    direction: column
+    align: start
+    gap: 0
+    width: null
+    height: null
+    children: []
+    grid: null
+    children_named: {}
+    arc_start: 225.0
+    arc_end: -45.0
+    gauge_ticks: 0
+    sort_key: cpu
+    filter_regex: null
+    max_items: null
+    table_fit_text: false
+    border_style: none
+    border_color: null
+    border_width: 1
+skip_if: []
