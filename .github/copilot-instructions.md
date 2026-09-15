@@ -100,6 +100,9 @@ Use this section as a pre-flight checklist during implementation, not only at cl
   statement, run `ruff check . --fix` to auto-correct ordering before moving on.
 - **Do not use `glob.glob` for path scans** (Ruff `PTH207`). Prefer `Path.glob()` or
   `Path.rglob()` and normalize absolute patterns through `Path("/").glob(...)`.
+- **Do not pass unvalidated URLs to urllib** (Ruff `S310`). Restrict the parsed URL
+  scheme to `http`/`https` before constructing or opening requests; use a narrow
+  suppression at the validated call site with a safety comment.
  - **Do not use axios for JavaScript/TypeScript API calls.** All JavaScript/TypeScript
    API requests must use the native `fetch` API (or the platform's fetch polyfill).
    Adding `axios` as a dependency or introducing code that uses it is disallowed.

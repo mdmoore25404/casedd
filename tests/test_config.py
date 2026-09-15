@@ -31,6 +31,36 @@ def test_speedtest_passive_env_false(monkeypatch: object, tmp_path: Path) -> Non
     assert cfg.speedtest_passive is False
 
 
+def test_shelly_settings_parse_without_storing_credentials(
+        monkeypatch: object,
+        tmp_path: Path,
+) -> None:
+        """Shelly config stores only the name of the credential env var."""
+        cfg_path = tmp_path / "casedd.yaml"
+        cfg_path.write_text(
+                "\n".join(
+                        [
+                                "shelly_host: bandit-shelly",
+                                "shelly_auth_env: LOCAL_SHELLY_AUTH",
+                                "shelly_switch_id: 1",
+                                "shelly_interval: 3",
+                                "shelly_timeout: 2",
+                        ]
+                ),
+                encoding="utf-8",
+        )
+        monkeypatch_obj = monkeypatch
+        monkeypatch_obj.setenv("CASEDD_CONFIG", str(cfg_path))
+
+        cfg = load_config()
+
+        assert cfg.shelly_host == "bandit-shelly"
+        assert cfg.shelly_auth_env == "LOCAL_SHELLY_AUTH"
+        assert cfg.shelly_switch_id == 1
+        assert cfg.shelly_interval == 3.0
+        assert cfg.shelly_timeout == 2.0
+
+
 def test_template_rotation_entries_parse_from_yaml(
         monkeypatch: object,
         tmp_path: Path,

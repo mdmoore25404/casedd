@@ -836,6 +836,33 @@ Notes:
 - `synology.services.rows` includes state for common packages
   (File Station, SMB, Synology Drive, Hyper Backup, Surveillance Station, Active Backup).
 
+## Shelly smart plug getter
+
+Module: casedd/getters/shelly.py
+
+Config:
+- `CASEDD_SHELLY_HOST` / `shelly_host` — hostname, IP address, or HTTP(S) base URL
+- `CASEDD_SHELLY_AUTH_ENV` / `shelly_auth_env` — name of the environment variable
+  containing `username:password` (default: `SHELLY_AUTH`)
+- `CASEDD_SHELLY_SWITCH_ID` / `shelly_switch_id` — switch component ID (default: `0`)
+- `CASEDD_SHELLY_INTERVAL` / `shelly_interval` — poll interval in seconds (default: `5.0`)
+- `CASEDD_SHELLY_TIMEOUT` / `shelly_timeout` — HTTP timeout in seconds (default: `4.0`)
+
+Emits:
+- shelly.output
+- shelly.power
+- shelly.voltage
+- shelly.current
+- shelly.frequency
+- shelly.energy
+- shelly.temperature_c
+- shelly.temperature_f
+
+Notes:
+- Uses the local Gen2+ `Switch.GetStatus` RPC endpoint with HTTP Digest authentication.
+- Keep credentials out of `casedd.yaml`; configure only the environment variable name.
+- `shelly.current` is amperes and `shelly.energy` is kilowatt-hours.
+
 ## Template-aware polling
 
 CASEDD runs getters required by templates that can become active under policy
