@@ -704,6 +704,11 @@ class Config:
     truenas_timeout: float = Field(default=5.0)
     truenas_verify_tls: bool = Field(default=True)
     truenas_strip_domain_hostname: bool = Field(default=True)
+    shelly_host: str = Field(default="")
+    shelly_auth_env: str = Field(default="SHELLY_AUTH")
+    shelly_switch_id: int = Field(default=0, ge=0)
+    shelly_interval: float = Field(default=5.0, gt=0)
+    shelly_timeout: float = Field(default=4.0, gt=0)
     tuya_devices: list[TuyaDeviceConfig] = Field(default_factory=list)
     tuya_interval: float = Field(default=10.0)
     tuya_cloud_enabled: bool = Field(default=False)
@@ -1835,6 +1840,13 @@ def load_config() -> Config:
             )
         )
         not in {"0", "false", "False", ""},
+        shelly_host=str(_get("CASEDD_SHELLY_HOST", "shelly_host", "")).strip(),
+        shelly_auth_env=str(
+            _get("CASEDD_SHELLY_AUTH_ENV", "shelly_auth_env", "SHELLY_AUTH")
+        ).strip(),
+        shelly_switch_id=int(str(_get("CASEDD_SHELLY_SWITCH_ID", "shelly_switch_id", 0))),
+        shelly_interval=float(str(_get("CASEDD_SHELLY_INTERVAL", "shelly_interval", 5.0))),
+        shelly_timeout=float(str(_get("CASEDD_SHELLY_TIMEOUT", "shelly_timeout", 4.0))),
         tuya_devices=_get_tuya_devices(),
         tuya_interval=float(str(_get("CASEDD_TUYA_INTERVAL", "tuya_interval", 10.0))),
         tuya_cloud_enabled=str(

@@ -67,6 +67,7 @@ from casedd.getters.pihole import PiHoleGetter
 from casedd.getters.plex import PlexGetter
 from casedd.getters.sabnzbd import SABnzbdGetter
 from casedd.getters.servarr import RadarrGetter, ServarrAggregateGetter, SonarrGetter
+from casedd.getters.shelly import ShellyGetter
 from casedd.getters.speedtest import SpeedtestGetter
 from casedd.getters.synology import SynologyGetter
 from casedd.getters.sysinfo import SysinfoGetter
@@ -1709,6 +1710,14 @@ class Daemon:
                 interval=self._cfg.truenas_interval,
                 strip_domain_hostname=self._cfg.truenas_strip_domain_hostname,
             ),
+            ShellyGetter(
+                self._store,
+                host=self._cfg.shelly_host,
+                auth_env=self._cfg.shelly_auth_env,
+                switch_id=self._cfg.shelly_switch_id,
+                interval=self._cfg.shelly_interval,
+                timeout=self._cfg.shelly_timeout,
+            ) if self._cfg.shelly_host else None,
             TuyaGetter(
                 self._store,
                 devices=self._cfg.tuya_devices,
@@ -1919,6 +1928,7 @@ class Daemon:
             ("vms.", "VmGetter"),
             ("pihole.", "PiHoleGetter"),
             ("synology.", "SynologyGetter"),
+            ("shelly.", "ShellyGetter"),
             ("tuya.", "TuyaGetter"),
             ("radarr.", "RadarrGetter"),
             ("sonarr.", "SonarrGetter"),
